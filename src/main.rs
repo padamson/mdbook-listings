@@ -3,6 +3,7 @@ use std::process;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use mdbook_listings::freeze::{FreezeOptions, FreezeOutcome, freeze};
 
 /// Managed code listings for mdbook: inline callouts, freezing, and verification.
 #[derive(Parser)]
@@ -77,11 +78,26 @@ fn run() -> Result<()> {
             anyhow::bail!("`mdbook-listings install` is not yet implemented")
         }
         Some(Command::Freeze {
-            tag: _,
-            book_root: _,
-            force: _,
-            source: _,
-        }) => anyhow::bail!("`mdbook-listings freeze` is not yet implemented"),
+            tag,
+            book_root,
+            force,
+            source,
+        }) => {
+            let book_root = book_root.unwrap_or_else(|| PathBuf::from("."));
+            let outcome = freeze(FreezeOptions {
+                book_root: &book_root,
+                tag: &tag,
+                source: &source,
+                force,
+            })?;
+            let verb = match outcome {
+                FreezeOutcome::Created => "created",
+                FreezeOutcome::Unchanged => "unchanged",
+                FreezeOutcome::Replaced => "replaced",
+            };
+            println!("{verb}: {tag}");
+            Ok(())
+        }
         Some(Command::Verify { book_root: _ }) => {
             anyhow::bail!("`mdbook-listings verify` is not yet implemented")
         }
