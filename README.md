@@ -1,29 +1,20 @@
-<!-- Replace "Project Name" with your project name. -->
-# Project Name
+# mdbook-listings
 
-<!-- Replace this line with a one-sentence description of your project. -->
-
-<!--
-Template users: after creating your repo from this template, see SETUP.md
-for the full onboarding checklist. At minimum, replace every occurrence of
-`my-project` and `Project Name` throughout this file, and update
-`Cargo.toml` (name, description, repository, authors, keywords, categories).
--->
+Managed code listings for mdbook: inline callouts, freezing, and verification.
 
 ## Installation
 
-<!-- Replace `my-project` with your crate name. -->
 ```bash
-cargo install my-project
+cargo install mdbook-listings
 ```
 
 ## Usage
 
-<!-- Replace `my-project` with your binary name, or replace this section
-     entirely with library usage examples if this is a library crate. -->
 ```bash
-my-project --help
+mdbook-listings --help
 ```
+
+Full documentation at <https://padamson.github.io/mdbook-listings/>.
 
 ## Development
 

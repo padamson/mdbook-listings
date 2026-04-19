@@ -8,4 +8,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 - Initial project scaffold
 
-[Unreleased]: https://github.com/OWNER/REPO/commits/main
+[Unreleased]: https://github.com/padamson/mdbook-listings/commits/main

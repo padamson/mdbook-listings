@@ -1,6 +1,6 @@
-# Project Name
+# mdbook-listings
 
-<!-- Replace with a one-line description of what this project does -->
+Managed code listings for mdbook: inline callouts, freezing, and verification.
 
 ## Development
 
@@ -33,5 +33,3 @@ Hooks mirror CI checks: fmt, clippy, check, nextest, doctest, audit, deny, vet.
 5. Push: `git push origin main --tags`
 
 The tag triggers CI which builds, tests, creates a GitHub Release, and publishes to crates.io.
-
-<!-- Add custom skills under .claude/skills/ as needed -->

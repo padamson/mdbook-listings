@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "my-project"
+name = "mdbook-listings"
 version = "0.1.0"

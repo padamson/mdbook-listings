@@ -1,14 +1,13 @@
 [package]
-name = "my-project"
+name = "mdbook-listings"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT"
-description = "A short description of your project"
-repository = "https://github.com/OWNER/REPO"
-authors = ["Your Name"]
-categories = []
-keywords = []
+description = "Managed code listings for mdbook: inline callouts, freezing, and verification"
+repository = "https://github.com/padamson/mdbook-listings"
+categories = ["command-line-utilities", "text-processing"]
+keywords = ["mdbook", "preprocessor", "documentation", "code-listing"]
 
 [dependencies]
 
