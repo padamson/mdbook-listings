@@ -1,2 +1,37 @@
 
 # cargo-vet imports lock
+
+[[audits.google.audits.difflib]]
+who = "Max Lee <endlesspring@google.com>"
+criteria = "safe-to-run"
+version = "0.4.0"
+
+[[audits.google.audits.normalize-line-endings]]
+who = "Max Lee <endlesspring@google.com>"
+criteria = "safe-to-run"
+version = "0.3.0"
+
+[[audits.google.audits.regex]]
+who = "Justin Green <greenjustin@google.com>"
+criteria = "safe-to-run"
+version = "1.11.1"
+
+[[audits.google.audits.regex-automata]]
+who = "Justin Green <greenjustin@google.com>"
+criteria = "safe-to-run"
+version = "0.4.9"
+
+[[audits.mozilla.audits.regex]]
+who = "Benjamin VanderSloot <bvandersloot@mozilla.com>"
+criteria = "safe-to-deploy"
+delta = "1.11.1 -> 1.12.3"
+
+[[audits.mozilla.audits.regex-automata]]
+who = "Benjamin VanderSloot <bvandersloot@mozilla.com>"
+criteria = "safe-to-deploy"
+delta = "0.4.9 -> 0.4.14"
+
+[[audits.mozilla.audits.strsim]]
+who = "Ben Dean-Kawamura <bdk@mozilla.com>"
+criteria = "safe-to-deploy"
+delta = "0.10.0 -> 0.11.1"
