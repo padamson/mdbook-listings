@@ -1,0 +1,15 @@
+[package]
+name = "my-project"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+description = "A short description of your project"
+repository = "https://github.com/OWNER/REPO"
+authors = ["Your Name"]
+categories = []
+keywords = []
+
+[dependencies]
+
+[dev-dependencies]

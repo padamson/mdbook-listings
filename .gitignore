@@ -1,0 +1,14 @@
+# Build artifacts
+/target
+
+# Environment variables (secrets, config)
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~

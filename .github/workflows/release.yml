@@ -1,0 +1,147 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  build-release:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Get version from tag
+        id: get_version
+        shell: bash
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install cargo-nextest & parse-changelog
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest,parse-changelog
+
+      - name: Run tests
+        run: cargo nextest run --workspace --target ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} --verbose
+        continue-on-error: true
+
+      - name: Strip binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          BINARY_NAME=$(cargo metadata --no-deps --format-version 1 | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; bins=[t['name'] for p in pkgs for t in p['targets'] if 'bin' in t['kind']]; print(bins[0] if bins else '')")
+          if [ -n "$BINARY_NAME" ] && [ -f "target/${{ matrix.target }}/release/$BINARY_NAME" ]; then
+            strip "target/${{ matrix.target }}/release/$BINARY_NAME"
+          fi
+        continue-on-error: true
+
+      - name: Create archive (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          BINARY_NAME=$(cargo metadata --no-deps --format-version 1 | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; bins=[t['name'] for p in pkgs for t in p['targets'] if 'bin' in t['kind']]; print(bins[0] if bins else '')")
+          if [ -n "$BINARY_NAME" ] && [ -f "target/${{ matrix.target }}/release/$BINARY_NAME" ]; then
+            tar czf "$BINARY_NAME-v${{ steps.get_version.outputs.version }}-${{ matrix.target }}.tar.gz" -C "target/${{ matrix.target }}/release" "$BINARY_NAME"
+          fi
+        continue-on-error: true
+
+      - name: Create archive (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          BINARY_NAME=$(cargo metadata --no-deps --format-version 1 | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; bins=[t['name'] for p in pkgs for t in p['targets'] if 'bin' in t['kind']]; print(bins[0] if bins else '')")
+          if [ -n "$BINARY_NAME" ] && [ -f "target/${{ matrix.target }}/release/${BINARY_NAME}.exe" ]; then
+            7z a "${BINARY_NAME}-v${{ steps.get_version.outputs.version }}-${{ matrix.target }}.zip" "target/${{ matrix.target }}/release/${BINARY_NAME}.exe"
+          fi
+        continue-on-error: true
+
+      - name: Generate release notes
+        shell: bash
+        run: parse-changelog CHANGELOG.md ${{ steps.get_version.outputs.version }} > release_notes.md
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            *.tar.gz
+            *.zip
+          body_path: release_notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SLSA provenance attestation
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            *.tar.gz
+            *.zip
+        continue-on-error: true
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: [build-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check if token is set
+        id: check_token
+        run: |
+          if [ -z "${{ secrets.CARGO_REGISTRY_TOKEN }}" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "CARGO_REGISTRY_TOKEN not set, skipping crates.io publishing"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish to crates.io
+        if: steps.check_token.outputs.skip == 'false'
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        continue-on-error: true
