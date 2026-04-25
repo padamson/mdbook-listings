@@ -75,10 +75,21 @@ using the tool. A chapter takes the reader through:
    author I want X so that Y*.
 2. **Acceptance criteria (AC).** Statements of the behavior the
    implementation must exhibit for the story to be "done." Each AC is
-   verified by one or more tests in the crate's `tests/` directory;
-   the tests are the executable form, the AC are the specification.
+   verified by one or more tests in the crate's `tests/` directory.
+   Each user story has its own integration-test file
+   (`tests/<story>.rs`), with shared helpers in `tests/common/mod.rs`,
+   so a chapter's frozen test listing focuses on the story it
+   documents rather than re-freezing a growing monolith. The tests are
+   the executable form; the AC are the specification.
 3. **Outside-in narrative.** A sequence of slice-sized sub-sections
-   walking through the implementation (see below).
+   walking through the implementation (see below). Each slice that
+   modifies a source file — *including test files* — freezes the
+   new state under a fresh `<file>-vN` tag and embeds the listing
+   in the sub-section. Even tiny changes (e.g. removing a
+   `#[ignore]` attribute) get a new version: predictability beats
+   negotiating "is this change substantive enough?" every time, and
+   the diff primitive (ch. 3) lets later chapters render compact
+   diffs between consecutive tags rather than full files.
 4. **Design decisions** *(optional).* The rationale for choices the
    tests and implementation can't show on their own — *why* this
    approach and not the alternatives. Include when the story made
@@ -86,7 +97,9 @@ using the tool. A chapter takes the reader through:
    reconstruct from scratch; omit when nothing about the story
    needed defending.
 5. **Final state.** `{{#include}}`s of the frozen listings of every
-   file in the slice, at their end-of-story state.
+   file in the slice, at their end-of-story state — the latest tag
+   per file. Earlier per-slice tags exist as intermediate
+   snapshots referenced by the narrative sub-sections above.
 6. **What this slice does not solve** *(optional).* The deliberate
    edges of the slice — features the author *knew* they wanted but
    deferred — with forward references to the stories or chores
@@ -155,14 +168,6 @@ From ch. 5 onward every story has both diffs and callouts
 available, and the outside-in narrative settles into its compact
 shape. Early chapters will be noticeably longer — we quote whole
 intermediate file states where later chapters quote diffs.
-
-## Release boundaries are emergent
-
-You won't find a "v0.1.0 is chapters 1–4" declaration anywhere up
-front. Release numbers are assigned after the fact, once we've
-shipped enough stories that cutting a release feels useful. The
-book's table of contents *is* the roadmap: stories that have been
-shipped are present; stories that haven't, aren't.
 
 ## Reading in order vs skipping around
 

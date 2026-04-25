@@ -25,7 +25,13 @@ frozen = "src/listings/freeze-v1.rs"
 sha256 = "992b40860939360580fc9270c3a4f056c7036b2f94d49d4d5e88dbb9654410df"
 
 [[listing]]
-tag = "integration-tests-v1"
-source = "../tests/integration.rs"
-frozen = "src/listings/integration-tests-v1.rs"
-sha256 = "c00534cd93557e50dc57482a4ff5e092964c7956ac83349cd220b38469dd40a8"
+tag = "freeze-tests-v1"
+source = "../tests/freeze.rs"
+frozen = "src/listings/freeze-tests-v1.rs"
+sha256 = "34b8b09bc6d084b5e40034bd2e82a3c3e2e67167ffd277350c99e8ace4b2bf48"
+
+[[listing]]
+tag = "install-tests-v1"
+source = "../tests/install.rs"
+frozen = "src/listings/install-tests-v1.rs"
+sha256 = "137191701a972de24fe00eb28c9a57c0464b7812ccc9b241ff635229b2a751de"

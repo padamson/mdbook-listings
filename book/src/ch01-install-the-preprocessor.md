@@ -1,10 +1,10 @@
 # Install the Preprocessor
 
 ```admonish note title="This chapter is mid-flight"
-The Story, Acceptance criteria, and slice list below
-describe what this chapter will deliver once its slices land. The
-Outside-in narrative and Final state sections will appear as each slice
-ships. No slice has shipped yet.
+The Story, Acceptance criteria, and slice list below describe what
+this chapter will deliver once its slices land. Slice 1 has shipped
+(see the Outside-in narrative below); slices 2–8 and the Final
+state section are still pending.
 ```
 
 ## Story
@@ -41,15 +41,35 @@ Anticipated commits:
 
 | Slice | What it adds |
 |---|---|
-| 1/8 | Failing integration test asserting ACs 1+2 (after install, a fixture book builds with the preprocessor invoked and the CSS asset present in the output). Fails because install is a stub. |
+| 1/8 | Failing integration test asserting ACs 1+2 via post-install disk state: a minimal fixture book's `book.toml` gains a `[preprocessor.listings]` entry, references the bundled CSS asset in `[output.html].additional-css`, and the asset itself is written to the book root. Fails because install is a stub. (Asserting AC 1 by actually running `mdbook build` is deferred — it would couple the test to having mdbook on PATH in CI.) |
 | 2/8 | Bundle the CSS asset into the binary at compile time (`include_bytes!`). Unit test: asset is non-empty + matches an expected sentinel. CSS contents stay a placeholder until ch. 4 (Callouts) settles the badge styling. |
 | 3/8 | TOML round-trip primitive (read `book.toml`, mutate, write back preserving comments + ordering, via `toml_edit`). Unit-tested on synthetic input strings — no filesystem. |
 | 4/8 | Add the `[preprocessor.listings]` registration. Unit test for AC 3 (idempotency) on top of slice 3. |
 | 5/8 | Copy the CSS asset to `<book-root>/mdbook-listings.css` and add it to `[output.html].additional-css`. Unit test for the additional-css addition (AC 2 in the synthetic-config form). |
-| 6/8 | Wire slices 2–5 into the `install` CLI handler. Slice 1's integration test now passes for ACs 1+2+3. |
+| 6/8 | Wire slices 2–5 into the `install` CLI handler. Slice 1's integration test now passes for ACs 1+2. AC 3 (idempotency) is pinned by slice 4's unit test. |
 | 7/8 | Reject missing book config with a diagnostic (AC 5). New integration test. |
 | 8/8 | Enforce ordering relative to mdbook-admonish if present (AC 6). Unit test on synthetic configs with admonish present / absent / already-correctly-ordered. Integration test in a fixture book with admonish registered after a stub preprocessor. |
 | refactor | Optional. |
+
+## Outside-in narrative
+
+### Slice 1 — failing integration test
+
+The first slice introduces a CLI-level integration test that
+drives `install` against a minimal fixture book. The test body
+delegates setup and assertions to a `MinimalFixtureBook` helper
+so it reads as the scenario rather than the mechanics:
+
+```rust
+{{#include listings/install-tests-v1.rs}}
+```
+
+The test is `#[ignore]`'d so the green-build pre-commit chain
+stays passing while `install` is still a stub. It was run once
+locally first and confirmed to fail at the install invocation
+(`error: 'mdbook-listings install' is not yet implemented`); the
+ignore reason names the condition for unskipping. A later slice
+wires up the install handler and removes the ignore.
 
 <!--
 The sections below are scaffold for the writer of the slices. They get
@@ -57,10 +77,8 @@ moved out of this HTML comment as the corresponding work lands.
 
 Slice-by-slice promotion plan (what comes out of this comment when):
 
-  * slice 1 lands: create a `## Outside-in narrative` section above
-    the HTML comment block; add its first sub-section
-    `### Slice 1 — failing integration test` describing what was
-    asserted and how it failed.
+  * slice 1 lands: DONE — narrative section now lives above this
+    HTML comment block.
   * slices 2–8: each adds one sub-section to `## Outside-in
     narrative` describing what changed and what tests passed.
   * final slice (or refactor): rewrite the top-of-chapter admonish

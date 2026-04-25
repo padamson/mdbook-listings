@@ -48,7 +48,7 @@ The slice cuts top-to-bottom through the crate:
 
 | File | Role | Frozen tag |
 |---|---|---|
-| `tests/integration.rs` | Acceptance criteria as CLI-level tests | `integration-tests-v1` |
+| `tests/freeze.rs` | Acceptance criteria as CLI-level tests | `freeze-tests-v1` |
 | `src/main.rs` | `clap` subcommand handler — the CLI adapter | `main-v1` |
 | `src/freeze.rs` | Core logic: hash, decide, write, upsert | `freeze-v1` |
 | `src/manifest.rs` | TOML load / save / upsert | `manifest-v1` |
@@ -106,19 +106,17 @@ which of those policies authors actually want.
 The four source files and the integration test, as of this
 commit, all frozen.
 
-### `tests/integration.rs` — the acceptance criteria as tests
+### `tests/freeze.rs` — the acceptance criteria as tests
 
 ```rust
-{{#include listings/integration-tests-v1.rs}}
+{{#include listings/freeze-tests-v1.rs}}
 ```
 
 The `freeze_rejects_conflicting_content_without_force` and
 `freeze_rejects_duplicate_tag_from_different_source` tests together
 pin the two halves of **AC 4**, which is the one criterion the book
 itself can't exercise (because the book only drives the happy
-paths). The `supports_*` and `help_*`/`version_*` tests are not part
-of this story — they shipped with the CLI-scaffolding chore that
-preceded it.
+paths).
 
 ### `src/main.rs` — the CLI adapter
 
