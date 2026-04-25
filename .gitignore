@@ -1,6 +1,9 @@
 # Build artifacts
 /target
 
+# mdbook build output
+/book/build
+
 # Environment variables (secrets, config)
 .env
 

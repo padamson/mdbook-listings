@@ -1,0 +1,31 @@
+version = 1
+
+[[listing]]
+tag = "manifest-v1"
+source = "../src/manifest.rs"
+frozen = "src/listings/manifest-v1.rs"
+sha256 = "9e36d833485224f3a38d19c3b6ff642929273008114d17d775e8b1c67ca8e7aa"
+
+[[listing]]
+tag = "lib-v1"
+source = "../src/lib.rs"
+frozen = "src/listings/lib-v1.rs"
+sha256 = "7d0397d6cdcdce3bdde6308210dafdf5eb2ba8e2bb64285982f058997c76dd2a"
+
+[[listing]]
+tag = "main-v1"
+source = "../src/main.rs"
+frozen = "src/listings/main-v1.rs"
+sha256 = "d61bebc89bb132ae602d25b487d2016609a1ef978d8169ecea3eadae19f0a471"
+
+[[listing]]
+tag = "freeze-v1"
+source = "../src/freeze.rs"
+frozen = "src/listings/freeze-v1.rs"
+sha256 = "992b40860939360580fc9270c3a4f056c7036b2f94d49d4d5e88dbb9654410df"
+
+[[listing]]
+tag = "integration-tests-v1"
+source = "../tests/integration.rs"
+frozen = "src/listings/integration-tests-v1.rs"
+sha256 = "c00534cd93557e50dc57482a4ff5e092964c7956ac83349cd220b38469dd40a8"

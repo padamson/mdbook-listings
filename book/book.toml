@@ -1,0 +1,28 @@
+[book]
+authors = ["Paul Adamson"]
+language = "en"
+src = "src"
+title = "mdbook-listings"
+description = "Managed code listings for mdbook: inline callouts, freezing, and verification"
+
+[build]
+# Render HTML + typst-pdf under `book/build/` (rather than mdbook's default
+# `book/book/`, which reads awkwardly next to the `book/` repo directory).
+build-dir = "build"
+
+# Renders admonish note blocks (used in PDF output for inline callouts, and
+# throughout the prose). Requires `cargo install mdbook-admonish`.
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.1.0" # do not edit: managed by `mdbook-admonish install`
+
+# The listings preprocessor itself is registered in a later commit, once the
+# preprocessor pipeline is implemented. Running the build without it is fine;
+# `{{#include}}` and admonish still work.
+
+[output.html]
+additional-css = ["./mdbook-admonish.css"]
+
+# Requires `cargo install mdbook-typst-pdf`. Produces a PDF alongside the HTML
+# output.
+[output.typst-pdf]
