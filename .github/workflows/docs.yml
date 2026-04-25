@@ -1,0 +1,108 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'book/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment, queued; don't cancel in-progress runs.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build book
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install fonts (for Typst PDF rendering)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-sil-charis fonts-inter fonts-jetbrains-mono
+
+      - name: Cache Cargo (registry + git + installed bins)
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-docs-cargo-${{ hashFiles('.github/workflows/docs.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-docs-cargo-
+
+      - name: Install mdbook + mdbook-admonish + mdbook-typst-pdf
+        # `command -v X || cargo install X` skips reinstall when the cargo
+        # bin cache restored an existing binary. mdbook-typst-pdf depends on
+        # the `typst` library and bundles the renderer; no separate Typst
+        # CLI install is needed.
+        run: |
+          command -v mdbook           || cargo install mdbook           --locked
+          command -v mdbook-admonish  || cargo install mdbook-admonish  --locked
+          command -v mdbook-typst-pdf || cargo install mdbook-typst-pdf --locked
+
+      - name: Refresh mdbook-admonish assets
+        # Regenerates book/mdbook-admonish.css and the assets_version field
+        # in book/book.toml to match the mdbook-admonish version just
+        # installed. Without this, a version skew between the local install
+        # (where the committed assets came from) and the CI install fails
+        # the build with `invalid type: null, expected any valid TOML value`
+        # when the admonish preprocessor parses its config.
+        working-directory: book
+        run: mdbook-admonish install
+
+      # When the install story ships and registers the mdbook-listings
+      # preprocessor in book/book.toml, this workflow will need to install
+      # the local crate too:
+      #   cargo install --path . --locked
+      # added immediately before the build step.
+
+      - name: Build book (HTML + PDF)
+        run: mdbook build book/
+
+      - name: Bundle PDF into the HTML site
+        run: |
+          set -euo pipefail
+          PDF=$(find book/build/typst-pdf -maxdepth 1 -type f -name '*.pdf' | head -n1)
+          if [ -n "${PDF}" ]; then
+            cp "${PDF}" book/build/html/mdbook-listings.pdf
+          else
+            echo "No PDF found under book/build/typst-pdf — skipping bundle." >&2
+          fi
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: book/build/html
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

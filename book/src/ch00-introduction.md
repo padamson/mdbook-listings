@@ -9,6 +9,9 @@ book describe building an `mdbook-listings` primitive, and the tool is
 used to manage the listings in the book,
 so a regression in the tool breaks the book build.
 
+A PDF version of this book is available at
+[mdbook-listings.pdf](mdbook-listings.pdf).
+
 ## How books drift from code
 
 A book quotes code from the project it documents. Months later the

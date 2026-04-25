@@ -1,0 +1,8 @@
+# typos configuration — allow project-specific words that the spell-check
+# would otherwise flag (or, worse, auto-correct in the wrong direction).
+# Add words here as we hit false positives.
+
+[default.extend-words]
+# SIL Charis is a typeface bundled by Debian as `fonts-sil-charis`.
+# Without this exemption, typos rewrites "charis" → "chairs".
+charis = "charis"
