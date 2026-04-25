@@ -137,6 +137,10 @@ Specifically:
 - **Ch. 1 (Install the Preprocessor)** can be built fully outside-in
   — install doesn't depend on either diffs or callouts. It just
   hasn't been shipped yet.
+  <!-- TODO(ch01-ship): rewrite this bullet in past tense — "was
+       built fully outside-in across N slices" — once all install
+       slices have landed. -->
+
 - **Ch. 2 (Freeze a Listing)** is reconstructed retrospectively.
   The freeze work landed in a single commit before the book adopted
   this methodology; there is no slice-by-slice sequence to walk

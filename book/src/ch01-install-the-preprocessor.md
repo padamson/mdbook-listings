@@ -1,52 +1,75 @@
 # Install the Preprocessor
 
-<!--
-Story scaffold — first story in shipping order under CD ordering, but not
-yet shipped. Built outside-in (no chicken-and-egg here: install doesn't
-depend on diffs or callouts, so the chapter can show a full slice
-narrative when implemented).
+```admonish note title="This chapter is mid-flight"
+The Story, Acceptance criteria, and slice list below
+describe what this chapter will deliver once its slices land. The
+Outside-in narrative and Final state sections will appear as each slice
+ships. No slice has shipped yet.
+```
 
-## Story (placeholder — tighten before committing slice 1)
+## Story
 
-> As a book author adopting mdbook-listings, I want a single command that
-> configures my existing book to use mdbook-listings, so that I can start
-> freezing listings and rendering callouts without hand-editing the book's
-> configuration or manually copying CSS assets.
+> As a book author, I want one command that wires mdbook-listings into
+> my book so that I don't have to hand-edit configuration or hunt down
+> assets to start using the tool.
 
-## Acceptance criteria (placeholder — tighten before implementation)
+## Acceptance criteria
 
-  1. Running the install command in a directory that already contains a
-     valid book configuration registers mdbook-listings as a preprocessor
-     of that book and places the CSS asset where the book's HTML build
-     picks it up.
-  2. After install, building the book invokes mdbook-listings as a
-     preprocessor without further author intervention.
-  3. The install operation is idempotent: a second run on an already-
-     installed book makes no further changes and confirms to the author
-     that nothing changed.
-  4. The install operation preserves any existing book configuration —
-     comments, formatting, and the order of any already-registered
-     preprocessors and outputs are not disturbed; only the entries
-     relevant to mdbook-listings are added.
-  5. Running the install command in a directory without a valid book
-     configuration is rejected with a diagnostic identifying what was
-     expected and not found.
+1. After install runs successfully against a book, building that book
+   invokes mdbook-listings as a preprocessor without further author
+   intervention.
+2. After install runs successfully against a book, the HTML build
+   picks up the CSS asset that styles mdbook-listings's output.
+3. Install is idempotent: a second run on an already-installed book
+   makes no further changes and confirms to the author that nothing
+   changed.
+4. Install preserves the rest of the book's existing configuration —
+   comments, formatting, and the order of any already-registered
+   preprocessors and outputs are untouched; only entries relevant to
+   mdbook-listings are added.
+5. Install run in a directory without a valid book configuration is
+   rejected with a diagnostic identifying what was expected and not
+   found.
+6. If mdbook-admonish is also registered in the book, install places
+   mdbook-listings *before* it in the preprocessor chain so the
+   callout → admonish-note pipeline produces correctly styled PDF
+   output.
 
 ## The slice — outside-in narrative outline
 
 Anticipated commits:
 
-  slice 1/N: Failing integration test that copies a fixture book to a
-             tempdir, runs install, and asserts post-conditions on the
-             book configuration and the CSS asset on disk.
-  slice 2/N: Read/modify/write of the book configuration that preserves
-             comments and ordering. Unit-tested on synthetic inputs.
-  slice 3/N: Preprocessor registration entry. Unit test for AC 3
-             (idempotency) on top of slice 2.
-  slice 4/N: CSS asset bundling (compile-time) plus copy at install
-             time.
-  slice 5/N: Diagnostic for missing book configuration (AC 5).
-  optional refactor slice.
+| Slice | What it adds |
+|---|---|
+| 1/8 | Failing integration test asserting ACs 1+2 (after install, a fixture book builds with the preprocessor invoked and the CSS asset present in the output). Fails because install is a stub. |
+| 2/8 | Bundle the CSS asset into the binary at compile time (`include_bytes!`). Unit test: asset is non-empty + matches an expected sentinel. CSS contents stay a placeholder until ch. 4 (Callouts) settles the badge styling. |
+| 3/8 | TOML round-trip primitive (read `book.toml`, mutate, write back preserving comments + ordering, via `toml_edit`). Unit-tested on synthetic input strings — no filesystem. |
+| 4/8 | Add the `[preprocessor.listings]` registration. Unit test for AC 3 (idempotency) on top of slice 3. |
+| 5/8 | Copy the CSS asset to `<book-root>/mdbook-listings.css` and add it to `[output.html].additional-css`. Unit test for the additional-css addition (AC 2 in the synthetic-config form). |
+| 6/8 | Wire slices 2–5 into the `install` CLI handler. Slice 1's integration test now passes for ACs 1+2+3. |
+| 7/8 | Reject missing book config with a diagnostic (AC 5). New integration test. |
+| 8/8 | Enforce ordering relative to mdbook-admonish if present (AC 6). Unit test on synthetic configs with admonish present / absent / already-correctly-ordered. Integration test in a fixture book with admonish registered after a stub preprocessor. |
+| refactor | Optional. |
+
+<!--
+The sections below are scaffold for the writer of the slices. They get
+moved out of this HTML comment as the corresponding work lands.
+
+Slice-by-slice promotion plan (what comes out of this comment when):
+
+  * slice 1 lands: create a `## Outside-in narrative` section above
+    the HTML comment block; add its first sub-section
+    `### Slice 1 — failing integration test` describing what was
+    asserted and how it failed.
+  * slices 2–8: each adds one sub-section to `## Outside-in
+    narrative` describing what changed and what tests passed.
+  * final slice (or refactor): rewrite the top-of-chapter admonish
+    note (it currently says "no slice has shipped yet"); promote
+    `## Notes for implementers` and `## What this slice will not
+    solve` out of this comment into chapter body; populate
+    `## Final state` with `\{{#include}}`s of the `-v2` frozen
+    listings (and the new `install-v1`); close the corresponding
+    `TODO(ch01-ship)` markers in ch. 0 and ch. 2.
 
 ## Notes for implementers
 
@@ -58,10 +81,6 @@ Anticipated commits:
     callouts — coordinate with the **Render Inline Callouts** story so
     the CSS install ships matches the badges and details that story
     actually renders.
-  * Adding the preprocessor entry must place it *before* mdbook-admonish
-    in the preprocessor chain when admonish is also registered, so
-    callout-emitted admonish-note blocks get styled correctly in PDF.
-    Decide whether install enforces this ordering or merely warns.
   * **Expected listing overlap with ch. 2 (Freeze a Listing).** This
     story adds a new module (`src/install.rs`) and modifies
     `src/lib.rs`, `src/main.rs`, and `tests/integration.rs` — files
@@ -86,5 +105,3 @@ Anticipated commits:
     book already has a different preprocessor named `listings`, install
     refuses (a stronger AC for slice 5).
 -->
-
-Placeholder — this chapter's story has not been shipped yet.

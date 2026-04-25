@@ -212,3 +212,8 @@ more `pub mod` line.
   this chapter keeps pointing at `-v1`, ch. 1 points at `-v2`, and
   for the period before diffs ship readers see overlapping full-
   file listings across the two chapters.
+  <!-- TODO(ch01-ship): once install lands, rewrite in past tense
+       and name the actual `-v2` tags that were frozen
+       (lib-v2, main-v2, integration-tests-v2 plus the new
+       install-v1) so the bullet reflects history rather than
+       prediction. -->
