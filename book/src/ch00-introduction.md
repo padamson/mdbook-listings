@@ -41,6 +41,11 @@ primitives — it's the entry point of the user's journey through the
 tool. Everything else that isn't a primitive — small ergonomics,
 recipes, troubleshooting — lives in ch. 6.
 
+What's planned beyond what's shipped (v0.2.0 themes onward) lives
+in [`ROADMAP.md`](https://github.com/padamson/mdbook-listings/blob/main/ROADMAP.md)
+at the repo root, not in this book. The book documents shipped
+stories; the roadmap documents intended ones.
+
 ## Scope boundaries — things the tool deliberately does not do
 
 Worth stating up front so readers aren't surprised:

@@ -16,6 +16,8 @@ mdbook-listings --help
 
 Full documentation at <https://padamson.github.io/mdbook-listings/>.
 
+What's planned beyond what's shipped: see [ROADMAP.md](ROADMAP.md).
+
 ## Development
 
 See [CLAUDE.md](CLAUDE.md) for development commands.
