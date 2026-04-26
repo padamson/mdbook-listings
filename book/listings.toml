@@ -71,3 +71,9 @@ tag = "install-v3"
 source = "../src/install.rs"
 frozen = "src/listings/install-v3.rs"
 sha256 = "3e4451090d268a1295f1e5a741888e7bc3727b32fec9fea41a55e20a42e11d72"
+
+[[listing]]
+tag = "install-v4"
+source = "../src/install.rs"
+frozen = "src/listings/install-v4.rs"
+sha256 = "dc5923b62b1e54beb3130ea20ee9ae4e63a59bcea5686c120e71bec2ca8624da"

@@ -2,8 +2,8 @@
 
 ```admonish note title="This chapter is mid-flight"
 The Story, Acceptance criteria, and slice list below describe what
-this chapter will deliver once its slices land. Slices 1–4 have
-shipped (see the Outside-in narrative below); slices 5–8 and the
+this chapter will deliver once its slices land. Slices 1–5 have
+shipped (see the Outside-in narrative below); slices 6–8 and the
 Final state section are still pending.
 ```
 
@@ -172,6 +172,47 @@ the post-install disk state; slice 5 adds the matching
 wires both into the install handler so the integration test
 goes green.
 
+### Slice 5 — copy the CSS asset and register it
+
+Slice 5 covers the other half of AC 2: `[output.html]` gets
+`additional-css = ["./mdbook-listings.css"]` so mdbook's HTML
+build picks the asset up, and the on-disk copy of the asset
+itself lands at `<book-root>/mdbook-listings.css`.
+
+The TOML mutation is a `BookConfig::register_listings_css`
+method on the same newtype as the preprocessor registration; the
+file copy is a free function `write_css_asset(book_root)` that
+writes [`CSS_ASSET`] (from slice 2) to the conventional
+filename. A new `CSS_ASSET_FILENAME` constant ties the two
+together so they can't drift out of sync. Two unit tests pin
+the additional-css side: the entry is added with the right
+relative path, and the operation is idempotent (no duplicate
+entries on a second call).
+
+**What's new in `install-v4` compared to `install-v3`:** the
+`CSS_ASSET_FILENAME` constant, the `write_css_asset` free
+function, the `register_listings_css` method on `BookConfig`,
+two new tests
+(`book_config_register_listings_css_adds_entry`,
+`book_config_register_listings_css_is_idempotent`), and the
+imports they need (`std::fs`, `std::path::Path`, plus
+`toml_edit::{Array, Value}` added to the existing import
+line). Everything else — the CSS constants, the parse/render
+methods, the preprocessor-registration method, and their tests
+— is unchanged from `install-v3`.
+
+```rust
+{{#include listings/install-v4.rs}}
+```
+
+The integration test from slice 1 is still `#[ignore]`'d.
+Slice 5 finishes the building blocks; slice 6 sequences
+`BookConfig::parse → register_listings_preprocessor →
+register_listings_css → render → write back to book.toml`,
+plus a `write_css_asset` call, behind the `install` CLI
+handler — at which point the integration test passes for
+ACs 1+2.
+
 <!--
 The sections below are scaffold for the writer of the slices. They get
 moved out of this HTML comment as the corresponding work lands.
@@ -183,7 +224,8 @@ Slice-by-slice promotion plan (what comes out of this comment when):
   * slice 2 lands: DONE — slice 2 sub-section added.
   * slice 3 lands: DONE — slice 3 sub-section added.
   * slice 4 lands: DONE — slice 4 sub-section added.
-  * slices 5–8: each adds one sub-section to `## Outside-in
+  * slice 5 lands: DONE — slice 5 sub-section added.
+  * slices 6–8: each adds one sub-section to `## Outside-in
     narrative` describing what changed and what tests passed.
   * final slice (or refactor): rewrite the top-of-chapter admonish
     note (it currently says "no slice has shipped yet"); promote
