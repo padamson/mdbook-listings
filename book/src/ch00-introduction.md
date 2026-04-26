@@ -98,6 +98,13 @@ using the tool. A chapter takes the reader through:
    negotiating "is this change substantive enough?" every time, and
    the diff primitive (ch. 3) lets later chapters render compact
    diffs between consecutive tags rather than full files.
+
+   **Until the diff primitive ships**, each slice's narrative must
+   explicitly describe in prose *what changed* in the new version
+   relative to the previous one. The reader sees two full file
+   listings across consecutive sub-sections; the prose tells them
+   where to look. After diffs ship, the prose can cede that work
+   to a `\{{#diff <prev> <new>}}` block.
 4. **Design decisions** *(optional).* The rationale for choices the
    tests and implementation can't show on their own — *why* this
    approach and not the alternatives. Include when the story made

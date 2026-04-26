@@ -172,7 +172,7 @@ criteria = "safe-to-run"
 
 [[exemptions.memchr]]
 version = "2.8.0"
-criteria = "safe-to-run"
+criteria = "safe-to-deploy"
 
 [[exemptions.num-traits]]
 version = "0.2.19"
@@ -267,11 +267,23 @@ version = "1.1.2+spec-1.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.toml_datetime]]
+version = "0.6.11"
+criteria = "safe-to-deploy"
+
+[[exemptions.toml_datetime]]
 version = "1.1.1+spec-1.1.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.toml_edit]]
+version = "0.22.27"
 criteria = "safe-to-deploy"
 
 [[exemptions.toml_parser]]
 version = "1.1.2+spec-1.1.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.toml_write]]
+version = "0.1.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.toml_writer]]
@@ -320,6 +332,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.windows-sys]]
 version = "0.61.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.winnow]]
+version = "0.7.15"
 criteria = "safe-to-deploy"
 
 [[exemptions.winnow]]

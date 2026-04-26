@@ -53,3 +53,15 @@ tag = "install-css-v1"
 source = "../assets/mdbook-listings.css"
 frozen = "src/listings/install-css-v1.css"
 sha256 = "a5859d61609675e59f5fa824873c74808ebedd2c128d8dac33f69ba814c02754"
+
+[[listing]]
+tag = "cargo-toml-v1"
+source = "../Cargo.toml"
+frozen = "src/listings/cargo-toml-v1.toml"
+sha256 = "159b78e9a79639ae9318c27d898ad2b99dabe10955e419b6d389ee427da45572"
+
+[[listing]]
+tag = "install-v2"
+source = "../src/install.rs"
+frozen = "src/listings/install-v2.rs"
+sha256 = "18dd918c3cae2ffe98f3d051a0273fcd56eed3dbc1d287f9e2501a38b0d7d587"

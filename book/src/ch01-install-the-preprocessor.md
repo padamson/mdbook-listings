@@ -2,8 +2,8 @@
 
 ```admonish note title="This chapter is mid-flight"
 The Story, Acceptance criteria, and slice list below describe what
-this chapter will deliver once its slices land. Slices 1–2 have
-shipped (see the Outside-in narrative below); slices 3–8 and the
+this chapter will deliver once its slices land. Slices 1–3 have
+shipped (see the Outside-in narrative below); slices 4–8 and the
 Final state section are still pending.
 ```
 
@@ -107,6 +107,42 @@ The unit tests run as part of the regular suite and pass; the
 integration test from slice 1 is still `#[ignore]`'d because
 `install` doesn't yet do anything with the bundled asset.
 
+### Slice 3 — TOML round-trip primitive
+
+Slice 3 stands up the primitive that lets later slices mutate
+`book.toml` while preserving its formatting: a `BookConfig`
+newtype around `toml_edit::DocumentMut`. Two unit tests pin the
+guarantees the wrapper has to keep — round-tripping a config
+without mutation is byte-identical to the input (preserving
+comments and entry ordering), and invalid TOML is rejected with
+a diagnostic.
+
+`Cargo.toml` gains `toml_edit` as a runtime dep:
+
+```toml
+{{#include listings/cargo-toml-v1.toml}}
+```
+
+The install module now declares the primitive alongside the CSS
+asset bundling from slice 2. **What's new in `install-v2`
+compared to `install-v1`:** the `BookConfig` struct (with
+`#[derive(Debug)]` so test failures format readably), its `parse`
+and `render` methods, two new tests
+(`book_config_round_trip_preserves_comments_and_ordering` and
+`book_config_parse_rejects_invalid_toml`), and the imports those
+need (`anyhow::{Context, Result}`, `toml_edit::DocumentMut`).
+Everything else — the CSS constants and their tests — is
+unchanged from `install-v1`.
+
+```rust
+{{#include listings/install-v2.rs}}
+```
+
+The integration test from slice 1 is still `#[ignore]`'d.
+`BookConfig` is plumbing — slice 4 wires it up to add the
+`[preprocessor.listings]` registration that satisfies the test's
+first assertion.
+
 <!--
 The sections below are scaffold for the writer of the slices. They get
 moved out of this HTML comment as the corresponding work lands.
@@ -116,7 +152,8 @@ Slice-by-slice promotion plan (what comes out of this comment when):
   * slice 1 lands: DONE — narrative section now lives above this
     HTML comment block.
   * slice 2 lands: DONE — slice 2 sub-section added.
-  * slices 3–8: each adds one sub-section to `## Outside-in
+  * slice 3 lands: DONE — slice 3 sub-section added.
+  * slices 4–8: each adds one sub-section to `## Outside-in
     narrative` describing what changed and what tests passed.
   * final slice (or refactor): rewrite the top-of-chapter admonish
     note (it currently says "no slice has shipped yet"); promote
