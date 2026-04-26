@@ -1,12 +1,12 @@
 # Install the Preprocessor
 
 ```admonish note title="This chapter is mid-flight"
-The Story, Acceptance criteria, and slice list below describe what
-this chapter will deliver once its slices land. Slices 1–7 have
-shipped (see the Outside-in narrative below) — ACs 1, 2, 3, and 5
-pass end-to-end; AC 4 (config preservation) is implicit in slice
-3's round-trip test. Slice 8 (admonish ordering, AC 6) and the
-Final state section are still pending.
+All eight slices have shipped (see the Outside-in narrative below)
+— every AC is exercised by at least one test in the suite. The
+chapter still needs a Final state section embedding the latest
+frozen tags + the wrap-up steps (promote scaffold sections out
+of the HTML comment, close the `TODO(ch01-ship)` markers in
+ch. 0 and ch. 2).
 ```
 
 ## Story
@@ -275,7 +275,7 @@ The integration test from slice 1 is no longer ignored. Slices
 7 and 8 add the remaining ACs (missing-config diagnostic for
 AC 5, mdbook-admonish ordering for AC 6).
 
-### Slice 7 — reject missing book config (AC 5)
+### Slice 7 — reject missing book config
 
 Slice 7 makes the missing-`book.toml` case fail with a helpful
 diagnostic instead of a generic "reading book config" wrapper.
@@ -323,6 +323,56 @@ test (`install_registers_preprocessor_and_writes_css`) and the
 The suite now runs 24 tests (10 install-related, 14 from other
 modules). Slice 8 takes care of AC 6 (mdbook-admonish ordering).
 
+### Slice 8 — order before mdbook-admonish
+
+Slice 8 satisfies AC 6: when `[preprocessor.admonish]` is
+already registered in `book.toml`, install adds
+`before = ["admonish"]` to the new `[preprocessor.listings]`
+entry so mdbook runs listings first. The callout → admonish-note
+pipeline (which the **Render Inline Callouts** story will rely
+on for PDF output) requires this ordering.
+
+The behaviour is conditional: if admonish is absent, the
+`before` field is not added — keeping the registered listings
+entry minimal for books that don't use admonish.
+
+Three new unit tests cover the synthetic-config cases (admonish
+present, admonish absent, idempotent re-run with admonish
+present); a new integration test
+`install_orders_before_admonish_when_admonish_is_registered`
+sets up a fixture book with `[preprocessor.admonish]`, runs
+install, and asserts the resulting `book.toml` has the
+`before = ["admonish"]` ordering plus both preprocessor entries.
+
+**What's new in `install-v7` compared to `install-v6`:** the
+`register_listings_preprocessor` method now snapshots whether
+`"admonish"` is a key in the preprocessor table before adding
+listings, then appends `before = ["admonish"]` to the listings
+entry if so. Three new tests in the unit-test module. The
+method's existing behaviour (preprocessor entry with command)
+and idempotency are unchanged.
+
+```rust
+{{#include listings/install-v7.rs}}
+```
+
+**What's new in `install-tests-v4` compared to
+`install-tests-v3`:** the new
+`install_orders_before_admonish_when_admonish_is_registered`
+integration test. The other tests and helper struct are
+unchanged.
+
+```rust
+{{#include listings/install-tests-v4.rs}}
+```
+
+The suite now runs 27 tests (14 install-related, 13 from other
+modules). Every Acceptance criterion has at least one test
+covering it. The chapter is feature-complete; the wrap-up
+chore promotes the remaining HTML-comment scaffold to chapter
+body and adds the **Final state** section embedding the latest
+tags.
+
 <!--
 The sections below are scaffold for the writer of the slices. They get
 moved out of this HTML comment as the corresponding work lands.
@@ -338,8 +388,16 @@ Slice-by-slice promotion plan (what comes out of this comment when):
   * slice 6 lands: DONE — slice 6 sub-section added; slice 1's
     integration test is no longer ignored.
   * slice 7 lands: DONE — slice 7 sub-section added.
-  * slice 8: adds one sub-section to `## Outside-in narrative`
-    describing what changed and what tests passed.
+  * slice 8 lands: DONE — slice 8 sub-section added.
+  * wrap-up chore (separate commit): rewrite the top-of-chapter
+    admonish note to past tense; promote `## Notes for
+    implementers` and `## What this slice will not solve` out
+    of this comment into chapter body; populate `## Final
+    state` with `\{{#include}}`s of the latest `-vN` listings
+    (lib-v2, main-v2, install-v7, install-tests-v4, and the
+    cargo-toml-v1 + install-css-v1 + freeze-v1 + manifest-v1
+    that haven't been re-frozen since their last touch); close
+    the `TODO(ch01-ship)` markers in ch. 0 and ch. 2.
   * final slice (or refactor): rewrite the top-of-chapter admonish
     note (it currently says "no slice has shipped yet"); promote
     `## Notes for implementers` and `## What this slice will not
