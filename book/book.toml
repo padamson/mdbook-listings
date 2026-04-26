@@ -25,6 +25,10 @@ additional-css = ["./mdbook-admonish.css"]
 
 # Requires `cargo install mdbook-typst-pdf`. `pdf = true` makes it actually
 # compile to PDF; without it, the renderer is a no-op (it only emits a `.typ`
-# source file at most).
+# source file at most). `custom-template` swaps out mdbook-typst-pdf's
+# default template (which references Noto fonts that aren't installed in CI
+# or on the author's local box, producing font-substitution warnings and
+# ugly fallbacks) for one that uses fonts we actually install.
 [output.typst-pdf]
 pdf = true
+custom-template = "template.typ"
