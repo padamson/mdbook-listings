@@ -1,0 +1,10 @@
+/* mdbook-listings — placeholder CSS.
+ *
+ * The Render Inline Callouts story (ch. 4) will replace this with the real
+ * styling for callout badges and <details> blocks. Until then the asset
+ * exists only so the install pipeline has something to ship and so the
+ * build-time bundling can be smoke-tested.
+ *
+ * Sentinel string used by unit tests to confirm the bundled bytes are the
+ * expected build-time asset: mdbook-listings-css-v1
+ */

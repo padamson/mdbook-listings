@@ -2,9 +2,9 @@
 
 ```admonish note title="This chapter is mid-flight"
 The Story, Acceptance criteria, and slice list below describe what
-this chapter will deliver once its slices land. Slice 1 has shipped
-(see the Outside-in narrative below); slices 2–8 and the Final
-state section are still pending.
+this chapter will deliver once its slices land. Slices 1–2 have
+shipped (see the Outside-in narrative below); slices 3–8 and the
+Final state section are still pending.
 ```
 
 ## Story
@@ -71,6 +71,42 @@ locally first and confirmed to fail at the install invocation
 ignore reason names the condition for unskipping. A later slice
 wires up the install handler and removes the ignore.
 
+### Slice 2 — bundle the CSS asset
+
+Slice 2 introduces the first piece of code the integration test will
+eventually need: the CSS bytes that `install` will copy to the book
+root. The asset is compiled into the binary via [`include_bytes!`]
+so a `cargo install mdbook-listings` produces a self-contained
+binary with nothing external to fetch.
+
+A new `install` module declares the constant and a sentinel string
+that unit tests assert is present in the bundled bytes (so a build
+that strips or replaces the asset fails loudly):
+
+```rust
+{{#include listings/install-v1.rs}}
+```
+
+The asset itself is intentionally a placeholder — real callout
+styling depends on choices the **Render Inline Callouts** story
+(ch. 4) hasn't made yet. The placeholder carries only the sentinel
+string the unit tests look for:
+
+```css
+{{#include listings/install-css-v1.css}}
+```
+
+`src/lib.rs` gains one line — `pub mod install;` — so the rest of
+the crate can reach the new module:
+
+```rust
+{{#include listings/lib-v2.rs}}
+```
+
+The unit tests run as part of the regular suite and pass; the
+integration test from slice 1 is still `#[ignore]`'d because
+`install` doesn't yet do anything with the bundled asset.
+
 <!--
 The sections below are scaffold for the writer of the slices. They get
 moved out of this HTML comment as the corresponding work lands.
@@ -79,7 +115,8 @@ Slice-by-slice promotion plan (what comes out of this comment when):
 
   * slice 1 lands: DONE — narrative section now lives above this
     HTML comment block.
-  * slices 2–8: each adds one sub-section to `## Outside-in
+  * slice 2 lands: DONE — slice 2 sub-section added.
+  * slices 3–8: each adds one sub-section to `## Outside-in
     narrative` describing what changed and what tests passed.
   * final slice (or refactor): rewrite the top-of-chapter admonish
     note (it currently says "no slice has shipped yet"); promote
@@ -100,18 +137,17 @@ Slice-by-slice promotion plan (what comes out of this comment when):
     the CSS install ships matches the badges and details that story
     actually renders.
   * **Expected listing overlap with ch. 2 (Freeze a Listing).** This
-    story adds a new module (`src/install.rs`) and modifies
-    `src/lib.rs`, `src/main.rs`, and `tests/integration.rs` — files
-    that are *already* frozen by ch. 2 under `-v1` tags. This story's
-    Final state section will freeze those same files under `-v2` tags
-    (`lib-v2`, `main-v2`, `integration-tests-v2`) plus a new
-    `install-v1` for the install module itself. Until **Show Diffs
-    Between Slices** ships (ch. 3), the chapter will embed the full
-    `-v2` listings rather than diffs against `-v1`. Readers of ch. 1
-    and ch. 2 in sequence will see the freeze-related code twice; the
-    duplication is the cost of shipping before the diff primitive
-    exists, and goes away as a one-line cleanup once diffs are
-    available.
+    story modifies `src/lib.rs` and `src/main.rs` — files that are
+    *already* frozen by ch. 2 under `-v1` tags. Per the per-slice
+    freeze discipline, each slice that touches one of these files
+    freezes a new `-vN` tag (`lib-v2` shipped in slice 2;
+    `main-v2` will land when the install handler wires up). Until
+    **Show Diffs Between Slices** ships (ch. 3), the chapter
+    embeds the full `-vN` listings rather than diffs against the
+    previous version. Readers of ch. 1 and ch. 2 in sequence see
+    the freeze-related code twice; the duplication is the cost of
+    shipping before the diff primitive exists, and goes away as a
+    one-line cleanup once diffs are available.
 
 ## What this slice will not solve (anticipated)
 

@@ -35,3 +35,21 @@ tag = "install-tests-v1"
 source = "../tests/install.rs"
 frozen = "src/listings/install-tests-v1.rs"
 sha256 = "137191701a972de24fe00eb28c9a57c0464b7812ccc9b241ff635229b2a751de"
+
+[[listing]]
+tag = "lib-v2"
+source = "../src/lib.rs"
+frozen = "src/listings/lib-v2.rs"
+sha256 = "84e0aa1d641bcd1e9bd6b7eeb30c9db49c8e6b8d31dd2e3f5c62ef19e8763fe5"
+
+[[listing]]
+tag = "install-v1"
+source = "../src/install.rs"
+frozen = "src/listings/install-v1.rs"
+sha256 = "6e36efddaebb3a950f7597db45592395c6232ab1b3b30534817f13a1c60f45bf"
+
+[[listing]]
+tag = "install-css-v1"
+source = "../assets/mdbook-listings.css"
+frozen = "src/listings/install-css-v1.css"
+sha256 = "a5859d61609675e59f5fa824873c74808ebedd2c128d8dac33f69ba814c02754"
