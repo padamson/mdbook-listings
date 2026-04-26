@@ -2,10 +2,10 @@
 
 ```admonish note title="This chapter is mid-flight"
 The Story, Acceptance criteria, and slice list below describe what
-this chapter will deliver once its slices land. Slices 1–6 have
-shipped (see the Outside-in narrative below) — slice 1's
-integration test is now live in the suite (no longer
-`#[ignore]`'d) and ACs 1+2 pass end-to-end. Slices 7–8 and the
+this chapter will deliver once its slices land. Slices 1–7 have
+shipped (see the Outside-in narrative below) — ACs 1, 2, 3, and 5
+pass end-to-end; AC 4 (config preservation) is implicit in slice
+3's round-trip test. Slice 8 (admonish ordering, AC 6) and the
 Final state section are still pending.
 ```
 
@@ -275,6 +275,54 @@ The integration test from slice 1 is no longer ignored. Slices
 7 and 8 add the remaining ACs (missing-config diagnostic for
 AC 5, mdbook-admonish ordering for AC 6).
 
+### Slice 7 — reject missing book config (AC 5)
+
+Slice 7 makes the missing-`book.toml` case fail with a helpful
+diagnostic instead of a generic "reading book config" wrapper.
+Before slice 7, running install in a directory with no
+`book.toml` produced something like:
+
+```
+error: reading book config at /path/to/book.toml
+Caused by: No such file or directory (os error 2)
+```
+
+After slice 7:
+
+```
+error: book.toml not found at /path/to/book.toml — install requires
+an existing mdbook book directory; run `mdbook init` first.
+```
+
+A new integration test
+`install_rejects_missing_book_config` runs install against a
+fresh `TempDir` (no `book.toml`) and asserts the binary exits
+non-zero with `book.toml not found` in stderr.
+
+**What's new in `install-v6` compared to `install-v5`:** the
+`fs::read_to_string` call inside `install` is now a `match`
+that special-cases `io::ErrorKind::NotFound` with a tailored
+diagnostic; other I/O errors still go through the existing
+`with_context` path. Everything else — every other function,
+constant, struct, and test — is unchanged.
+
+```rust
+{{#include listings/install-v6.rs}}
+```
+
+**What's new in `install-tests-v3` compared to
+`install-tests-v2`:** the `predicates::str::contains` import and
+the new `install_rejects_missing_book_config` test. The existing
+test (`install_registers_preprocessor_and_writes_css`) and the
+`MinimalFixtureBook` helper are unchanged.
+
+```rust
+{{#include listings/install-tests-v3.rs}}
+```
+
+The suite now runs 24 tests (10 install-related, 14 from other
+modules). Slice 8 takes care of AC 6 (mdbook-admonish ordering).
+
 <!--
 The sections below are scaffold for the writer of the slices. They get
 moved out of this HTML comment as the corresponding work lands.
@@ -289,8 +337,9 @@ Slice-by-slice promotion plan (what comes out of this comment when):
   * slice 5 lands: DONE — slice 5 sub-section added.
   * slice 6 lands: DONE — slice 6 sub-section added; slice 1's
     integration test is no longer ignored.
-  * slices 7–8: each adds one sub-section to `## Outside-in
-    narrative` describing what changed and what tests passed.
+  * slice 7 lands: DONE — slice 7 sub-section added.
+  * slice 8: adds one sub-section to `## Outside-in narrative`
+    describing what changed and what tests passed.
   * final slice (or refactor): rewrite the top-of-chapter admonish
     note (it currently says "no slice has shipped yet"); promote
     `## Notes for implementers` and `## What this slice will not
