@@ -2,8 +2,10 @@
 
 ```admonish note title="This chapter is mid-flight"
 The Story, Acceptance criteria, and slice list below describe what
-this chapter will deliver once its slices land. Slices 1–5 have
-shipped (see the Outside-in narrative below); slices 6–8 and the
+this chapter will deliver once its slices land. Slices 1–6 have
+shipped (see the Outside-in narrative below) — slice 1's
+integration test is now live in the suite (no longer
+`#[ignore]`'d) and ACs 1+2 pass end-to-end. Slices 7–8 and the
 Final state section are still pending.
 ```
 
@@ -213,6 +215,66 @@ plus a `write_css_asset` call, behind the `install` CLI
 handler — at which point the integration test passes for
 ACs 1+2.
 
+### Slice 6 — wire the install handler
+
+Slice 6 sequences the building blocks from slices 2–5 behind the
+CLI: an `install(book_root)` orchestrator function in
+`src/install.rs` reads `book.toml`, parses it, calls
+`register_listings_preprocessor` and `register_listings_css`,
+writes the file back if anything changed, and writes the CSS
+asset if the on-disk copy differs from the bundled bytes. It
+returns an `InstallOutcome` enum (`Installed` or `Unchanged`)
+so the CLI can confirm to the author whether the run was a
+no-op (the user-visible half of AC 3).
+
+`src/main.rs`'s `Command::Install` arm calls into the
+orchestrator and prints either "installed mdbook-listings into
+…" or "mdbook-listings already installed in …; nothing
+changed" based on the outcome.
+
+`tests/install.rs` drops the `#[ignore]` attribute on
+`install_registers_preprocessor_and_writes_css`. The test now
+runs as part of the regular suite and passes — confirming
+ACs 1+2 end-to-end.
+
+**What's new in `install-v5` compared to `install-v4`:** the
+`install` orchestrator function and the `InstallOutcome` enum.
+The bodies of constants, `write_css_asset`, the `BookConfig`
+methods, and all the existing tests are unchanged. Doc comments
+throughout were trimmed to a why-only style — restating function
+names or describing the body in prose is dropped — but the code
+itself is the same as `install-v4`.
+
+```rust
+{{#include listings/install-v5.rs}}
+```
+
+**What's new in `main-v2` compared to `main-v1`:** the
+`Command::Install` arm now calls
+`mdbook_listings::install::install`, branches on
+`InstallOutcome`, and prints one of two messages. The
+`use mdbook_listings::install::{InstallOutcome, install};`
+import is added. Everything else — the other subcommands
+(`Supports`, `Freeze`, `Verify`, the no-subcommand preprocessor
+stub) and the `main`/`run`/`supports` functions — is unchanged
+from `main-v1`.
+
+```rust
+{{#include listings/main-v2.rs}}
+```
+
+**What's new in `install-tests-v2` compared to `install-tests-v1`:**
+the `#[ignore = "..."]` attribute is removed; the
+`#[test]` attribute and the body are unchanged.
+
+```rust
+{{#include listings/install-tests-v2.rs}}
+```
+
+The integration test from slice 1 is no longer ignored. Slices
+7 and 8 add the remaining ACs (missing-config diagnostic for
+AC 5, mdbook-admonish ordering for AC 6).
+
 <!--
 The sections below are scaffold for the writer of the slices. They get
 moved out of this HTML comment as the corresponding work lands.
@@ -225,7 +287,9 @@ Slice-by-slice promotion plan (what comes out of this comment when):
   * slice 3 lands: DONE — slice 3 sub-section added.
   * slice 4 lands: DONE — slice 4 sub-section added.
   * slice 5 lands: DONE — slice 5 sub-section added.
-  * slices 6–8: each adds one sub-section to `## Outside-in
+  * slice 6 lands: DONE — slice 6 sub-section added; slice 1's
+    integration test is no longer ignored.
+  * slices 7–8: each adds one sub-section to `## Outside-in
     narrative` describing what changed and what tests passed.
   * final slice (or refactor): rewrite the top-of-chapter admonish
     note (it currently says "no slice has shipped yet"); promote

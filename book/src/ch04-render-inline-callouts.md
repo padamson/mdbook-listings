@@ -103,6 +103,18 @@ Anticipated commits:
 
   * Badge style (①②③ vs [a][b][c] vs footnote-style superscript)
     is cosmetic; decide in slice 3 and stick with it.
+  * Introduce a `SupportedRenderer` enum here. Today
+    `src/main.rs::supports()` matches a string literal
+    `"html" | "typst-pdf"` and the supported list lives only
+    in that `matches!` arm. The preprocessor for this story
+    needs to switch on renderer (HTML emits `<details>`;
+    typst-pdf emits an admonish-note block) — that's when the
+    enum starts paying for itself. `supports()` should be
+    refactored to delegate to the same enum so the supported
+    list has one home. The CLI surface stays a `String` (the
+    mdbook protocol expects `mdbook-listings supports
+    <whatever>` to accept any input and respond via exit
+    code, not via clap parse error).
   * Numbering scope: ordinal within a single listing is the
     simple choice and matches LaTeX equation numbering. Global
     numbering would make cross-listing references visually

@@ -77,3 +77,21 @@ tag = "install-v4"
 source = "../src/install.rs"
 frozen = "src/listings/install-v4.rs"
 sha256 = "dc5923b62b1e54beb3130ea20ee9ae4e63a59bcea5686c120e71bec2ca8624da"
+
+[[listing]]
+tag = "install-v5"
+source = "../src/install.rs"
+frozen = "src/listings/install-v5.rs"
+sha256 = "71472d1d8e187efa4aa52c754448e2547acf099fd7420bf59269ad96dce4d2b0"
+
+[[listing]]
+tag = "main-v2"
+source = "../src/main.rs"
+frozen = "src/listings/main-v2.rs"
+sha256 = "642cad65932ceed206f03d2cdb35920e144bde608347c454bc64608249f9f85c"
+
+[[listing]]
+tag = "install-tests-v2"
+source = "../tests/install.rs"
+frozen = "src/listings/install-tests-v2.rs"
+sha256 = "64eeb7e4c1e3a453cc1c29d6094aa683228d2f0f2975853f267529e9b2f6ff15"
