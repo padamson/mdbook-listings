@@ -2,8 +2,8 @@
 
 ```admonish note title="This chapter is mid-flight"
 The Story, Acceptance criteria, and slice list below describe what
-this chapter will deliver once its slices land. Slices 1–3 have
-shipped (see the Outside-in narrative below); slices 4–8 and the
+this chapter will deliver once its slices land. Slices 1–4 have
+shipped (see the Outside-in narrative below); slices 5–8 and the
 Final state section are still pending.
 ```
 
@@ -143,6 +143,35 @@ The integration test from slice 1 is still `#[ignore]`'d.
 `[preprocessor.listings]` registration that satisfies the test's
 first assertion.
 
+### Slice 4 — register the `[preprocessor.listings]` entry
+
+Slice 4 adds the `BookConfig` method that satisfies the chunk of
+AC 1 visible from `book.toml`: a `[preprocessor.listings]` entry
+with `command = "mdbook-listings"`. Two unit tests pin (a) that
+the entry is added with the right command value and (b) that the
+operation is idempotent — a second call on an already-registered
+config produces identical rendered output (this is the unit-test
+form of AC 3).
+
+**What's new in `install-v3` compared to `install-v2`:** the
+`register_listings_preprocessor` method on `BookConfig`, the
+`Item, Table` imports it needs from `toml_edit`, and two new tests
+(`book_config_register_listings_preprocessor_adds_entry` and
+`book_config_register_listings_preprocessor_is_idempotent`).
+Everything else — the CSS constants, the `BookConfig` parse and
+render methods, and their tests — is unchanged from `install-v2`.
+
+```rust
+{{#include listings/install-v3.rs}}
+```
+
+The integration test from slice 1 is still `#[ignore]`'d. The
+register method handles the `[preprocessor.listings]` half of
+the post-install disk state; slice 5 adds the matching
+`additional-css` registration for the CSS asset, and slice 6
+wires both into the install handler so the integration test
+goes green.
+
 <!--
 The sections below are scaffold for the writer of the slices. They get
 moved out of this HTML comment as the corresponding work lands.
@@ -153,7 +182,8 @@ Slice-by-slice promotion plan (what comes out of this comment when):
     HTML comment block.
   * slice 2 lands: DONE — slice 2 sub-section added.
   * slice 3 lands: DONE — slice 3 sub-section added.
-  * slices 4–8: each adds one sub-section to `## Outside-in
+  * slice 4 lands: DONE — slice 4 sub-section added.
+  * slices 5–8: each adds one sub-section to `## Outside-in
     narrative` describing what changed and what tests passed.
   * final slice (or refactor): rewrite the top-of-chapter admonish
     note (it currently says "no slice has shipped yet"); promote
