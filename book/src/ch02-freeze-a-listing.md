@@ -202,16 +202,17 @@ more `pub mod` line.
   the Preprocessor*). Freeze itself doesn't need any of that — it's
   a standalone subcommand that operates on a book directory; the
   preprocessor only matters once you want diffs or callouts.
-* **The `-v1` listings here will be superseded.** Ch. 1 (*Install
-  the Preprocessor*) ships *after* this chapter in implementation
-  order despite appearing first in reading order, and its slice
-  modifies `src/lib.rs`, `src/main.rs`, and `tests/integration.rs`.
-  When install ships, those files are re-frozen under `-v2` tags;
-  this chapter keeps pointing at `-v1`, ch. 1 points at `-v2`, and
-  for the period before diffs ship readers see overlapping full-
-  file listings across the two chapters.
-  <!-- TODO(ch01-ship): once install lands, rewrite in past tense
-       and name the actual `-v2` tags that were frozen
-       (lib-v2, main-v2, integration-tests-v2 plus the new
-       install-v1) so the bullet reflects history rather than
-       prediction. -->
+* **The `-v1` listings here are superseded by ch. 1's freezes.**
+  Ch. 1 (*Install the Preprocessor*) shipped *after* this chapter
+  in implementation order and modified `src/lib.rs`, `src/main.rs`,
+  and added `src/install.rs`. The current state of those files is
+  captured by ch. 1's outside-in narrative — `lib-v2` in slice 2,
+  `main-v2` in slice 6, and `install-v8` in the Refactor sub-section.
+  The original consolidated
+  `tests/integration.rs` was split into per-story files in ch. 1's
+  first slice; what was here as `integration-tests-v1` is now
+  `freeze-tests-v1`. This chapter keeps pointing at the
+  freeze-story end-of-story snapshots so it shows the code as it
+  actually was when freeze shipped, not the post-install state.
+  Until the diff primitive ships, readers reading both chapters
+  in sequence see overlapping full-file listings.

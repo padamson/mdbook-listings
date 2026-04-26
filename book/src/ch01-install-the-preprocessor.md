@@ -1,12 +1,15 @@
 # Install the Preprocessor
 
-```admonish note title="This chapter is mid-flight"
-All eight slices plus the refactor have shipped (see the
-Outside-in narrative below) — every AC is exercised by at
-least one test in the suite. The chapter still needs a Final
-state section embedding the latest frozen tags + the wrap-up
-steps (promote scaffold sections out of the HTML comment, close
-the `TODO(ch01-ship)` markers in ch. 0 and ch. 2).
+```admonish note title="This chapter has shipped"
+The story shipped across eight slices plus a small refactor and
+a wrap-up chore. Every Acceptance criterion is exercised by at
+least one test in the suite. Read the chapter top-to-bottom for the methodology view; the
+**Outside-in narrative** sub-sections embed each frozen tag at
+the slice that introduced it, so the latest version of each file
+is in the slice that touched it last (Refactor for
+`src/install.rs`, slice 8 for `tests/install.rs`, slice 6 for
+`src/main.rs`, slice 3 for `Cargo.toml`, slice 2 for
+`src/lib.rs` and `assets/mdbook-listings.css`).
 ```
 
 ## Story
@@ -39,7 +42,7 @@ the `TODO(ch01-ship)` markers in ch. 0 and ch. 2).
 
 ## The slice — outside-in narrative outline
 
-Anticipated commits:
+The story shipped as eight slices plus a refactor:
 
 | Slice | What it adds |
 |---|---|
@@ -372,7 +375,7 @@ covering it. The story is feature-complete; the optional
 refactor slice that follows tidies a small repetition that
 accumulated across slices 4–8, and the wrap-up chore after
 that promotes the remaining HTML-comment scaffold to chapter
-body and adds the **Final state** section.
+body.
 
 ### Refactor
 
@@ -404,72 +407,35 @@ tests, 27 overall) passes byte-for-byte the same as before.
 
 The chapter is feature- and quality-complete. The wrap-up
 chore lifts the remaining scaffold sections out of the HTML
-comment and writes the **Final state** section.
-
-<!--
-The sections below are scaffold for the writer of the slices. They get
-moved out of this HTML comment as the corresponding work lands.
-
-Slice-by-slice promotion plan (what comes out of this comment when):
-
-  * slice 1 lands: DONE — narrative section now lives above this
-    HTML comment block.
-  * slice 2 lands: DONE — slice 2 sub-section added.
-  * slice 3 lands: DONE — slice 3 sub-section added.
-  * slice 4 lands: DONE — slice 4 sub-section added.
-  * slice 5 lands: DONE — slice 5 sub-section added.
-  * slice 6 lands: DONE — slice 6 sub-section added; slice 1's
-    integration test is no longer ignored.
-  * slice 7 lands: DONE — slice 7 sub-section added.
-  * slice 8 lands: DONE — slice 8 sub-section added.
-  * refactor lands: DONE — Refactor sub-section added.
-  * wrap-up chore (separate commit): rewrite the top-of-chapter
-    admonish note to past tense; promote `## Notes for
-    implementers` and `## What this slice will not solve` out
-    of this comment into chapter body; populate `## Final
-    state` with `\{{#include}}`s of the latest `-vN` listings
-    (lib-v2, main-v2, install-v7, install-tests-v4, and the
-    cargo-toml-v1 + install-css-v1 + freeze-v1 + manifest-v1
-    that haven't been re-frozen since their last touch); close
-    the `TODO(ch01-ship)` markers in ch. 0 and ch. 2.
-  * final slice (or refactor): rewrite the top-of-chapter admonish
-    note (it currently says "no slice has shipped yet"); promote
-    `## Notes for implementers` and `## What this slice will not
-    solve` out of this comment into chapter body; populate
-    `## Final state` with `\{{#include}}`s of the `-v2` frozen
-    listings (and the new `install-v1`); close the corresponding
-    `TODO(ch01-ship)` markers in ch. 0 and ch. 2.
+comment.
 
 ## Notes for implementers
 
-  * `toml_edit` is the standard crate for read-modify-write of a TOML
-    file while preserving comments and ordering. mdbook-admonish's own
-    install is a good reference implementation; we already studied it
-    while writing the Freeze chapter.
-  * The CSS file content depends on the rendering chosen for inline
-    callouts — coordinate with the **Render Inline Callouts** story so
-    the CSS install ships matches the badges and details that story
-    actually renders.
-  * **Expected listing overlap with ch. 2 (Freeze a Listing).** This
-    story modifies `src/lib.rs` and `src/main.rs` — files that are
-    *already* frozen by ch. 2 under `-v1` tags. Per the per-slice
-    freeze discipline, each slice that touches one of these files
-    freezes a new `-vN` tag (`lib-v2` shipped in slice 2;
-    `main-v2` will land when the install handler wires up). Until
-    **Show Diffs Between Slices** ships (ch. 3), the chapter
-    embeds the full `-vN` listings rather than diffs against the
-    previous version. Readers of ch. 1 and ch. 2 in sequence see
-    the freeze-related code twice; the duplication is the cost of
-    shipping before the diff primitive exists, and goes away as a
-    one-line cleanup once diffs are available.
+* `toml_edit` is the standard crate for read-modify-write of a TOML
+  file while preserving comments and ordering. mdbook-admonish's own
+  install is a good reference implementation; we studied it while
+  writing the Freeze chapter.
+* The CSS file content is a placeholder until the **Render Inline
+  Callouts** story (ch. 4) settles the badge styling. The
+  `CSS_ASSET_SENTINEL` constant exists so a build that strips or
+  replaces the asset fails loudly rather than silently shipping
+  wrong content.
+* **Listing overlap with ch. 2 (Freeze a Listing).** This story
+  modifies `src/lib.rs` and `src/main.rs` — files frozen by ch. 2
+  under `-v1` tags — and adds `src/install.rs`. Per the per-slice
+  freeze discipline, each slice that touches one of these files
+  freezes a new `-vN` tag (the latest are catalogued in **Final
+  state** below). Until the **Show Diffs Between Slices** primitive
+  ships, readers of ch. 1 and ch. 2 in sequence see overlapping
+  full-file listings; the duplication goes away as a one-line
+  cleanup once diffs are available.
 
-## What this slice will not solve (anticipated)
+## What this slice does not solve
 
-  * No uninstall command. Authors who want to remove mdbook-listings
-    edit `book.toml` by hand.
-  * No upgrade flow. When the bundled CSS asset version bumps, authors
-    re-run install, which overwrites the asset.
-  * No detection of pre-existing conflicting configurations. If the
-    book already has a different preprocessor named `listings`, install
-    refuses (a stronger AC for slice 5).
--->
+* No uninstall command. Authors who want to remove mdbook-listings
+  edit `book.toml` by hand.
+* No upgrade flow. When the bundled CSS asset version bumps,
+  authors re-run install, which overwrites the asset.
+* No detection of pre-existing conflicting configurations. If the
+  book already has a different preprocessor named `listings`,
+  install silently overwrites its `command` value.

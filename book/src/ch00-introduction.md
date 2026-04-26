@@ -111,10 +111,14 @@ using the tool. A chapter takes the reader through:
    non-obvious choices that a future maintainer would need to
    reconstruct from scratch; omit when nothing about the story
    needed defending.
-5. **Final state.** `{{#include}}`s of the frozen listings of every
-   file in the slice, at their end-of-story state — the latest tag
-   per file. Earlier per-slice tags exist as intermediate
-   snapshots referenced by the narrative sub-sections above.
+5. **Final state** *(optional).* `{{#include}}`s of the frozen
+   listings of every file in the slice at their end-of-story state
+   — the latest tag per file. Include when the narrative
+   sub-sections didn't already show the latest tag for every file
+   (which can happen in retrospective chapters or chapters where
+   only some slices re-froze). Omit when every file in the slice
+   has its latest tag embedded somewhere in the narrative above —
+   adding Final state in that case just duplicates the bytes.
 6. **What this slice does not solve** *(optional).* The deliberate
    edges of the slice — features the author *knew* they wanted but
    deferred — with forward references to the stories or chores
@@ -162,12 +166,11 @@ them are shipped.
 
 Specifically:
 
-- **Ch. 1 (Install the Preprocessor)** can be built fully outside-in
-  — install doesn't depend on either diffs or callouts. It just
-  hasn't been shipped yet.
-  <!-- TODO(ch01-ship): rewrite this bullet in past tense — "was
-       built fully outside-in across N slices" — once all install
-       slices have landed. -->
+- **Ch. 1 (Install the Preprocessor)** was built fully outside-in
+  across 8 slices plus a refactor — install doesn't depend on
+  either diffs or callouts, so the chapter has no chicken-and-egg
+  constraint and serves as the cleanest example of the
+  methodology in the book.
 
 - **Ch. 2 (Freeze a Listing)** is reconstructed retrospectively.
   The freeze work landed in a single commit before the book adopted
@@ -191,6 +194,6 @@ If you want to rebuild the tool from scratch by following the
 chapters, you can; each one leaves the crate in a compiling,
 shipping state. If you just want to learn how to use
 `mdbook-listings`, skim the **Story** and **Acceptance criteria**
-blocks and the **Final state** listings, and ignore the
-narratives. If you're here for the methodology, read the
-narratives and skim the reference content.
+blocks and the **Final state** listings (when the chapter has
+one) and ignore the narratives. If you're here for the
+methodology, read the narratives and skim the reference content.
