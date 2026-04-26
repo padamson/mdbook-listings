@@ -1,12 +1,12 @@
 # Install the Preprocessor
 
 ```admonish note title="This chapter is mid-flight"
-All eight slices have shipped (see the Outside-in narrative below)
-— every AC is exercised by at least one test in the suite. The
-chapter still needs a Final state section embedding the latest
-frozen tags + the wrap-up steps (promote scaffold sections out
-of the HTML comment, close the `TODO(ch01-ship)` markers in
-ch. 0 and ch. 2).
+All eight slices plus the refactor have shipped (see the
+Outside-in narrative below) — every AC is exercised by at
+least one test in the suite. The chapter still needs a Final
+state section embedding the latest frozen tags + the wrap-up
+steps (promote scaffold sections out of the HTML comment, close
+the `TODO(ch01-ship)` markers in ch. 0 and ch. 2).
 ```
 
 ## Story
@@ -368,10 +368,43 @@ unchanged.
 
 The suite now runs 27 tests (14 install-related, 13 from other
 modules). Every Acceptance criterion has at least one test
-covering it. The chapter is feature-complete; the wrap-up
-chore promotes the remaining HTML-comment scaffold to chapter
-body and adds the **Final state** section embedding the latest
-tags.
+covering it. The story is feature-complete; the optional
+refactor slice that follows tidies a small repetition that
+accumulated across slices 4–8, and the wrap-up chore after
+that promotes the remaining HTML-comment scaffold to chapter
+body and adds the **Final state** section.
+
+### Refactor
+
+With every test green, the refactor commit tidies a small
+repetition that accumulated during slices 4–8 and was
+deliberately not addressed during the red-green slices:
+`register_listings_preprocessor` and `register_listings_css`
+both walked into nested `[preprocessor]` and `[output.html]`
+tables via the same six-line
+`entry().or_insert_with(...).as_table_mut().expect(...)` chain.
+Extracted into a `subtable_mut(parent, key)` helper so each
+call site shrinks from six lines to one.
+
+The chapter has this section on purpose — the methodology in
+ch. 0 calls out the refactor commit as part of the outside-in
+cycle, and shipping a tiny one here makes that visible. Larger
+refactors are still possible later (e.g., splitting install.rs
+once it grows substantially); none felt load-bearing right now.
+
+**What's new in `install-v8` compared to `install-v7`:** the
+private `subtable_mut` helper at module scope, and both
+`register_*` methods rewritten to use it. No public API
+change; no behaviour change. The full test suite (14 install
+tests, 27 overall) passes byte-for-byte the same as before.
+
+```rust
+{{#include listings/install-v8.rs}}
+```
+
+The chapter is feature- and quality-complete. The wrap-up
+chore lifts the remaining scaffold sections out of the HTML
+comment and writes the **Final state** section.
 
 <!--
 The sections below are scaffold for the writer of the slices. They get
@@ -389,6 +422,7 @@ Slice-by-slice promotion plan (what comes out of this comment when):
     integration test is no longer ignored.
   * slice 7 lands: DONE — slice 7 sub-section added.
   * slice 8 lands: DONE — slice 8 sub-section added.
+  * refactor lands: DONE — Refactor sub-section added.
   * wrap-up chore (separate commit): rewrite the top-of-chapter
     admonish note to past tense; promote `## Notes for
     implementers` and `## What this slice will not solve` out

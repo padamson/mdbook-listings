@@ -119,3 +119,9 @@ tag = "install-tests-v4"
 source = "../tests/install.rs"
 frozen = "src/listings/install-tests-v4.rs"
 sha256 = "a3eedefc13fdd9e7f502511b9e03e147df5e50f9f6958c1d9ea0b4a64ca73fe4"
+
+[[listing]]
+tag = "install-v8"
+source = "../src/install.rs"
+frozen = "src/listings/install-v8.rs"
+sha256 = "162bece7e597d63b0e72743cfa41386927fbbb3e5066d16361a10626123496cf"
