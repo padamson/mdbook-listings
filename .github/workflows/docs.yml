@@ -48,15 +48,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-docs-cargo-
 
-      - name: Install mdbook + mdbook-admonish + mdbook-typst-pdf
+      - name: Install mdbook + mdbook-typst-pdf
         # `command -v X || cargo install X` skips reinstall when the cargo
         # bin cache restored an existing binary. mdbook-typst-pdf depends on
         # the `typst` library and bundles the renderer; no separate Typst
         # CLI install is needed.
         run: |
           command -v mdbook           || cargo install mdbook           --locked
-          command -v mdbook-admonish  || cargo install mdbook-admonish  --locked
           command -v mdbook-typst-pdf || cargo install mdbook-typst-pdf --locked
+
+      - name: Install mdbook-admonish (padamson fork — mdbook-0.5 compat)
+        # Stock mdbook-admonish on crates.io isn't mdbook-0.5 compatible
+        # yet (tracking upstream PR tommilligan/mdbook-admonish#235).
+        # `--force` overrides any cached stock binary in the cargo bin
+        # cache from a previous workflow rev. Drop this step and revert
+        # to the bundled-install line above when upstream catches up.
+        run: cargo install --git https://github.com/padamson/mdbook-admonish --branch feat/mdbook-0.5-compat --force
 
       - name: Refresh mdbook-admonish assets
         # Regenerates book/mdbook-admonish.css and the assets_version field
