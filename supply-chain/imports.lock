@@ -18,16 +18,6 @@ who = "Max Lee <endlesspring@google.com>"
 criteria = "safe-to-run"
 version = "0.3.0"
 
-[[audits.google.audits.regex]]
-who = "Justin Green <greenjustin@google.com>"
-criteria = "safe-to-run"
-version = "1.11.1"
-
-[[audits.google.audits.regex-automata]]
-who = "Justin Green <greenjustin@google.com>"
-criteria = "safe-to-run"
-version = "0.4.9"
-
 [[audits.google.audits.tempfile]]
 who = "Ying Hsu <yinghsu@chromium.org>"
 criteria = "safe-to-run"
@@ -52,9 +42,19 @@ criteria = "safe-to-deploy"
 delta = "0.4.26 -> 0.4.29"
 
 [[audits.mozilla.audits.regex]]
+who = "edgul <ed.guloien@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "1.10.4 -> 1.11.1"
+
+[[audits.mozilla.audits.regex]]
 who = "Benjamin VanderSloot <bvandersloot@mozilla.com>"
 criteria = "safe-to-deploy"
 delta = "1.11.1 -> 1.12.3"
+
+[[audits.mozilla.audits.regex-automata]]
+who = "edgul <ed.guloien@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.4.7 -> 0.4.9"
 
 [[audits.mozilla.audits.regex-automata]]
 who = "Benjamin VanderSloot <bvandersloot@mozilla.com>"

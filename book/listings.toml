@@ -125,3 +125,21 @@ tag = "install-v8"
 source = "../src/install.rs"
 frozen = "src/listings/install-v8.rs"
 sha256 = "162bece7e597d63b0e72743cfa41386927fbbb3e5066d16361a10626123496cf"
+
+[[listing]]
+tag = "cargo-toml-v2"
+source = "../Cargo.toml"
+frozen = "src/listings/cargo-toml-v2.toml"
+sha256 = "213a3cf18dcbc04daf76f832e8c3f588cec3326c6bc5ca3c8df3d61117a33a31"
+
+[[listing]]
+tag = "main-v3"
+source = "../src/main.rs"
+frozen = "src/listings/main-v3.rs"
+sha256 = "a225f633b2a8b832c76236fac86ca8c82a8bd445bf9c6f57b647c6d9263894af"
+
+[[listing]]
+tag = "diffs-tests-v1"
+source = "../tests/diffs.rs"
+frozen = "src/listings/diffs-tests-v1.rs"
+sha256 = "6c4eb1d20aeae591ab5e98dce5987081fa11e90f72d18bc3b41ec3e0f217216c"
