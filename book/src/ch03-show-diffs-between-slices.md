@@ -134,6 +134,58 @@ same reason: slice 6's `live:<path>` test will need it to write
 ad-hoc files into the tempdir. Carrying the accessor here keeps the
 helper's surface stable across slices.
 
+### Slice 2 — directive parser as a pure unit
+
+Slice 2 stands up the first piece slice 5's splicer will need: the
+parser that turns a chapter's markdown into a list of
+`{{#diff <left> <right>}}` directives with byte spans. It's a pure
+function — no IO, no manifest, no diff library — so its unit tests
+pin its behaviour completely without touching disk.
+
+A new `src/diff.rs` module declares `DiffDirective { left, right,
+span }` and the free function `parse_directives(content) ->
+Vec<DiffDirective>`:
+
+```rust
+{{#include listings/diff-v1.rs}}
+```
+
+The parser walks `content` byte-wise, looking for `{{#diff`. When it
+finds one, it checks the byte before for a backslash (the escape AC
+6 calls out — kept here as a *skip*, not a strip; the splicer in
+slice 5 owns the rewrite that drops the leading `\` so the literal
+directive renders to the reader). It then locates the next `}}`,
+splits the inner text on whitespace, and only yields a directive
+when there are exactly two operands. Wrong-arity directives
+(`{{#diff a}}`, `{{#diff a b c}}`) are silently skipped — surfacing
+"that's the wrong number of arguments" diagnostics is the resolver's
+job in slice 3, where the chapter source path and line number are
+already in scope.
+
+Six unit tests pin the contract: well-formed directives parse and
+their spans cover the whole `{{#diff …}}` substring; multiple
+directives in one chapter all parse with correct spans; the escaped
+form is skipped; whitespace around operands is tolerated;
+wrong-arity directives are skipped; and arbitrary operand strings
+(including the future `live:src/foo.rs` shape) are accepted at the
+parse layer (the resolver decides what they mean).
+
+`src/lib.rs` gains one line — `pub mod diff;` — so `src/main.rs`
+and the integration tests can reach the new module.
+
+**What's new in `lib-v3` compared to `lib-v2`:** the
+`pub mod diff;` line, in alphabetical position. Everything else is
+unchanged.
+
+```rust
+{{#include listings/lib-v3.rs}}
+```
+
+The integration test from slice 1 is still `#[ignore]`'d. The
+parser is plumbing — slices 3 and 4 add the resolver and renderer
+that the splicer in slice 5 wires together to make the assertion
+pass.
+
 <!--
   Scaffolding — to be materialized as a final "What this story does
   not solve" section in the wrap-up chore (placed at the end of the

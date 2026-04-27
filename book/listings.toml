@@ -143,3 +143,15 @@ tag = "diffs-tests-v1"
 source = "../tests/diffs.rs"
 frozen = "src/listings/diffs-tests-v1.rs"
 sha256 = "6c4eb1d20aeae591ab5e98dce5987081fa11e90f72d18bc3b41ec3e0f217216c"
+
+[[listing]]
+tag = "lib-v3"
+source = "../src/lib.rs"
+frozen = "src/listings/lib-v3.rs"
+sha256 = "b310bc294fa580925847cc771ff06ab1f51dc33d026a41fc91ca96b2ca863b1a"
+
+[[listing]]
+tag = "diff-v1"
+source = "../src/diff.rs"
+frozen = "src/listings/diff-v1.rs"
+sha256 = "3c0817c8b263ac4367a8185e9548c9195bf4c31c9757fb2485aa4cab10fc60cc"
