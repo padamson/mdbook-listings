@@ -186,6 +186,57 @@ parser is plumbing — slices 3 and 4 add the resolver and renderer
 that the splicer in slice 5 wires together to make the assertion
 pass.
 
+### Slice 3 — tag resolution + missing-tag diagnostic
+
+Slice 3 turns each parsed `DiffDirective` into the *bytes* a diff
+renderer can consume: it looks the operand up in the manifest
+(re-using `Manifest::find` from ch. 2), reads the frozen file from
+disk, and returns a `ResolvedDiff` carrying both halves' bytes plus
+labels for the unified-diff headers. When an operand is unknown or
+its frozen file is missing, the resolver returns a typed
+`ResolveError` carrying the offending tag name — the splicer in
+slice 5 wraps that with the chapter source path and 1-based line
+number derived from the directive's byte span, which together
+satisfy AC 3.
+
+**What's new in `diff-v2` compared to `diff-v1`:** the `ResolvedDiff`
+struct, the `ResolveError` / `ResolveErrorKind` types with manual
+`Display` and `Error` impls, the `resolve` and `resolve_operand`
+functions, the `crate::manifest::Manifest` import they need, and
+four new tests covering the happy path plus the three failure
+shapes (unknown left tag, unknown right tag, frozen file absent
+from disk). The tests share a `fixture` helper that materialises a
+tempdir with two stub frozen files plus an in-memory `Manifest`
+pointing at them; building the manifest in memory rather than via
+`Manifest::load` keeps the unit tests independent of the manifest
+file format. The parser, its tests, and the module's existing
+imports are unchanged.
+
+```rust
+{{#include listings/diff-v2.rs}}
+```
+
+The resolver stops at the first failing operand: if the left tag
+is unknown, the right tag is not consulted. That keeps slice 5's
+diagnostic naming a single missing tag rather than two, matching
+how an author would actually fix the chapter (find the typo, fix
+the typo, rebuild — the second tag's resolution happens on the
+rebuild). It also means tests for the right-operand failure path
+have to use a known left operand, which is what the
+`resolve_returns_unknown_tag_error_for_missing_right_operand` test
+does.
+
+`live:<path>` operands (AC 7) currently fall through to the
+`UnknownTag` arm — `manifest.find("live:src/foo.rs")` returns
+`None`. Slice 6 inserts a prefix check before the manifest lookup
+and reads the file directly, leaving this slice's resolver
+unchanged for the all-frozen happy path.
+
+The integration test from slice 1 is still `#[ignore]`'d. Slice 4
+adds the renderer that turns a `ResolvedDiff` into unified-diff
+text; slice 5 wires parser → resolver → renderer into the
+preprocessor and removes the `#[ignore]`.
+
 <!--
   Scaffolding — to be materialized as a final "What this story does
   not solve" section in the wrap-up chore (placed at the end of the

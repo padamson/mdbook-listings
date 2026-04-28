@@ -155,3 +155,9 @@ tag = "diff-v1"
 source = "../src/diff.rs"
 frozen = "src/listings/diff-v1.rs"
 sha256 = "3c0817c8b263ac4367a8185e9548c9195bf4c31c9757fb2485aa4cab10fc60cc"
+
+[[listing]]
+tag = "diff-v2"
+source = "../src/diff.rs"
+frozen = "src/listings/diff-v2.rs"
+sha256 = "5cdca084d74b4f2a44546c70ea8d7301c4238ee5cae27d7befa9cec22587cab1"
