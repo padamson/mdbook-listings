@@ -370,6 +370,50 @@ supported use case. The refactor slice removes them and
 re-freezes the affected files; until then they document the
 fact-of-life by their visible presence.
 
+### Slice 6 — `live:<path>` operand (AC 7)
+
+Slice 6 closes out AC 7. `resolve_operand` now recognises the
+`live:` prefix and reads the named file from disk relative to
+`book_root` instead of going through the manifest. The operand's
+full text (including the `live:` prefix) becomes the unified-diff
+header label, so a reader can tell at a glance which side is
+frozen and which side is live.
+
+A new `ResolveErrorKind::LiveFileMissing` variant carries the
+absolute path that failed to read so the splicer's chapter-located
+diagnostic stays specific. Two unit tests cover the happy path
+and the missing-file error; one new integration test in
+`tests/diffs.rs` drives a `{{#diff …}}` whose right operand is
+`live:compose-live.yaml` end-to-end through the binary and
+asserts on the `+++ live:…` header and the `+`/`−` lines
+reflecting the live bytes. The `MinimalDiffsBook` fixture grows
+a `write_live_file` helper for the same.
+
+{{#diff diff-v4 diff-v5}}
+
+{{#diff diffs-tests-v2 diffs-tests-v3}}
+
+To dogfood it, here is the chapter rendering a `live:` diff
+between the `diff-v5` tag (frozen above) and the live
+`src/diff.rs` on disk at build time. The path is relative to the
+book root (`book/`), so it goes up one level (`../src/diff.rs`)
+to reach the crate's source:
+
+{{#diff diff-v5 live:../src/diff.rs}}
+
+Right now (slice 6) the result is the "no changes" notice — the
+frozen tag *is* the current source. The same `{{#diff …}}`
+directive in this chapter will start surfacing real drift the
+moment slice 7's refactor edits `src/diff.rs` without re-freezing
+into a new tag. That's the use case for `live:` in a nutshell:
+notice intended-and-unintended drift, no chapter edit required.
+
+The freeze stability guarantee that AC 7 calls out as
+*defeated* by `live:` is, in this story, just words on a page —
+the *Verify Sync with Source* story (ch. 5) is what surfaces a
+warning at build time when a chapter uses `live:` operands. v0.1.0
+ships the directive; ch. 5 ships the warning.
+
 <!--
   Scaffolding — to be materialized as a final "What this story does
   not solve" section in the wrap-up chore (placed at the end of the
