@@ -198,18 +198,6 @@ criteria = "safe-to-deploy"
 version = "0.2.17"
 criteria = "safe-to-deploy"
 
-[[exemptions.predicates]]
-version = "3.1.4"
-criteria = "safe-to-run"
-
-[[exemptions.predicates-core]]
-version = "1.0.10"
-criteria = "safe-to-run"
-
-[[exemptions.predicates-tree]]
-version = "1.0.13"
-criteria = "safe-to-run"
-
 [[exemptions.prettyplease]]
 version = "0.2.37"
 criteria = "safe-to-run"
@@ -270,6 +258,10 @@ criteria = "safe-to-deploy"
 version = "0.11.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.similar]]
+version = "2.2.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.strsim]]
 version = "0.10.0"
 criteria = "safe-to-deploy"
@@ -277,10 +269,6 @@ criteria = "safe-to-deploy"
 [[exemptions.syn]]
 version = "2.0.117"
 criteria = "safe-to-deploy"
-
-[[exemptions.termtree]]
-version = "0.5.1"
-criteria = "safe-to-run"
 
 [[exemptions.toml]]
 version = "0.9.12+spec-1.1.0"
@@ -292,10 +280,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.toml_datetime]]
 version = "0.6.11"
-criteria = "safe-to-deploy"
-
-[[exemptions.toml_datetime]]
-version = "0.7.5+spec-1.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.toml_datetime]]
@@ -341,10 +325,6 @@ criteria = "safe-to-deploy"
 [[exemptions.utf8parse]]
 version = "0.2.2"
 criteria = "safe-to-deploy"
-
-[[exemptions.wait-timeout]]
-version = "0.2.1"
-criteria = "safe-to-run"
 
 [[exemptions.wasip2]]
 version = "1.0.3+wasi-0.2.9"

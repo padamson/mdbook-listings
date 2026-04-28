@@ -161,3 +161,15 @@ tag = "diff-v2"
 source = "../src/diff.rs"
 frozen = "src/listings/diff-v2.rs"
 sha256 = "5cdca084d74b4f2a44546c70ea8d7301c4238ee5cae27d7befa9cec22587cab1"
+
+[[listing]]
+tag = "cargo-toml-v3"
+source = "../Cargo.toml"
+frozen = "src/listings/cargo-toml-v3.toml"
+sha256 = "0c3853098a156d9b94c4e4e60ec50722aebcb0ff2225eb7310383a85ac548da2"
+
+[[listing]]
+tag = "diff-v3"
+source = "../src/diff.rs"
+frozen = "src/listings/diff-v3.rs"
+sha256 = "d730041dc5c56ae05e41fe6daa73152f38aeca0367aa08da3c6317944a6a4dc1"

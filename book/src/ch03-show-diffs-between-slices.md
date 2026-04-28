@@ -237,6 +237,51 @@ adds the renderer that turns a `ResolvedDiff` into unified-diff
 text; slice 5 wires parser → resolver → renderer into the
 preprocessor and removes the `#[ignore]`.
 
+### Slice 4 — unified diff computation via `similar`
+
+Slice 4 adds the third and final pure unit slice 5's splicer needs:
+`render(left, right, left_label, right_label) -> String`, which
+turns two `&str` halves into unified-diff text. The actual diff
+algorithm is delegated to the [`similar`] crate
+(`TextDiff::from_lines(...).unified_diff().header(a, b)`); the
+function's only original behaviour is the AC-4 short-circuit —
+identical inputs return a one-line `(no changes between left and
+right)` notice rather than the empty string `similar` would
+otherwise emit, which would render as a fence body that looks
+broken to a reader.
+
+`Cargo.toml` gains `similar = "2"`. **What's new in `cargo-toml-v3`
+compared to `cargo-toml-v2`:** the single `similar = "2"` line in
+alphabetical position inside `[dependencies]`. Everything else is
+unchanged.
+
+```toml
+{{#include listings/cargo-toml-v3.toml}}
+```
+
+`src/diff.rs` grows the `render` function plus four unit tests
+covering the four shapes that matter: differing inputs produce a
+header-and-hunks unified diff; identical inputs short-circuit to
+the no-changes notice; two empty inputs do the same; pure
+additions render with `+` prefixes and no spurious `-` lines.
+This slice also tightens the doc comments on the parser, resolver,
+and error types added in slices 2–3 to drop forward references to
+later slices and acceptance-criteria numbers — the chapter
+narrative is the right place to talk about story structure, the
+source code is the right place to talk about behaviour. The
+behaviour itself is unchanged.
+
+```rust
+{{#include listings/diff-v3.rs}}
+```
+
+[`similar`]: https://docs.rs/similar
+
+The integration test from slice 1 is still `#[ignore]`'d. All
+three pure-unit pieces (parse, resolve, render) now exist in
+`diff.rs`; slice 5 wires them into `preprocess` and removes the
+`#[ignore]`.
+
 <!--
   Scaffolding — to be materialized as a final "What this story does
   not solve" section in the wrap-up chore (placed at the end of the
