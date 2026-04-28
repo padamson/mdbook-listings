@@ -35,10 +35,17 @@ at the slice that introduced it.
 5. Adding a `{{#diff}}` directive to a chapter does not change any
    other content in the chapter (the preprocessor is a precise
    in-place splice).
-6. Literal `{{#diff ...}}` text in prose can be escaped with a
-   leading backslash (`\{{#diff ...}}`), matching mdbook's existing
-   `{{#include}}` convention, so the chapter that *documents* the
-   directive can show its own syntax verbatim.
+6. The chapter that *documents* the directive can show its own
+   syntax verbatim by putting the literal `{{#diff …}}` inside a
+   fenced code block (` ``` ` or `~~~`) — the preprocessor skips
+   any directive whose start byte falls inside an open fence. In
+   inline prose, the typical placeholder `{{#diff …}}` (single
+   arg) is silently ignored as malformed-arity, so it round-trips
+   unchanged. Backslash-escape (`\{{#diff …}}`) is *not* a
+   reliable escape mechanism: mdbook's built-in `links`
+   preprocessor strips the leading `\` from any `\{{#…}}` pattern
+   before any custom preprocessor runs, so the `\` never reaches
+   our splicer in the real pipeline.
 7. An author can opt in to a diff against a live source file via
    `live:<path>` in either operand. Doing so defeats the freeze
    stability guarantee for that diff and is flagged later by the
@@ -51,14 +58,14 @@ wrap-up chore:
 
 | Slice | What it adds |
 |---|---|
-| 1/6 | Failing integration test asserting AC 1 against a tempdir fixture book whose `book.toml` declares the listings preprocessor and whose `book/listings.toml` records two frozen tags. The test pipes a hand-built `(PreprocessorContext, Book)` envelope to the binary's no-subcommand arm and asserts on a ` ```diff ` fence in the round-tripped chapter content. The arm becomes a no-op pass-through that round-trips the book unchanged, so the assertion fails — the test is `#[ignore]`'d to keep the green-build pre-commit chain passing while later slices grow the directive parser, tag resolver, diff renderer, and splicer. ACs 4 and 5 get their own assertions in the slice that gives them something to assert against (slice 5). |
-| 2/6 | Directive parser as a pure unit. New `src/diff.rs` exposes `parse_directives` returning byte-span-tagged `DiffDirective`s; respects `\{{#diff ...}}` escapes (AC 6). Unit-tested in isolation; not yet wired into the preprocessor. |
-| 3/6 | Tag resolution. `diff::resolve` looks each operand up in `Manifest` (re-using `Manifest::find` from ch. 2) and produces a structured error for missing tags carrying the chapter source path and 1-based line number derived from the directive's byte span (AC 3). Unit-tested. |
+| 1/6 | Failing integration test asserting AC 1 against a tempdir fixture book. The test pipes a hand-built `(PreprocessorContext, Book)` envelope to the binary's no-subcommand arm and asserts on a ` ```diff ` fence in the round-tripped chapter content. The arm becomes a no-op pass-through that round-trips the book unchanged, so the assertion fails — the test is `#[ignore]`'d to keep the green-build pre-commit chain passing while later slices grow the directive parser, tag resolver, diff renderer, and splicer. ACs 4 and 5 get their own assertions in slice 5. |
+| 2/6 | Directive parser as a pure unit. New `src/diff.rs` exposes `parse_directives` returning byte-span-tagged `DiffDirective`s. Unit-tested in isolation; not yet wired into the preprocessor. |
+| 3/6 | Tag resolution. `diff::resolve` looks each operand up in `Manifest` (re-using `Manifest::find` from ch. 2) and produces a structured error for missing tags carrying enough context for the splicer to format an AC-3 diagnostic. Unit-tested. |
 | 4/6 | Unified diff computation via the `similar` crate. `diff::render` takes the resolved bytes plus labels and produces unified-diff text; identical bytes produce a "no changes" notice rather than an empty block (AC 4). Unit-tested with synthetic byte pairs. |
-| 5/6 | Splicer wires slices 2–4 into the no-op preprocessor. Each directive span is replaced with a fenced ` ```diff ` block carrying the rendered output. The HTML renderer's bundled highlight.js colors `+`/`−`/`@@` lines automatically because of the `diff` info-string. Slice 1's integration test goes green; AC 5 gets its own integration test pinning surrounding-content invariance. |
+| 5/6 | Splicer wires slices 2–4 into the no-op preprocessor: every `{{#diff …}}` directive is replaced with a fenced ` ```diff ` block, the parser learns to skip directives inside fenced code blocks (AC 6 — so chapters can quote literal directive examples), and `cargo run -- install --book-root book` registers `[preprocessor.listings]` in our own `book/book.toml` so the book exercises the diff primitive on every build. Slice 1's integration test goes green; AC 5 gets its own integration test pinning surrounding-content invariance. |
 | 6/6 | `live:<path>` operand (AC 7). Recognised in either operand position; the resolver reads the live file from disk relative to `book_root`. |
-| refactor | Optional. |
-| wrap-up | Register `[preprocessor.listings]` in our own `book/book.toml` via `cargo run -- install --book-root book` (the install handler from ch. 1 is idempotent). The book itself now exercises the diff primitive end-to-end on every CI build. |
+| refactor | Remove `parse_escapes`, the escape branch in `splice_chapter`, and the matching tests — dead code in the real mdbook pipeline (see AC 6). Tidy any other duplication that emerged across slices 2–6. |
+| wrap-up | Update [`ROADMAP.md`](https://github.com/padamson/mdbook-listings/blob/main/ROADMAP.md) to mark the diff primitive shipped. |
 
 ## Outside-in narrative
 
@@ -138,7 +145,7 @@ helper's surface stable across slices.
 
 Slice 2 stands up the first piece slice 5's splicer will need: the
 parser that turns a chapter's markdown into a list of
-`{{#diff <left> <right>}}` directives with byte spans. It's a pure
+`{{#diff …}}` directives with byte spans. It's a pure
 function — no IO, no manifest, no diff library — so its unit tests
 pin its behaviour completely without touching disk.
 
@@ -281,6 +288,87 @@ The integration test from slice 1 is still `#[ignore]`'d. All
 three pure-unit pieces (parse, resolve, render) now exist in
 `diff.rs`; slice 5 wires them into `preprocess` and removes the
 `#[ignore]`.
+
+### Slice 5 — splicer + book registration + slice-1 test goes green
+
+Slice 5 wires the three pure-unit pieces from slices 2–4 into the
+preprocessor and registers it in our own book so this very chapter
+starts rendering with diffs from this commit forward. The
+sub-section's three listings are the first in the book to be
+embedded as `{{#diff …}}` rather than full file contents.
+
+`src/diff.rs` grows three things:
+
+* `parse_escapes` — byte positions of `\` characters that
+  immediately precede an unescaped `{{#diff` substring; the
+  splicer drops each one without touching the directive that
+  follows.
+* `SpliceError` — pairs the `ResolveError` from slice 3 with the
+  chapter source path and 1-based line number, so a missing-tag
+  diagnostic reads `src/ch99-foo.md:5: no listing with tag
+  \`missing-tag\`` rather than just naming the tag.
+* `splice_chapter` — gathers directive and escape edits in one
+  pass, sorts by start offset, and stitches the output by copying
+  the gaps verbatim. Edits anchor to byte spans of the *original*
+  chapter text, so the splicer never has to think about offset
+  shifts as it rewrites.
+
+The parser also gains code-fence awareness. Without it, registering
+the preprocessor in our own `book.toml` would break the build the
+moment a chapter quoted a frozen test fixture: the included `.rs`
+file's literal `{{#diff …}}` strings (with real-looking tag
+operands) would be parsed as real directives, and the resolver
+would fail to find those tags in our manifest. The parser now tracks
+`` ``` ``/`~~~` fences line-by-line and skips any directive whose
+start byte falls inside an open fence — the same rule that lets
+this very narrative quote `{{#diff …}}` syntax in fenced examples
+without the splicer eating them.
+
+{{#diff diff-v3 diff-v4}}
+
+`src/main.rs`'s `preprocess` function goes from a no-op
+pass-through to the actual transformation: load the manifest from
+`<ctx.root>/listings.toml`, walk every `BookItem::Chapter` via
+`book.for_each_mut`, hand the chapter content to `splice_chapter`,
+and write the mutated book back to stdout. `for_each_mut` doesn't
+let the closure return errors, so the splicer's failures are
+captured into a local `Option<anyhow::Error>` checked after the
+walk.
+
+{{#diff main-v3 main-v4}}
+
+`tests/diffs.rs` drops the `#[ignore]` on the slice-1 acceptance
+test (the splicer makes it pass) and gains two more integration
+tests pinning the surrounding-content invariance and the
+backslash-escape behaviour at the binary boundary. The fixture is
+rebuilt to mirror a real mdbook book root: `listings.toml` at the
+tempdir top, frozen files under `src/listings/`, matching what
+`Manifest::load(&ctx.root)` actually reads. The slice-1 fixture
+put those under a redundant `book/` subdirectory, which worked
+while the preprocessor was a pass-through but doesn't now.
+
+{{#diff diffs-tests-v1 diffs-tests-v2}}
+
+`book/book.toml` gains `[preprocessor.listings]` (with
+`before = ["admonish"]` because admonish is registered too) and
+`[output.html].additional-css` picks up `mdbook-listings.css`. The
+edit was made by running `cargo run -- install --book-root book`
+— the install handler from ch. 1 is idempotent, so re-running it
+in future builds is harmless.
+
+The integration suite is fully green: 53 tests pass, 0 skipped.
+The diff primitive is end-to-end functional and the book itself
+exercises it.
+
+The `parse_escapes` helper, the escape-handling branch in
+`splice_chapter`, and the `escaped_diff_directive_is_left_literal_minus_the_backslash`
+integration test are dead code in the real pipeline (mdbook's
+`links` preprocessor strips the leading `\` before our binary
+ever runs — see the AC 6 note above). They earn their keep only
+when our binary is driven directly via stdin, which isn't a
+supported use case. The refactor slice removes them and
+re-freezes the affected files; until then they document the
+fact-of-life by their visible presence.
 
 <!--
   Scaffolding — to be materialized as a final "What this story does

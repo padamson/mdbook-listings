@@ -16,12 +16,12 @@ build-dir = "build"
 command = "mdbook-admonish"
 assets_version = "3.1.0" # do not edit: managed by `mdbook-admonish install`
 
-# The listings preprocessor itself is registered in a later commit, once the
-# preprocessor pipeline is implemented. Running the build without it is fine;
-# `{{#include}}` and admonish still work.
+[preprocessor.listings]
+command = "mdbook-listings"
+before = ["admonish"]
 
 [output.html]
-additional-css = ["./mdbook-admonish.css"]
+additional-css = ["./mdbook-admonish.css", "./mdbook-listings.css"]
 
 # Requires `cargo install mdbook-typst-pdf`. `pdf = true` makes it actually
 # compile to PDF; without it, the renderer is a no-op (it only emits a `.typ`

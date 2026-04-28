@@ -75,11 +75,8 @@ jobs:
         working-directory: book
         run: mdbook-admonish install
 
-      # When the install story ships and registers the mdbook-listings
-      # preprocessor in book/book.toml, this workflow will need to install
-      # the local crate too:
-      #   cargo install --path . --locked
-      # added immediately before the build step.
+      - name: Install mdbook-listings (local crate, used as preprocessor)
+        run: cargo install --path . --locked
 
       - name: Build book (HTML + PDF)
         run: mdbook build book/

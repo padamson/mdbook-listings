@@ -104,7 +104,7 @@ using the tool. A chapter takes the reader through:
    relative to the previous one. The reader sees two full file
    listings across consecutive sub-sections; the prose tells them
    where to look. After diffs ship, the prose can cede that work
-   to a `\{{#diff <prev> <new>}}` block.
+   to a diff block between consecutive `-vN` tags.
 4. **Design decisions** *(optional).* The rationale for choices the
    tests and implementation can't show on their own — *why* this
    approach and not the alternatives. Include when the story made
