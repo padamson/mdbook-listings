@@ -370,7 +370,7 @@ supported use case. The refactor slice removes them and
 re-freezes the affected files; until then they document the
 fact-of-life by their visible presence.
 
-### Slice 6 — `live:<path>` operand (AC 7)
+### Slice 6 — `live:<path>` operand
 
 Slice 6 closes out AC 7. `resolve_operand` now recognises the
 `live:` prefix and reads the named file from disk relative to
@@ -401,18 +401,65 @@ to reach the crate's source:
 
 {{#diff diff-v5 live:../src/diff.rs}}
 
-Right now (slice 6) the result is the "no changes" notice — the
-frozen tag *is* the current source. The same `{{#diff …}}`
-directive in this chapter will start surfacing real drift the
-moment slice 7's refactor edits `src/diff.rs` without re-freezing
-into a new tag. That's the use case for `live:` in a nutshell:
-notice intended-and-unintended drift, no chapter edit required.
+When slice 6 shipped, the diff above rendered as the "no changes"
+notice — the frozen `diff-v5` was byte-identical to the live
+`src/diff.rs`. Readers building this book after slice 7 (the
+refactor) now see the diff above show real drift instead, and the
+drift exactly matches the `diff-v5` → `diff-v6` listing in slice 7
+below. The chapter source didn't change between the two states;
+only the live source on disk did. That's the use case for `live:`
+in a nutshell: notice intended-and-unintended drift, no chapter
+edit required.
 
 The freeze stability guarantee that AC 7 calls out as
 *defeated* by `live:` is, in this story, just words on a page —
 the *Verify Sync with Source* story (ch. 5) is what surfaces a
 warning at build time when a chapter uses `live:` operands. v0.1.0
 ships the directive; ch. 5 ships the warning.
+
+### Slice 7 — refactor
+
+With slices 1–6 in the bag and the integration suite green, the
+refactor slice tidies what the outside-in walk left behind.
+Three changes:
+
+* **Dead code removed.** `parse_escapes`, the escape-stripping
+  branch in `splice_chapter`, and the
+  `escaped_diff_directive_is_left_literal_minus_the_backslash`
+  integration test all go. They tested a code path that can't
+  fire in the real mdbook pipeline (mdbook's `links` preprocessor
+  strips backslash-escapes upstream of any custom preprocessor —
+  see AC 6). The parser's defensive backslash-skip stays: it's
+  cheap, harmless, and covers the case of someone driving the
+  binary directly with a hand-built envelope.
+
+* **`for_each_directive_position` inlined.** The fence-tracking
+  helper had two callers (parse_directives + parse_escapes); with
+  `parse_escapes` gone it's down to one. Inlining cuts ~25 lines
+  of indirection and puts the fence logic right where it's used.
+
+* **`splice_chapter` simplified.** Without the second edit
+  source (escapes), the function no longer needs to collect
+  edits, sort them, and stitch in a separate pass. `parse_directives`
+  already returns directives in span-order, so the splicer just
+  walks them once and copies through the gaps.
+
+The dogfood payoff lands without any chapter-source edit: the
+live: diff in the slice 6 sub-section above (the `{{#diff …}}`
+whose right operand is `live:../src/diff.rs`) no longer renders
+as the "no changes" notice — it now shows the real delta between
+the slice-6 freeze of `src/diff.rs` and the post-refactor source.
+Same directive, different output, because the live source
+drifted. That's the use case for `live:` made visible.
+
+{{#diff diff-v5 diff-v6}}
+
+{{#diff diffs-tests-v3 diffs-tests-v4}}
+
+53 → 51 tests (the three `parse_escapes` unit tests, the
+`splice_chapter_strips_leading_backslash_from_escaped_directives`
+unit test, and the `escaped_diff_directive_is_left_literal_minus_the_backslash`
+integration test are gone). All 51 still pass.
 
 <!--
   Scaffolding — to be materialized as a final "What this story does
