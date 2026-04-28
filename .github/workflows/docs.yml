@@ -76,7 +76,10 @@ jobs:
         run: mdbook-admonish install
 
       - name: Install mdbook-listings (local crate, used as preprocessor)
-        run: cargo install --path . --locked
+        # `--force` overrides any cached binary from a previous workflow rev.
+        # The local crate's source changes commit-to-commit, so we want a
+        # fresh install every run.
+        run: cargo install --path . --locked --force
 
       - name: Build book (HTML + PDF)
         run: mdbook build book/
