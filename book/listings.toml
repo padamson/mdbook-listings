@@ -215,3 +215,21 @@ tag = "diffs-tests-v4"
 source = "../tests/diffs.rs"
 frozen = "src/listings/diffs-tests-v4.rs"
 sha256 = "5785dc6bbeb00af693f6fcde26307f44534b7905a3f9a6ab7cc7848c14185db7"
+
+[[listing]]
+tag = "diff-v7"
+source = "../src/diff.rs"
+frozen = "src/listings/diff-v7.rs"
+sha256 = "5403c0f96f8f310250aebac2e6d750b484f8b5327f0fa424686573ac18c70b3a"
+
+[[listing]]
+tag = "diffs-tests-v5"
+source = "../tests/diffs.rs"
+frozen = "src/listings/diffs-tests-v5.rs"
+sha256 = "e2d37db88e2b80adcbc714f5a6d08d4ff2154756645c907dcce4bfbc1c475047"
+
+[[listing]]
+tag = "main-v5"
+source = "../src/main.rs"
+frozen = "src/listings/main-v5.rs"
+sha256 = "a8fa50a2d118fbccd29bd243454ecc39d2d842e5c47520c2764137d666c30bd6"

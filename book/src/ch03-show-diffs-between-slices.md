@@ -36,35 +36,39 @@ at the slice that introduced it.
    other content in the chapter (the preprocessor is a precise
    in-place splice).
 6. The chapter that *documents* the directive can show its own
-   syntax verbatim by putting the literal `{{#diff …}}` inside a
-   fenced code block (` ``` ` or `~~~`) — the preprocessor skips
-   any directive whose start byte falls inside an open fence. In
-   inline prose, the typical placeholder `{{#diff …}}` (single
-   arg) is silently ignored as malformed-arity, so it round-trips
-   unchanged. Backslash-escape (`\{{#diff …}}`) is *not* a
-   reliable escape mechanism: mdbook's built-in `links`
+   syntax verbatim by putting the literal `{{#diff …}}` inside an
+   inline code span (`` `…` ``) or a fenced code block (` ``` ` /
+   `~~~`) — the preprocessor skips any directive whose start byte
+   falls inside either. Backslash-escape (`\{{#diff …}}`) is *not*
+   a reliable escape mechanism: mdbook's built-in `links`
    preprocessor strips the leading `\` from any `\{{#…}}` pattern
    before any custom preprocessor runs, so the `\` never reaches
    our splicer in the real pipeline.
 7. An author can opt in to a diff against a live source file via
-   `live:<path>` in either operand. Doing so defeats the freeze
-   stability guarantee for that diff and is flagged later by the
-   *Verify Sync with Source* story (ch. 5).
+   `live:<path>` in either operand. The path is resolved relative
+   to the chapter's source markdown directory — the same convention
+   mdbook uses for `{{#include}}` — so a chapter at `book/src/foo.md`
+   can write `live:foo.txt` to reach `book/src/foo.txt`, or
+   `live:../../src/lib.rs` to reach the crate's source. Doing so
+   defeats the freeze stability guarantee for that diff and is
+   flagged later by the *Verify Sync with Source* story (ch. 5).
 
 ## The slice — outside-in narrative outline
 
-The story ships as six slices plus an optional refactor and a
-wrap-up chore:
+The story ships as eight slices (six initial outside-in slices, a
+refactor, and a follow-on red-green that came out of dogfooding the
+primitive) plus a wrap-up chore:
 
 | Slice | What it adds |
 |---|---|
-| 1/6 | Failing integration test asserting AC 1 against a tempdir fixture book. The test pipes a hand-built `(PreprocessorContext, Book)` envelope to the binary's no-subcommand arm and asserts on a ` ```diff ` fence in the round-tripped chapter content. The arm becomes a no-op pass-through that round-trips the book unchanged, so the assertion fails — the test is `#[ignore]`'d to keep the green-build pre-commit chain passing while later slices grow the directive parser, tag resolver, diff renderer, and splicer. ACs 4 and 5 get their own assertions in slice 5. |
-| 2/6 | Directive parser as a pure unit. New `src/diff.rs` exposes `parse_directives` returning byte-span-tagged `DiffDirective`s. Unit-tested in isolation; not yet wired into the preprocessor. |
-| 3/6 | Tag resolution. `diff::resolve` looks each operand up in `Manifest` (re-using `Manifest::find` from ch. 2) and produces a structured error for missing tags carrying enough context for the splicer to format an AC-3 diagnostic. Unit-tested. |
-| 4/6 | Unified diff computation via the `similar` crate. `diff::render` takes the resolved bytes plus labels and produces unified-diff text; identical bytes produce a "no changes" notice rather than an empty block (AC 4). Unit-tested with synthetic byte pairs. |
-| 5/6 | Splicer wires slices 2–4 into the no-op preprocessor: every `{{#diff …}}` directive is replaced with a fenced ` ```diff ` block, the parser learns to skip directives inside fenced code blocks (AC 6 — so chapters can quote literal directive examples), and `cargo run -- install --book-root book` registers `[preprocessor.listings]` in our own `book/book.toml` so the book exercises the diff primitive on every build. Slice 1's integration test goes green; AC 5 gets its own integration test pinning surrounding-content invariance. |
-| 6/6 | `live:<path>` operand (AC 7). Recognised in either operand position; the resolver reads the live file from disk relative to `book_root`. |
-| refactor | Remove `parse_escapes`, the escape branch in `splice_chapter`, and the matching tests — dead code in the real mdbook pipeline (see AC 6). Tidy any other duplication that emerged across slices 2–6. |
+| 1 | Failing integration test asserting AC 1 against a tempdir fixture book. The test pipes a hand-built `(PreprocessorContext, Book)` envelope to the binary's no-subcommand arm and asserts on a ` ```diff ` fence in the round-tripped chapter content. The arm becomes a no-op pass-through that round-trips the book unchanged, so the assertion fails — the test is `#[ignore]`'d to keep the green-build pre-commit chain passing while later slices grow the directive parser, tag resolver, diff renderer, and splicer. ACs 4 and 5 get their own assertions in slice 5. |
+| 2 | Directive parser as a pure unit. New `src/diff.rs` exposes `parse_directives` returning byte-span-tagged `DiffDirective`s. Unit-tested in isolation; not yet wired into the preprocessor. |
+| 3 | Tag resolution. `diff::resolve` looks each operand up in `Manifest` (re-using `Manifest::find` from ch. 2) and produces a structured error for missing tags carrying enough context for the splicer to format an AC-3 diagnostic. Unit-tested. |
+| 4 | Unified diff computation via the `similar` crate. `diff::render` takes the resolved bytes plus labels and produces unified-diff text; identical bytes produce a "no changes" notice rather than an empty block (AC 4). Unit-tested with synthetic byte pairs. |
+| 5 | Splicer wires slices 2–4 into the no-op preprocessor: every `{{#diff …}}` directive is replaced with a fenced ` ```diff ` block, the parser learns to skip directives inside fenced code blocks (initial AC 6 — so chapters can quote literal directive examples), and `cargo run -- install --book-root book` registers `[preprocessor.listings]` in our own `book/book.toml` so the book exercises the diff primitive on every build. Slice 1's integration test goes green; AC 5 gets its own integration test pinning surrounding-content invariance. |
+| 6 | `live:<path>` operand (initial AC 7). Recognised in either operand position; the resolver reads the live file from disk relative to `book_root`. |
+| 7 (refactor) | Remove `parse_escapes`, the escape branch in `splice_chapter`, and the matching tests — dead code in the real mdbook pipeline. Tidy duplication that emerged across slices 2–6. |
+| 8 | Tighten ACs 6 and 7 in response to dogfooding. Inline code spans (`` `…` ``) join fenced blocks as a directive-skip context (AC 6) — `{{#diff a b}}` in inline backticks no longer crashes the build. `live:<path>` resolution moves from book-root-relative to chapter-source-relative (AC 7), matching mdbook's `{{#include}}` convention. Both come from real friction points hit while writing this very chapter. |
 | wrap-up | Update [`ROADMAP.md`](https://github.com/padamson/mdbook-listings/blob/main/ROADMAP.md) to mark the diff primitive shipped. |
 
 ## Outside-in narrative
@@ -372,12 +376,13 @@ fact-of-life by their visible presence.
 
 ### Slice 6 — `live:<path>` operand
 
-Slice 6 closes out AC 7. `resolve_operand` now recognises the
-`live:` prefix and reads the named file from disk relative to
-`book_root` instead of going through the manifest. The operand's
-full text (including the `live:` prefix) becomes the unified-diff
-header label, so a reader can tell at a glance which side is
-frozen and which side is live.
+Slice 6 closes out the initial AC 7. `resolve_operand` now
+recognises the `live:` prefix and reads the named file from disk
+(slice 6 resolved against `book_root`; slice 8 changed this to the
+chapter's source directory, matching `{{#include}}` semantics).
+The operand's full text (including the `live:` prefix) becomes the
+unified-diff header label, so a reader can tell at a glance which
+side is frozen and which side is live.
 
 A new `ResolveErrorKind::LiveFileMissing` variant carries the
 absolute path that failed to read so the splicer's chapter-located
@@ -396,10 +401,11 @@ a `write_live_file` helper for the same.
 To dogfood it, here is the chapter rendering a `live:` diff
 between the `diff-v5` tag (frozen above) and the live
 `src/diff.rs` on disk at build time. The path is relative to the
-book root (`book/`), so it goes up one level (`../src/diff.rs`)
-to reach the crate's source:
+chapter's own source directory (`book/src/`, post-slice-8),
+so `../../src/diff.rs` walks up two levels to the repo root and
+back into the crate's `src/`:
 
-{{#diff diff-v5 live:../src/diff.rs}}
+{{#diff diff-v5 live:../../src/diff.rs}}
 
 When slice 6 shipped, the diff above rendered as the "no changes"
 notice — the frozen `diff-v5` was byte-identical to the live
@@ -461,6 +467,57 @@ drifted. That's the use case for `live:` made visible.
 unit test, and the `escaped_diff_directive_is_left_literal_minus_the_backslash`
 integration test are gone). All 51 still pass.
 
+### Slice 8 — extend ACs 6 and 7 from dogfooding
+
+Writing this very chapter surfaced two real friction points that
+the original ACs 6 and 7 didn't capture, so slice 8 is a fresh
+red-green-refactor loop on top of the refactor:
+
+* **AC 6: inline code spans are now a directive-skip context too.**
+  Twice while drafting ch. 3 a literal `{{#diff a b}}` inside
+  inline backticks (`` `…` ``) crashed the build — the splicer saw
+  it, tried to resolve the operands, and failed. The fix is one
+  block in `parse_directives`: count backticks before the
+  directive's start byte on the same line; if odd, we're inside an
+  inline code span — skip. AC 6's wording widens from "fenced code
+  blocks" to "inline code spans or fenced code blocks".
+
+* **AC 7: `live:<path>` resolves relative to the chapter's source
+  directory, not `book_root`.** Slice 6's resolution against
+  `book_root` is awkward: every `live:` reference in this very
+  chapter (which lives at `book/src/ch03-…md`) had to spell out
+  `live:../src/diff.rs` rather than the more natural
+  `live:../../src/diff.rs` (mdbook's own `{{#include}}` already
+  uses chapter-relative paths). The fix threads a `chapter_dir`
+  parameter through `splice_chapter` → `resolve` → `resolve_operand`,
+  and `preprocess()` in `main.rs` computes it as
+  `ctx.root.join(&ctx.config.book.src).join(<chapter source dir>)`.
+
+Three failing tests drove the loop (two in `src/diff.rs`, one in
+`tests/diffs.rs`), then the implementation, then green: 54 tests
+pass.
+
+{{#diff diff-v6 diff-v7}}
+
+{{#diff main-v4 main-v5}}
+
+{{#diff diffs-tests-v4 diffs-tests-v5}}
+
+The slice-6 sub-section's live: directive
+(`live:../src/diff.rs` as it shipped in slice 6) now reads
+`live:../../src/diff.rs` to match the new resolution. The change
+is honest about the post-slice-8 state of the chapter; readers
+building older revisions of the book would see the old form.
+
+This slice is a worked example of the methodology working as
+intended: the original outside-in walk (slices 1–6) shipped a
+correct, tested primitive. *Using* the primitive on the chapter
+that documents it surfaced spec gaps — gaps not visible from
+inside the original ACs. Rather than retconning slice 7's
+refactor, slice 8 is its own loop with new ACs, new failing
+tests, new impl. The chapter is longer for it, and the lesson
+lands.
+
 <!--
   Scaffolding — to be materialized as a final "What this story does
   not solve" section in the wrap-up chore (placed at the end of the
@@ -490,4 +547,21 @@ integration test are gone). All 51 still pass.
     ch. 5 (*Verify Sync with Source*).
   * Per-chapter tag namespacing (`book/src/listings/<chapter>/...`)
     — on the backlog as a separate tiny story.
+
+  Note for ch. 4 (Render Inline Callouts): the outermost layer
+  for callouts is browser-rendered HTML — clickable <details>
+  toggles, badge CSS, focus management. That's where outside-in
+  TDD wants ch. 4's slice 1 to start, so the failing acceptance
+  test is a Playwright spec, not an assert_cmd test. Planned ch. 4
+  slice 1 stands up the Playwright harness (package.json,
+  playwright.config.ts, docs.yml CI step running against the
+  built book) AND a failing spec that asserts on a rendered
+  callout. Subsequent slices drop into Rust to make it green
+  (parser, splicer, CSS asset).
+
+  ch. 3 itself doesn't gain a Playwright spec retrospectively —
+  the diff primitive's user-facing behaviour is well-covered by
+  the JSON-level integration tests already, and adding browser
+  assertions for ```diff fence highlighting would be a
+  retrospective extension of an already-shipped story.
 -->
