@@ -1,11 +1,15 @@
 # Show Diffs Between Slices
 
-```admonish note title="This chapter is in progress"
-The story is being built outside-in. Each slice ships as one
-commit; the **Outside-in narrative** sub-section grows by one
-sub-section per slice. The chapter is read top-to-bottom for
-the methodology view; the sub-sections embed each frozen tag
-at the slice that introduced it.
+```admonish note title="This chapter has shipped"
+The story shipped across six outside-in slices, a refactor
+slice, a follow-on red-green-refactor loop (slice 8) that came
+out of dogfooding the primitive on this very chapter, and a
+wrap-up chore. Every Acceptance criterion is exercised by at
+least one test in the suite. Read the chapter top-to-bottom for
+the methodology view; the **Outside-in narrative** sub-sections
+embed each frozen tag at the slice that introduced it, so the
+latest version of each file is in the slice that touched it last
+(slice 8 for `src/diff.rs`, `src/main.rs`, and `tests/diffs.rs`).
 ```
 
 ## Story
@@ -518,50 +522,37 @@ refactor, slice 8 is its own loop with new ACs, new failing
 tests, new impl. The chapter is longer for it, and the lesson
 lands.
 
-<!--
-  Scaffolding — to be materialized as a final "What this story does
-  not solve" section in the wrap-up chore (placed at the end of the
-  chapter, matching the ch. 2 convention). Items may be added,
-  removed, or pulled into the story as later slices reveal what
-  actually shipped vs deferred.
+## What this story does not solve
 
-  Candidate deferrals as of slice 1:
-
-  * Diff highlighting in HTML: NOT deferred — we get it free. Tagging
-    the emitted fence as ```diff triggers highlight.js's built-in
-    `diff` language, which colorizes +/−/@@ lines automatically in
-    the HTML build. Slice 5 uses this fence and ships HTML diff
-    coloring as part of the story.
-  * Diff highlighting in typst-pdf: deferred. mdbook-typst-pdf 0.7.x
-    has no `diff` language entry and emits the block as plain
-    monospace. Authors building PDF see uncolored diffs until a
-    later story plumbs Typst color macros around +/− lines.
-  * Language-aware syntax highlighting *inside* the diff (e.g., Rust
-    syntax overlaid on +/− coloring) — neither highlight.js nor
-    typst-pdf does this; would need server-side rendering with
-    `syntect`. Separate story.
-  * Per-line callouts/anchors on diff output — covered by ch. 4
-    (*Render Inline Callouts*).
-  * Three-way diffs or diffs across renames — no current driver.
-  * The verify-side warning when `live:<path>` is used ships with
-    ch. 5 (*Verify Sync with Source*).
-  * Per-chapter tag namespacing (`book/src/listings/<chapter>/...`)
-    — on the backlog as a separate tiny story.
-
-  Note for ch. 4 (Render Inline Callouts): the outermost layer
-  for callouts is browser-rendered HTML — clickable <details>
-  toggles, badge CSS, focus management. That's where outside-in
-  TDD wants ch. 4's slice 1 to start, so the failing acceptance
-  test is a Playwright spec, not an assert_cmd test. Planned ch. 4
-  slice 1 stands up the Playwright harness (package.json,
-  playwright.config.ts, docs.yml CI step running against the
-  built book) AND a failing spec that asserts on a rendered
-  callout. Subsequent slices drop into Rust to make it green
-  (parser, splicer, CSS asset).
-
-  ch. 3 itself doesn't gain a Playwright spec retrospectively —
-  the diff primitive's user-facing behaviour is well-covered by
-  the JSON-level integration tests already, and adding browser
-  assertions for ```diff fence highlighting would be a
-  retrospective extension of an already-shipped story.
--->
+* **Diff highlighting in typst-pdf.** mdbook-typst-pdf 0.7.x has no
+  `diff` language entry and emits the block as plain monospace.
+  Authors building PDF see uncolored diffs until a later story
+  plumbs Typst color macros around `+`/`−` lines (or upstream adds
+  a `diff` language). Tracked as a separate small story.
+* **Language-aware syntax highlighting *inside* the diff** (e.g.,
+  Rust syntax overlaid on `+`/`−` coloring). Neither highlight.js
+  nor typst-pdf does this; would need server-side rendering with
+  `syntect`. Separate story; sketched on the v0.3.0 roadmap.
+* **Per-line callouts and anchors on diff output.** Covered by
+  ch. 4 (*Render Inline Callouts*); the diff primitive emits a
+  bare ` ```diff ` fence that ch. 4 layers callouts on top of.
+* **Three-way diffs or diffs across renames.** No current driver
+  in the dogfood book. Would surface on demand.
+* **The verify-side warning when `live:<path>` is used.** Ships
+  with ch. 5 (*Verify Sync with Source*); ch. 3 only ships the
+  directive itself. v0.1.0 binds the two together at the release
+  boundary.
+* **Per-chapter tag namespacing**
+  (`book/src/listings/<chapter>/...`). On the backlog as a
+  separate tiny story; the global flat namespace is fine while
+  the book is small and tags are short.
+* **End-to-end browser-side rendering assertions.** This story's
+  integration tests verify the JSON our binary emits, but nothing
+  exercises the rendered HTML in a real browser. ch. 4 (*Render
+  Inline Callouts*) starts there — its slice 1 stands up a
+  Playwright harness and a failing spec asserting on a rendered
+  callout in the browser, because the outermost layer for
+  callouts is the rendered DOM. Once that harness exists,
+  retrospective browser assertions for the diff primitive (e.g.,
+  highlight.js applying `+`/`−` coloring) are easy follow-ons if
+  desired.

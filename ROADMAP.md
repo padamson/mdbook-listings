@@ -14,12 +14,13 @@ canonical "what's shipped" reference; this file is the canonical
 The initial release. One user-story chapter per primitive (see the
 self-documenting book for the full story for each).
 
-- **Install the Preprocessor** — one-shot setup of an existing book.
-- **Freeze a Listing** — snapshot a source file under a tag, embed it
-  via mdbook's existing `{{#include}}` machinery.
-- **Show Diffs Between Slices** — render a unified diff between two
-  frozen tags inline in a chapter, with a `live:` escape hatch for
-  diffing against current source.
+- **Install the Preprocessor** *(shipped)* — one-shot setup of an
+  existing book.
+- **Freeze a Listing** *(shipped)* — snapshot a source file under a
+  tag, embed it via mdbook's existing `{{#include}}` machinery.
+- **Show Diffs Between Slices** *(shipped)* — render a unified diff
+  between two frozen tags inline in a chapter, with a `live:` escape
+  hatch for diffing against current source.
 - **Render Inline Callouts** — attach prose to specific lines of a
   frozen listing, with stable cross-references from surrounding text.
   Inline (markers in source) and sidecar (separate TOML) forms; works
