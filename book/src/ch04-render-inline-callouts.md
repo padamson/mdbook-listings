@@ -123,6 +123,52 @@ freeze discipline. Slice 3 mints `e2e-callouts-v2` when it removes
 the `#[ignore]`; subsequent slices that add new tests mint
 further versions.
 
+### Slice 2 — directive parser as a pure unit
+
+Slice 2 adds the first piece slice 3's HTML emitter will need: a
+parser that turns a frozen listing's source bytes into a list of
+`Callout { line, label, body }`. Pure function, no IO; the
+splicer in slice 3 wires it into the preprocessor.
+
+A new `src/callout.rs` declares the `Callout` struct, the
+`parse_callouts(content, comment_prefix) -> Vec<Callout>` entry
+point, and a `comment_prefix_for_extension(ext) -> Option<&str>`
+helper that maps file extensions to single-line comment syntaxes.
+The initial table covers seventeen languages — `#` for
+yaml/yml/toml/py/sh/bash/tf/hcl, `//` for
+rs/c/h/cpp/hpp/js/ts/jsx/tsx, `--` for sql. Block-comment-only
+languages (CSS, plain Markdown) take callouts via the sidecar
+form instead and return `None` from this lookup.
+
+```rust
+{{#include listings/callout-v1.rs}}
+```
+
+The marker grammar:
+
+```
+<leading-ws><comment_prefix> CALLOUT: <label>[ <body>]
+```
+
+— exactly one space after the prefix, the literal `CALLOUT:`,
+exactly one space, then a label of `[A-Za-z0-9_-]+`, then either
+end-of-line or one whitespace + the rest as body. Anything that
+doesn't match this exactly is silently skipped (AC 9 — no silent
+misparse, the line stays in the rendered listing as-is). Fourteen
+unit tests cover the happy paths for all three prefixes plus the
+malformed-skip cases (wrong prefix, missing space after prefix,
+missing space after `CALLOUT:`, empty label, invalid label
+characters, trailing whitespace, indented marker, multiple
+markers in one listing).
+
+`src/lib.rs` gains `pub mod callout;`.
+
+{{#diff lib-v3 lib-v4}}
+
+The slice-1 integration test is still `#[ignore]`'d. The parser
+is plumbing — slice 3 wires it into the preprocessor and emits
+HTML badges, at which point the test goes green.
+
 <!--
 Scaffolding for later slices — sidecar TOML format sketch,
 retrospective application to earlier chapters, and the "What this

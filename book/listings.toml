@@ -245,3 +245,15 @@ tag = "e2e-callouts-v1"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v1.rs"
 sha256 = "30aa3b7d6cef572976b76cd922b61014f1a0761987c9a5594f35e19354568c36"
+
+[[listing]]
+tag = "callout-v1"
+source = "../src/callout.rs"
+frozen = "src/listings/callout-v1.rs"
+sha256 = "784a248e2066ee7da7b3e3728dc43f0991f8f8ec8596c43218e3fdb3670958f6"
+
+[[listing]]
+tag = "lib-v4"
+source = "../src/lib.rs"
+frozen = "src/listings/lib-v4.rs"
+sha256 = "0a8138aac6218da949662eca9eb21db7f80e70c74c0c9e2fce87e1365833a794"
