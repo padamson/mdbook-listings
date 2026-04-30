@@ -6,3 +6,12 @@
 # SIL Charis is a typeface bundled by Debian as `fonts-sil-charis`.
 # Without this exemption, typos rewrites "charis" → "chairs".
 charis = "charis"
+
+# `flate2` is the real crate name on crates.io for zlib/deflate
+# bindings. typos tokenises `flate2` as `flate` + `2`, so the
+# exemption is on the substring it actually flags.
+flate = "flate"
+
+# `writeable` is the real crate name on crates.io (an `icu4x`
+# helper). typos defaults to suggesting `writable`.
+writeable = "writeable"

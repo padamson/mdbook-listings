@@ -233,3 +233,15 @@ tag = "main-v5"
 source = "../src/main.rs"
 frozen = "src/listings/main-v5.rs"
 sha256 = "a8fa50a2d118fbccd29bd243454ecc39d2d842e5c47520c2764137d666c30bd6"
+
+[[listing]]
+tag = "cargo-toml-v4"
+source = "../Cargo.toml"
+frozen = "src/listings/cargo-toml-v4.toml"
+sha256 = "22d5212da1b0b0c6b79a50377389863e706f9c829c15476381e9957160b50278"
+
+[[listing]]
+tag = "e2e-callouts-v1"
+source = "../tests/e2e_callouts.rs"
+frozen = "src/listings/e2e-callouts-v1.rs"
+sha256 = "30aa3b7d6cef572976b76cd922b61014f1a0761987c9a5594f35e19354568c36"

@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'book/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -36,7 +40,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y fonts-sil-charis fonts-inter fonts-jetbrains-mono
 
-      - name: Cache Cargo (registry + git + installed bins)
+      - name: Cache Cargo (registry + git + installed bins) and Playwright browsers
         uses: actions/cache@v5
         with:
           path: |
@@ -44,6 +48,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
+            ~/.cache/ms-playwright/
           key: ${{ runner.os }}-docs-cargo-${{ hashFiles('.github/workflows/docs.yml') }}
           restore-keys: |
             ${{ runner.os }}-docs-cargo-
@@ -83,6 +88,23 @@ jobs:
 
       - name: Build book (HTML + PDF)
         run: mdbook build book/
+
+      - name: Set up Node (for Playwright driver)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright driver + Chromium
+        # `npx playwright install --with-deps chromium` pulls the system libs
+        # Chromium needs plus the browser binary itself. The driver is JS even
+        # though our tests are Rust — playwright-rs spawns it over stdio.
+        run: npx --yes playwright install --with-deps chromium
+
+      - name: Run browser-side E2E tests against the built book
+        # Ignored tests stay ignored here (the slice-1 spec asserts on
+        # callout DOM that lands later in the story); each subsequent ch. 4
+        # slice that emits new DOM removes the matching `#[ignore]`.
+        run: cargo test --test e2e_callouts
 
       - name: Bundle PDF into the HTML site
         run: |
