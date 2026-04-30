@@ -24,6 +24,34 @@ prek install
 
 Hooks mirror CI checks: fmt, clippy, check, nextest, doctest, audit, deny, vet.
 
+## Building the book locally
+
+The book at `book/` uses three preprocessors (mdbook itself,
+`mdbook-admonish`, and our own `mdbook-listings`) and one renderer
+(`mdbook-typst-pdf`). All four must be on `PATH` before
+`mdbook build` can run.
+
+```bash
+# One-time setup:
+cargo install mdbook --locked
+cargo install mdbook-typst-pdf --locked
+cargo install --git https://github.com/padamson/mdbook-admonish \
+  --branch feat/mdbook-0.5-compat --force      # until upstream catches up
+cargo install --path . --locked --force         # our own crate
+
+# Build:
+cd book && mdbook build
+# → book/build/html/         (HTML site)
+# → book/build/typst-pdf/    (PDF, if mdbook-typst-pdf is installed)
+
+# Live-reload while editing chapter prose (HTML only):
+cd book && mdbook serve
+# Opens http://localhost:3000
+
+# After editing src/*.rs, the installed preprocessor is stale. Reinstall:
+cargo install --path . --locked --force
+```
+
 ## Release process
 
 1. Update version in `Cargo.toml`
