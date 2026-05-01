@@ -1,0 +1,15 @@
+[package]
+name = "capture-screenshots"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Workspace tool: snapshot rendered chapter regions for ch. 4's slice-by-slice visual record"
+
+[[bin]]
+name = "capture-screenshots"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+playwright-rs = "0.12"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

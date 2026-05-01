@@ -4,12 +4,19 @@
 The story is being built outside-in, and the first slice is the
 furthest *out* this book has reached: a real Chromium driven by
 [playwright-rs](https://crates.io/crates/playwright-rs) asserts on
-the rendered DOM of a callout in this very chapter. The test is
-`#[ignore]`'d until later slices grow the parser, the HTML
-emitter, and the actual `CALLOUT:` markers in a frozen listing
-that the test asserts against. Each slice ships as one commit;
-the **Outside-in narrative** sub-section grows by one sub-section
-per slice.
+the rendered DOM of a callout in this very chapter. Each slice
+ships as one commit; the **Outside-in narrative** sub-section
+grows by one sub-section per slice.
+
+**Note on the visual rendering of callouts.** The shape callouts
+take in this rendered chapter evolves slice by slice. Slice 3
+ships the simplest viable form — a `<dl class="callouts">`
+appended below each code block, listing each marker's badge and
+body. Later slices replace the dl with proper inline badges
+positioned at the marker's line, expandable annotations, side-
+margin layouts, and styled themes. What you see right now in any
+demo block reflects the latest slice that has shipped at the
+time of this build.
 ```
 
 ## Story
@@ -24,9 +31,12 @@ per slice.
 Inline form (callout markers in the source itself):
 
 1. A frozen listing whose language has a recognised inline-marker
-   syntax can carry callout markers. When the chapter is rendered
-   to HTML, each marker produces a numbered badge at the marker's
-   position and an expandable annotation reachable from the badge.
+   syntax can carry callout markers. When the chapter renders that
+   listing to HTML — whether via `{{#include}}` or as the new side
+   of a `{{#diff}}` (added or context lines, but not removed lines
+   — a deleted marker shouldn't carry a current badge) — each
+   marker produces a numbered badge at the marker's position and
+   an expandable annotation reachable from the badge.
 2. The same listing rendered to PDF produces a styled note for
    each callout, ordered to match the listing.
 3. A callout marker may declare just a label, with no
@@ -78,7 +88,7 @@ to satisfy it.
 |---|---|
 | 1 | playwright-rs harness. A failing `#[tokio::test] #[ignore]` in `tests/e2e_callouts.rs` launches Chromium against the rendered ch. 4 HTML and asserts a `[data-callout-badge]` element exists. The test fails (no callouts in ch. 4 yet, no parser, no HTML emitter); ignore keeps the green-build chain passing while later slices grow the rest. |
 | 2 | Comment-syntax table + generic `parse_callouts` parser parameterised on prefix. Pure unit tests for every prefix in the initial table; verifies body and no-body forms; ignores malformed. |
-| 3 | HTML emitter — badge at line, `<details>` nearby — wires parser into preprocessor. Slice 1's `#[ignore]` comes off and the test goes green for AC 1. `SupportedRenderer` enum extracted here. |
+| 3 | HTML emitter — badge at line, `<details>` nearby — wires parser into preprocessor. Handles both `{{#include}}` (the source language's comment prefix) and `{{#diff}}` (the splicer strips diff `+`/space indicators and tries every comment prefix; removed `-` lines are skipped). Slice 1's `#[ignore]` comes off and the test goes green for AC 1. `SupportedRenderer` enum extracted here. |
 | 4 | Label-only inline form (AC 3). Small addition to emitter; new playwright-rs test asserting the bare-anchor case. |
 | 5 | Cross-reference directive `{{#callout <label>}}` (ACs 6, 10). New playwright-rs test asserting the prose-rendered badge is hyperlinked to the listing-rendered badge anchor. |
 | 6 | typst-pdf emitter — admonish-note block after the code block (AC 2). Non-browser; assertion is visual or assert_cmd-on-PDF-bytes — decided in the slice. |
@@ -168,6 +178,84 @@ markers in one listing).
 The slice-1 integration test is still `#[ignore]`'d. The parser
 is plumbing — slice 3 wires it into the preprocessor and emits
 HTML badges, at which point the test goes green.
+
+### Slice 3 — HTML emitter + slice-1 test goes green
+
+Slice 3 wires `parse_callouts` into the preprocessor and emits
+HTML badges. The simplest emission shape that satisfies the
+slice-1 acceptance test: leave the rendered code block alone, and
+append a `<dl class="callouts">` after the closing fence with one
+`<dt>` per marker (carrying a numbered badge) and one `<dd>`
+per marker that has a body. Per-listing ordinal numbering (AC 7)
+falls out naturally — each fenced block walks its own marker list.
+
+{{#diff callout-v1 callout-v2}}
+
+Three things are happening in the diff above. First, the
+`comment_prefix_for_language` helper normalises fence info strings
+(`rust`, `python`, `c++`, `shell`) to extensions so the same
+`comment_prefix_for_extension` table from slice 2 covers both
+shapes. Second, the `splice_chapter` walker tracks fenced code
+blocks line-by-line and dispatches per fence info: ` ```rust ` /
+` ```yaml ` / etc. parse against the language's comment prefix
+directly, while ` ```diff ` strips the `+` or space indicator
+from each line and tries every known comment prefix (so a diff
+of any source language carries its callouts through to the
+rendered HTML). Removed `-` lines and diff metadata (`---`,
+`+++`, `@@`, `\`) are skipped — a deleted callout shouldn't
+carry a current badge. Third, three `CALLOUT:` markers were
+added to the source as a dogfood demonstration; the `<dl>` you
+see right above is the splicer's output for the diff path on
+those three markers.
+
+Snapshot (slice 3) of the diff path's dl as it looked the day
+slice 3 shipped:
+
+![Slice 3 rendered dl from the diff path: three badges 1–3 with bodies for the parse-entry, label-grammar, and splice-entry markers added in callout-v2.](images/ch04-slice3-diff-callouts.png)
+
+To exercise the splicer's `{{#include}}` path on a different
+input shape, here is the source of the screenshot tool — a small
+`playwright-rs` script with one CALLOUT marker:
+
+```rust
+{{#include listings/capture-screenshots-v1.rs}}
+```
+
+The `<dl>` directly below this listing is what the splicer
+emitted for the marker on the `target` line above — one entry,
+showing the marker doing real work in this very chapter.
+
+Snapshot (slice 3) of the include path's dl:
+
+![Slice 3 rendered dl from the include path: a single badge 1 with body text describing how the screenshot tool picks which match to capture.](images/ch04-slice3-include-callouts.png)
+
+Both images are frozen-in-time snapshots. Readers viewing this
+chapter on a build *after* a later slice will see the live
+rendered shape above each image differ from the snapshot — slice
+4 onward replaces the dl form with proper inline badges, side-
+margin annotations, and styled themes. The images stay as the
+record of what slice 3 produced.
+
+The screenshot tool above is itself a workspace member at
+`tools/capture-screenshots/` — kept in the repo for slice 4
+onward to reuse, but excluded from the published `mdbook-listings`
+crate (own `Cargo.toml` with `publish = false`). Run with
+`cargo run -p capture-screenshots -- --chapter-html …
+--selector dl.callouts --nth N --out …` to snapshot a particular
+match in a particular chapter.
+
+`src/main.rs`'s `preprocess` now chains the diff splicer's output
+into `callout::splice_chapter`, so `{{#diff}}` resolution and
+callout rendering both apply to every chapter.
+
+{{#diff main-v5 main-v6}}
+
+`tests/e2e_callouts.rs` drops its `#[ignore]`. The Playwright
+test now runs against the just-built ch. 4 HTML, finds the
+`[data-callout-badge]` elements emitted by the splicer above,
+and goes green — closing AC 1 end-to-end.
+
+{{#diff e2e-callouts-v1 e2e-callouts-v2}}
 
 <!--
 Scaffolding for later slices — sidecar TOML format sketch,

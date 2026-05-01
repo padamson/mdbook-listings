@@ -1,0 +1,6 @@
+[build]
+# Caps cargo's parallel rustc invocations to keep first-time builds of
+# heavy dep trees (playwright-rs, tokio, image, zstd-sys, the icu4x stack)
+# from triggering OOM kills under combined load with rust-analyzer + the
+# IDE. Raise once the cargo cache is warm and the dep tree stabilises.
+jobs = 2

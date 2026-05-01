@@ -220,6 +220,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "capture-screenshots"
+version = "0.0.0"
+dependencies = [
+ "clap",
+ "playwright-rs",
+ "tokio",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"

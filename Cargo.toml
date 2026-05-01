@@ -26,3 +26,8 @@ playwright-rs = "0.12"
 predicates = "3"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+# Workspace tools live alongside the crate but are not part of the published
+# crate (each carries `publish = false`). Run with `cargo run -p <name>`.
+[workspace]
+members = ["tools/capture-screenshots"]

@@ -257,3 +257,27 @@ tag = "lib-v4"
 source = "../src/lib.rs"
 frozen = "src/listings/lib-v4.rs"
 sha256 = "0a8138aac6218da949662eca9eb21db7f80e70c74c0c9e2fce87e1365833a794"
+
+[[listing]]
+tag = "callout-v2"
+source = "../src/callout.rs"
+frozen = "src/listings/callout-v2.rs"
+sha256 = "c4aedfeb41655c1cf8eddda16454f14f80c5fdd798af680fbb6dcaa2788f7205"
+
+[[listing]]
+tag = "main-v6"
+source = "../src/main.rs"
+frozen = "src/listings/main-v6.rs"
+sha256 = "f85657e6e2bf3c84a81d71e0f692685155cc86c46cc538ad9cdeeabd8a03e598"
+
+[[listing]]
+tag = "e2e-callouts-v2"
+source = "../tests/e2e_callouts.rs"
+frozen = "src/listings/e2e-callouts-v2.rs"
+sha256 = "a2a818d52f97c414425ee6e7240db2953a62f91ef4260eb3ae5761fd04d1b35b"
+
+[[listing]]
+tag = "capture-screenshots-v1"
+source = "../tools/capture-screenshots/src/main.rs"
+frozen = "src/listings/capture-screenshots-v1.rs"
+sha256 = "70a10cf6471abbbd7247a855fef0de032d8129aa082fbc046da862297a8c2a09"
