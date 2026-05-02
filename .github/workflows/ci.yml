@@ -107,13 +107,25 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: e2e
+          # v2: invalidates the prior cache that contained playwright-rs's
+          # compiled binary with PLAYWRIGHT_DRIVER_DIR baked in but no driver
+          # cache; the next run redownloads the driver via build.rs and
+          # populates both this cache and the playwright cache fresh.
+          shared-key: e2e-v2
 
-      - name: Cache Playwright browsers
+      # Cache the Playwright browser binaries (~/.cache/ms-playwright/) and
+      # the playwright-rs driver (drivers/ at workspace root). The driver is
+      # downloaded once by playwright-rs's build.rs and its absolute path is
+      # baked into the compiled test binary via cargo:rustc-env — Swatinem
+      # caches target/ and so the binary stays valid across runs, but the
+      # driver lives OUTSIDE target/ so it needs its own cache key.
+      - name: Cache Playwright browsers + driver
         uses: actions/cache@v5
         with:
-          path: ~/.cache/ms-playwright/
-          key: ${{ runner.os }}-playwright-${{ hashFiles('.github/workflows/ci.yml') }}
+          path: |
+            ~/.cache/ms-playwright/
+            drivers/
+          key: ${{ runner.os }}-playwright-${{ hashFiles('Cargo.lock', '.github/workflows/ci.yml') }}
           restore-keys: |
             ${{ runner.os }}-playwright-
 
