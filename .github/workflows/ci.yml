@@ -35,6 +35,11 @@ jobs:
         with:
           toolchain: "1.88"
 
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: msrv-1.88
+
       - name: Check compilation on MSRV
         run: cargo check --workspace
 
@@ -54,17 +59,9 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache Cargo
-        uses: actions/cache@v5
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          shared-key: test
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
@@ -107,28 +104,31 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y fonts-sil-charis fonts-inter fonts-jetbrains-mono
 
-      - name: Cache Cargo + Playwright browsers
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: e2e
+
+      - name: Cache Playwright browsers
         uses: actions/cache@v5
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ~/.cache/ms-playwright/
-          key: ${{ runner.os }}-e2e-${{ hashFiles('**/Cargo.lock', '.github/workflows/ci.yml') }}
+          path: ~/.cache/ms-playwright/
+          key: ${{ runner.os }}-playwright-${{ hashFiles('.github/workflows/ci.yml') }}
           restore-keys: |
-            ${{ runner.os }}-e2e-
+            ${{ runner.os }}-playwright-
 
-      - name: Install mdbook + mdbook-typst-pdf
-        run: |
-          command -v mdbook           || cargo install mdbook           --locked
-          command -v mdbook-typst-pdf || cargo install mdbook-typst-pdf --locked
+      - name: Install mdbook + mdbook-typst-pdf (prebuilt)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook,mdbook-typst-pdf
 
       - name: Install mdbook-admonish (padamson fork — mdbook-0.5 compat)
         # Stock mdbook-admonish on crates.io isn't mdbook-0.5 compatible
         # yet; tracking upstream PR tommilligan/mdbook-admonish#235.
-        run: cargo install --git https://github.com/padamson/mdbook-admonish --branch feat/mdbook-0.5-compat --force
+        # Built from git source — Swatinem cache speeds up the deps;
+        # `command -v` short-circuits when the binary is already on PATH
+        # from a cache hit on ~/.cargo/bin/ via the cargo cache.
+        run: command -v mdbook-admonish || cargo install --git https://github.com/padamson/mdbook-admonish --branch feat/mdbook-0.5-compat
 
       - name: Refresh mdbook-admonish assets
         working-directory: book
@@ -220,17 +220,9 @@ jobs:
           target: ${{ matrix.target }}
 
       - name: Cache Cargo
-        uses: actions/cache@v5
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          shared-key: release-${{ matrix.target }}
 
       - name: Install parse-changelog
         uses: taiki-e/install-action@v2
