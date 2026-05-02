@@ -1,0 +1,320 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  attestations: write
+
+# Cancel in-progress runs on the same PR; let main and tag runs queue.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  msrv:
+    name: MSRV check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install MSRV toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88"
+
+      - name: Check compilation on MSRV
+        run: cargo check --workspace
+
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build
+        run: cargo build --verbose
+
+      # Browser-based e2e_callouts tests are excluded here; they need a built
+      # book + Node + Playwright driver and run on the dedicated `e2e` job.
+      - name: Run tests
+        run: cargo nextest run --workspace -E 'not binary(e2e_callouts)'
+
+      - name: Run doc-tests
+        if: hashFiles('**/src/lib.rs') != ''
+        run: cargo test --doc --workspace
+
+      - name: Generate documentation
+        run: cargo doc --no-deps --workspace
+
+  e2e:
+    name: Browser-based E2E + book build
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install fonts (for Typst PDF rendering)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-sil-charis fonts-inter fonts-jetbrains-mono
+
+      - name: Cache Cargo + Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cache/ms-playwright/
+          key: ${{ runner.os }}-e2e-${{ hashFiles('**/Cargo.lock', '.github/workflows/ci.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-e2e-
+
+      - name: Install mdbook + mdbook-typst-pdf
+        run: |
+          command -v mdbook           || cargo install mdbook           --locked
+          command -v mdbook-typst-pdf || cargo install mdbook-typst-pdf --locked
+
+      - name: Install mdbook-admonish (padamson fork — mdbook-0.5 compat)
+        # Stock mdbook-admonish on crates.io isn't mdbook-0.5 compatible
+        # yet; tracking upstream PR tommilligan/mdbook-admonish#235.
+        run: cargo install --git https://github.com/padamson/mdbook-admonish --branch feat/mdbook-0.5-compat --force
+
+      - name: Refresh mdbook-admonish assets
+        working-directory: book
+        run: mdbook-admonish install
+
+      - name: Install mdbook-listings (local crate, used as preprocessor)
+        run: cargo install --path . --locked --force
+
+      - name: Build book (HTML + PDF)
+        run: mdbook build book/
+
+      - name: Set up Node (for Playwright driver)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright driver + Chromium
+        run: npx --yes playwright install --with-deps chromium
+
+      - name: Run browser-based E2E tests
+        run: cargo test --test e2e_callouts
+
+      - name: Bundle PDF into the HTML site
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          PDF=$(find book/build/typst-pdf -maxdepth 1 -type f -name '*.pdf' | head -n1)
+          if [ -n "${PDF}" ]; then
+            cp "${PDF}" book/build/html/mdbook-listings.pdf
+          else
+            echo "No PDF found under book/build/typst-pdf — skipping bundle." >&2
+          fi
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: book/build/html
+
+  deploy-book:
+    name: Deploy book to GitHub Pages
+    needs: e2e
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # Allow one concurrent deployment, queued; don't cancel in-progress runs.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  build-release:
+    name: Build release ${{ matrix.target }}
+    needs: e2e
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Get version from tag
+        id: get_version
+        shell: bash
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install parse-changelog
+        uses: taiki-e/install-action@v2
+        with:
+          tool: parse-changelog
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} --verbose
+        continue-on-error: true
+
+      - name: Strip binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          BINARY_NAME=$(cargo metadata --no-deps --format-version 1 | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; bins=[t['name'] for p in pkgs for t in p['targets'] if 'bin' in t['kind']]; print(bins[0] if bins else '')")
+          if [ -n "$BINARY_NAME" ] && [ -f "target/${{ matrix.target }}/release/$BINARY_NAME" ]; then
+            strip "target/${{ matrix.target }}/release/$BINARY_NAME"
+          fi
+        continue-on-error: true
+
+      - name: Create archive (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          BINARY_NAME=$(cargo metadata --no-deps --format-version 1 | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; bins=[t['name'] for p in pkgs for t in p['targets'] if 'bin' in t['kind']]; print(bins[0] if bins else '')")
+          if [ -n "$BINARY_NAME" ] && [ -f "target/${{ matrix.target }}/release/$BINARY_NAME" ]; then
+            tar czf "$BINARY_NAME-v${{ steps.get_version.outputs.version }}-${{ matrix.target }}.tar.gz" -C "target/${{ matrix.target }}/release" "$BINARY_NAME"
+          fi
+        continue-on-error: true
+
+      - name: Create archive (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          BINARY_NAME=$(cargo metadata --no-deps --format-version 1 | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; bins=[t['name'] for p in pkgs for t in p['targets'] if 'bin' in t['kind']]; print(bins[0] if bins else '')")
+          if [ -n "$BINARY_NAME" ] && [ -f "target/${{ matrix.target }}/release/${BINARY_NAME}.exe" ]; then
+            7z a "${BINARY_NAME}-v${{ steps.get_version.outputs.version }}-${{ matrix.target }}.zip" "target/${{ matrix.target }}/release/${BINARY_NAME}.exe"
+          fi
+        continue-on-error: true
+
+      - name: Generate release notes
+        shell: bash
+        run: parse-changelog CHANGELOG.md ${{ steps.get_version.outputs.version }} > release_notes.md
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            *.tar.gz
+            *.zip
+          body_path: release_notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SLSA provenance attestation
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            *.tar.gz
+            *.zip
+        continue-on-error: true
+
+  publish-crates:
+    name: Publish to crates.io
+    needs: build-release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check if token is set
+        id: check_token
+        run: |
+          if [ -z "${{ secrets.CARGO_REGISTRY_TOKEN }}" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "CARGO_REGISTRY_TOKEN not set, skipping crates.io publishing"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish to crates.io
+        if: steps.check_token.outputs.skip == 'false'
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        continue-on-error: true
