@@ -1468,9 +1468,9 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 
 [[package]]
 name = "playwright-rs"
-version = "0.12.2"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fec870cd3e1e49cc4ac7dd87078f007d17e0ada2f3a74d6a253027e8add438f3"
+checksum = "c60330ffb6184297953ef86cb43648c31ffeeedf5a92c80116618c3874361c4e"
 dependencies = [
  "async-trait",
  "base64",
@@ -1478,6 +1478,7 @@ dependencies = [
  "futures-util",
  "glob",
  "image",
+ "libc",
  "mime_guess",
  "parking_lot",
  "regex",
