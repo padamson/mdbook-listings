@@ -88,7 +88,7 @@ criteria = "safe-to-deploy"
 
 [[exemptions.bstr]]
 version = "1.12.1"
-criteria = "safe-to-run"
+criteria = "safe-to-deploy"
 
 [[exemptions.bumpalo]]
 version = "3.20.2"
@@ -815,7 +815,7 @@ version = "0.1.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.similar]]
-version = "2.2.1"
+version = "3.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.slab]]
