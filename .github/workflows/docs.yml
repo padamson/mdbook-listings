@@ -101,9 +101,6 @@ jobs:
         run: npx --yes playwright install --with-deps chromium
 
       - name: Run browser-side E2E tests against the built book
-        # Ignored tests stay ignored here (the slice-1 spec asserts on
-        # callout DOM that lands later in the story); each subsequent ch. 4
-        # slice that emits new DOM removes the matching `#[ignore]`.
         run: cargo test --test e2e_callouts
 
       - name: Bundle PDF into the HTML site

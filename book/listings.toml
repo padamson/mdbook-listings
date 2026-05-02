@@ -281,3 +281,15 @@ tag = "capture-screenshots-v1"
 source = "../tools/capture-screenshots/src/main.rs"
 frozen = "src/listings/capture-screenshots-v1.rs"
 sha256 = "70a10cf6471abbbd7247a855fef0de032d8129aa082fbc046da862297a8c2a09"
+
+[[listing]]
+tag = "capture-screenshots-v2"
+source = "../tools/capture-screenshots/src/main.rs"
+frozen = "src/listings/capture-screenshots-v2.rs"
+sha256 = "f67669e37c3b5b63536f797112bc8b3c4dfa95779f7b9e8c3e097868f0c82361"
+
+[[listing]]
+tag = "e2e-callouts-v3"
+source = "../tests/e2e_callouts.rs"
+frozen = "src/listings/e2e-callouts-v3.rs"
+sha256 = "38418826908a9cc1a93f8756c2d75c167bf16eafdcb1c76c10e45e0db9da5f32"

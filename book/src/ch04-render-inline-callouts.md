@@ -257,6 +257,43 @@ and goes green — closing AC 1 end-to-end.
 
 {{#diff e2e-callouts-v1 e2e-callouts-v2}}
 
+### Slice 4 — label-only inline form
+
+Slice 4 closes AC 3: a callout marker may declare just a label
+with no accompanying body, in which case a numbered badge appears
+but no annotation. As it turns out, the slice-3 emitter already
+handles this — when `body.is_none()` the emitter skips the `<dd>`,
+so a label-only marker renders as a `<dt>` with badge and no
+following `<dd>`. Slice 4's job is therefore a small one: add a
+label-only marker somewhere ch. 4 includes, and add a Playwright
+test that pins the visual contract so future slices can't
+regress it.
+
+The new marker is on the `cli` parse line in the screenshot
+tool's source — a label-only callout, ready for slice 5's
+`{{#callout cli-parse}}` directive to point at:
+
+{{#diff capture-screenshots-v1 capture-screenshots-v2}}
+
+Snapshot (slice 4) of the dl that the splicer now emits below the
+screenshot tool's rendered source — two entries this slice
+(`locator-pick` from slice 3 with a body, plus `cli-parse` added
+just now as a bare anchor):
+
+![Slice 4 rendered dl below the screenshot tool's listing: two badges 1 and 2; the first with a body, the second a bare badge.](images/ch04-slice4-include-callouts.png)
+
+A new e2e test queries the post-render DOM for the
+`callout-cli-parse` `<dt>` and asserts its `nextElementSibling`
+is **not** a `<dd>` — i.e., the label-only form really does
+produce a bare badge:
+
+{{#diff e2e-callouts-v2 e2e-callouts-v3}}
+
+Same caveat as slice 3's snapshot: if you're reading this on a
+build after a later slice, the live render above will show
+whatever shape that slice produced; the image stays as the slice-4
+record.
+
 <!--
 Scaffolding for later slices — sidecar TOML format sketch,
 retrospective application to earlier chapters, and the "What this
