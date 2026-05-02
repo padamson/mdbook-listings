@@ -293,3 +293,21 @@ tag = "e2e-callouts-v3"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v3.rs"
 sha256 = "38418826908a9cc1a93f8756c2d75c167bf16eafdcb1c76c10e45e0db9da5f32"
+
+[[listing]]
+tag = "callout-v3"
+source = "../src/callout.rs"
+frozen = "src/listings/callout-v3.rs"
+sha256 = "2bd120ac9617de32779002a259c85d1386a318cd822e26292b0341acebfe5f90"
+
+[[listing]]
+tag = "main-v7"
+source = "../src/main.rs"
+frozen = "src/listings/main-v7.rs"
+sha256 = "c0887dd96a733a4b8fd23ed530a3143c0379ce7934324c477a2c4f0988f10a82"
+
+[[listing]]
+tag = "e2e-callouts-v4"
+source = "../tests/e2e_callouts.rs"
+frozen = "src/listings/e2e-callouts-v4.rs"
+sha256 = "dc4c8a0e94de8ba08154a9b0943a84b0394e3dd3460d4a3c380379e4833356d8"

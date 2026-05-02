@@ -294,6 +294,71 @@ build after a later slice, the live render above will show
 whatever shape that slice produced; the image stays as the slice-4
 record.
 
+### Slice 5 — cross-reference directive `{{#callout <label>}}`
+
+Slice 5 closes ACs 6 and 10: chapter prose can reference a callout
+by label and the reference renders as the same numbered badge,
+hyperlinked back to the listing-side `<dt id="callout-<label>">`
+anchor; a reference to a label that no marker in the chapter
+defines fails the build with a diagnostic that names the missing
+label.
+
+The splicer in `src/callout.rs` becomes two-pass. The first pass
+walks every fenced block in the chapter and collects a
+`label → ordinal` map (the ordinal is the badge number that label
+got at its first occurrence). The second pass scans chapter prose
+— i.e. the bytes outside any fenced block — for
+`{{#callout <label>}}` directives and replaces each with an inline
+anchor. A reference to a label that's not in the map raises
+`SpliceError::UnknownLabel` and the preprocessor exits non-zero.
+
+The diff itself adds two new CALLOUT markers on slice 5's own new
+functions (`replace_callout_refs` and `render_callout_ref`), so
+the dl that the splicer renders below the diff has fresh anchors
+that this slice's prose then points back at:
+
+{{#diff callout-v2 callout-v3}}
+
+Snapshot (slice 5) of the dl rendered below the diff above. The
+v2→v3 diff's context window picks up `splice-entry` (carried over
+from slice 3 — the new code was added near it) and the two
+brand-new markers from this slice, `cross-ref-replace` and
+`cross-ref-emit`:
+
+![Slice 5 rendered dl below the callout-v2→v3 diff: three badges 1–3 with bodies for splice-entry, cross-ref-replace, and cross-ref-emit.](images/ch04-slice5-diff-callouts.png)
+
+`src/main.rs`'s `preprocess` chain propagates the new
+`SpliceError` out of `splice_callouts`, so the build stops at the
+chapter that contains the offending reference instead of silently
+emitting a broken anchor:
+
+{{#diff main-v6 main-v7}}
+
+The new e2e test queries the prose-side anchor by its
+`data-callout-ref` attribute, asserts its `href` matches the
+listing-side dt id, and confirms the target dt actually exists in
+the rendered DOM:
+
+{{#diff e2e-callouts-v3 e2e-callouts-v4}}
+
+To dogfood the directive in this very chapter: the next sentence's
+badge is a `{{#callout cross-ref-emit}}` directive that this
+slice's splicer resolves to point at the `cross-ref-emit` marker
+introduced by the callout-v2→v3 diff above. Clicking it should
+jump the page to that marker's dt anchor.
+
+See callout {{#callout cross-ref-emit}} for the rendering helper
+this reference resolves to.
+
+Snapshot (slice 5) of the live cross-reference badge embedded in
+the prose paragraph above:
+
+![Slice 5 inline cross-reference badge: a numbered anchor matching the cross-ref-emit listing badge, hyperlinked back to it.](images/ch04-slice5-cross-ref.png)
+
+Same caveat as the earlier slices' snapshots: the image freezes
+slice 5's rendered shape, while the live badge above will track
+later slices' styling changes.
+
 <!--
 Scaffolding for later slices — sidecar TOML format sketch,
 retrospective application to earlier chapters, and the "What this
