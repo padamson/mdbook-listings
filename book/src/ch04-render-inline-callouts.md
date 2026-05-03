@@ -77,6 +77,24 @@ Passthrough and robustness:
     fails the build with a diagnostic that names the missing
     label and the chapter.
 
+Rendered shape (refining ACs 1–3 once the splicer matures past its
+slice-3 placeholder dl shape):
+
+11. The `CALLOUT:` marker comment line is **removed** from the
+    rendered listing in both HTML and PDF — the surrounding code
+    is shown verbatim, but the comment that carries the marker
+    metadata does not appear as visible text in any rendered
+    output.
+12. The numbered badge is **inline** on the line that previously
+    held the marker comment, in both HTML and PDF. In HTML the
+    badge is interactive: hovering it reveals the body text in a
+    popover, and there is no trailing `<dl>`/list element below
+    the listing. In PDF the badge is non-interactive (no hover
+    in print), and the bodies render in a styled note block
+    after the listing (markdown blockquote per slice 6), each
+    entry keyed by the same badge number that appears on the
+    source line.
+
 ## The slice — outside-in narrative outline
 
 The story ships as seven slices plus a refactor and a wrap-up
@@ -93,6 +111,8 @@ to satisfy it.
 | 5 | Cross-reference directive `{{#callout <label>}}` (ACs 6, 10). New playwright-rs test asserting the prose-rendered badge is hyperlinked to the listing-rendered badge anchor. |
 | 6 | typst-pdf emitter — admonish-note block after the code block (AC 2). Non-browser; assertion is visual or assert_cmd-on-PDF-bytes — decided in the slice. |
 | 7 | Sidecar TOML loader + overlay logic (ACs 4, 5). New playwright-rs test asserting a sidecar-only callout renders correctly when the source has no marker. |
+| 8 | HTML rendered-shape pivot (ACs 11, 12 — HTML half). The slice-3 placeholder shape (CALLOUT comment line visible + trailing `<dl>` of bodies) is replaced with the final shape: marker comment is **stripped** from the rendered listing, and an inline interactive `<span class="callout-badge">` is overlaid on the line that previously held it. Hovering the badge reveals the body in a popover (CSS-only or `<details>`-driven). The trailing `<dl>` is removed for HTML. Cross-refs from slice 5 still resolve to the new badge anchor. New playwright-rs test asserting the comment is gone, the inline badge exists, and the body becomes visible on hover. |
+| 9 | PDF rendered-shape pivot (ACs 11, 12 — PDF half). Marker comment is stripped from the PDF listing the same way HTML does. The inline badge is rendered as a typst superscript / inline note marker on the source line. Bodies stay in slice 6's markdown blockquote shape after the listing, each entry keyed by the same badge number. `pdf_callouts` integration test asserts both the inline marker and the blockquote bodies are present in the extracted PDF text. |
 | refactor | Optional. |
 | wrap-up | Update `ROADMAP.md` to mark the callouts primitive shipped, materialize "What this story does not solve". |
 
