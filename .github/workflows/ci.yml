@@ -77,10 +77,11 @@ jobs:
       - name: Build
         run: cargo build --verbose
 
-      # Browser-based e2e_callouts tests are excluded here; they need a built
-      # book + Node + Playwright driver and run on the dedicated `e2e` job.
+      # Browser-based e2e_callouts and pdf_callouts tests are excluded here;
+      # they need a built book (and Playwright / typst-pdf fonts) and run
+      # on the dedicated Linux `e2e` job.
       - name: Run tests
-        run: cargo nextest run --workspace -E 'not binary(e2e_callouts)'
+        run: cargo nextest run --workspace -E 'not binary(e2e_callouts) and not binary(pdf_callouts)'
 
       - name: Run doc-tests
         if: hashFiles('**/src/lib.rs') != ''
@@ -162,6 +163,11 @@ jobs:
 
       - name: Run browser-based E2E tests
         run: cargo test --test e2e_callouts
+
+      - name: Run PDF content tests
+        # Asserts the typst-pdf renderer's callout output. Requires the
+        # PDF that the previous `mdbook build` step produced.
+        run: cargo test --test pdf_callouts
 
       - name: Bundle PDF into the HTML site
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

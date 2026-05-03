@@ -311,3 +311,27 @@ tag = "e2e-callouts-v4"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v4.rs"
 sha256 = "dc4c8a0e94de8ba08154a9b0943a84b0394e3dd3460d4a3c380379e4833356d8"
+
+[[listing]]
+tag = "callout-v4"
+source = "../src/callout.rs"
+frozen = "src/listings/callout-v4.rs"
+sha256 = "6cdcd2581edcf98b9a81c3e87d60bb0e2bf305a79582a463c378db2aa4efd36b"
+
+[[listing]]
+tag = "main-v8"
+source = "../src/main.rs"
+frozen = "src/listings/main-v8.rs"
+sha256 = "0217640983253aa581ed56d13c09f5be66b98b860cc448b31413b3011dd93171"
+
+[[listing]]
+tag = "pdf-callouts-v1"
+source = "../tests/pdf_callouts.rs"
+frozen = "src/listings/pdf-callouts-v1.rs"
+sha256 = "5468e10b9c23814766a743d13f34a126e9dd465036c975e7a5843f28a7015c30"
+
+[[listing]]
+tag = "cargo-toml-v5"
+source = "../Cargo.toml"
+frozen = "src/listings/cargo-toml-v5.toml"
+sha256 = "10ad3056b4dea87fd5af5bca28c42564af341ebbac8a867dda97a6d6c01bd8c2"

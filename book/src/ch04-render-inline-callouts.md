@@ -359,6 +359,96 @@ Same caveat as the earlier slices' snapshots: the image freezes
 slice 5's rendered shape, while the live badge above will track
 later slices' styling changes.
 
+### Slice 6 — typst-pdf emitter
+
+Slice 6 closes AC 2: the same listing rendered to PDF produces a
+styled note for each callout, ordered to match the listing. Until
+this slice the splicer always emitted raw HTML (`<dl class="callouts">`,
+`<a class="callout-ref">`); typst-pdf has no `<dl>`/`<a>` support
+in its markdown→typst conversion, so PDF builds rendered the
+callouts as escaped raw HTML instead of styled note blocks. Slice
+6 makes the splicer renderer-aware: HTML stays unchanged, but for
+the typst-pdf renderer the same parser output is emitted as a
+markdown blockquote — bold ordinal + label, optional em-dash
+plus body — which typst-pdf converts to a quoted note block in
+the PDF.
+
+A new `SupportedRenderer` enum (Html / TypstPdf) is the dispatch
+key. The preprocessor reads `ctx.renderer` from the JSON envelope
+mdbook hands it, looks up the variant once at the top of
+`preprocess()`, and threads it through `splice_callouts` to the
+two leaf emitters (`render_callout_list` and `render_callout_ref`).
+Inputs that name an unrecognised renderer (e.g. a third-party
+backend that mdbook-listings hasn't been taught about) cause the
+preprocessor to error rather than silently fall back to one of
+the known emitters — matching what `supports()` already advertises.
+
+The slice-6 production-code change in `src/callout.rs` is shown
+as a curated snippet rather than the full v3→v4 diff. The full
+diff includes new unit-test fixtures whose embedded triple-backtick
+strings overload the typst-pdf markdown→typst converter; the
+snippet captures the new enum, the renderer-aware dispatcher, and
+the new PDF emitter — together they're the entire user-visible
+production-code change in this slice:
+
+```rust
+{{#include listings/callout-pdf-emit-snippet.rs}}
+```
+
+The snippet itself dogfoods a CALLOUT marker on the new
+`render_callout_list_pdf` function (`pdf-emit`), so the splicer
+emits a `<dl class="callouts">` directly below the snippet above.
+Snapshot (slice 6) of that HTML dl as it looked the day slice 6
+shipped:
+
+![Slice 6 rendered dl below the pdf-emit snippet: one badge with body explaining the new typst-pdf emitter shape.](images/ch04-slice6-snippet-callouts.png)
+
+`src/main.rs`'s `preprocess` resolves the renderer once and passes
+it through:
+
+{{#diff main-v7 main-v8}}
+
+A new dev-dep, [`pdf-extract`](https://crates.io/crates/pdf-extract)
+(pure-Rust, no system deps), drives the PDF integration test —
+robust to typst version bumps because it asserts on body-text
+substrings rather than byte-exact PDF structure. The test is
+gated to the Linux CI job that has the typst fonts installed and
+the just-built PDF available; the cross-platform `Test on …` jobs
+exclude both `e2e_callouts` and `pdf_callouts` since they need a
+built book.
+
+`Cargo.toml` gains the single `pdf-extract` `[dev-dependencies]`
+entry — kept narrow because the test only needs the crate's
+`extract_text_from_mem` function:
+
+{{#diff cargo-toml-v4 cargo-toml-v5}}
+
+The new test file is `tests/pdf_callouts.rs`, mirroring the
+naming convention of the other story-scoped integration test
+files (`tests/e2e_callouts.rs`, `tests/diffs.rs`). It reads the
+just-built PDF off disk, runs it through `pdf-extract`, and
+asserts that two known callout body fragments — `splice-entry`'s
+"HTML splicer entry point" and `cross-ref-emit`'s "Renders the
+prose-side anchor" — appear in the extracted text:
+
+```rust
+{{#include listings/pdf-callouts-v1.rs}}
+```
+
+Snapshot (slice 6) of one PDF page that renders the slice 5
+callout-v2→v3 diff. The dl that the HTML emitter produces below
+the diff appears here as a quoted note block — three entries,
+bold ordinal + label, em-dash + body — directly under the diff
+fence:
+
+![Slice 6 rendered PDF page: a typst-pdf rendering of the callout-v2→v3 diff with three blockquote entries below it, one per CALLOUT marker.](images/ch04-slice6-pdf-callouts.png)
+
+The visual on this page is a frozen snapshot of slice 6's PDF
+output; the page number itself shifts as the book grows. CI runs
+`cargo test --test pdf_callouts` against the just-built PDF on
+every push, so any regression in the PDF emitter surfaces as a
+failed assertion rather than a quietly-broken render.
+
 <!--
 Scaffolding for later slices — sidecar TOML format sketch,
 retrospective application to earlier chapters, and the "What this
