@@ -108,11 +108,14 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          # v2: invalidates the prior cache that contained playwright-rs's
-          # compiled binary with PLAYWRIGHT_DRIVER_DIR baked in but no driver
-          # cache; the next run redownloads the driver via build.rs and
-          # populates both this cache and the playwright cache fresh.
-          shared-key: e2e-v2
+          # v3: rustc toolchain bumped on the GitHub-hosted runner image
+          # since v2 was populated; Swatinem fell back to a stale cargo
+          # cache whose compiled playwright-rs binary baked in a
+          # PLAYWRIGHT_DRIVER_DIR pointing at a driver that the current
+          # runner's drivers/ directory no longer contains. Bumping forces
+          # a clean rebuild that re-runs build.rs and re-downloads the
+          # driver under the new toolchain.
+          shared-key: e2e-v3
 
       # Cache the Playwright browser binaries (~/.cache/ms-playwright/) and
       # the playwright-rs driver (drivers/ at workspace root). The driver is
