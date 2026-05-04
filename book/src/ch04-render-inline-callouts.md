@@ -97,7 +97,7 @@ slice-3 placeholder dl shape):
 
 ## The slice — outside-in narrative outline
 
-The story ships as nine slices plus a refactor and a wrap-up
+The story ships as ten slices plus a refactor and a wrap-up
 chore. Slice 1 is the outermost layer — a browser-driving
 acceptance test — and the inner slices fill in the layers needed
 to satisfy it.
@@ -111,8 +111,9 @@ to satisfy it.
 | 5 | Cross-reference directive `{{#callout <label>}}` (ACs 6, 10). New playwright-rs test asserting the prose-rendered badge is hyperlinked to the listing-rendered badge anchor. |
 | 6 | typst-pdf emitter — admonish-note block after the code block (AC 2). Non-browser; assertion is visual or assert_cmd-on-PDF-bytes — decided in the slice. |
 | 7 | HTML rendered-shape pivot (ACs 11, 12 — HTML half). The slice-3 placeholder shape (CALLOUT comment line visible + trailing `<dl>` of bodies) is replaced with the final shape: marker comment is **stripped** from the rendered listing, and an inline interactive `<span class="callout-badge">` is overlaid on the line that previously held it. Hovering the badge reveals the body in a popover (CSS-only or `<details>`-driven). The trailing `<dl>` is removed for HTML. Cross-refs from slice 5 still resolve to the new badge anchor. New playwright-rs test asserting the comment is gone, the inline badge exists, and the body becomes visible on hover. |
-| 8 | PDF rendered-shape pivot (ACs 11, 12 — PDF half). Marker comment is stripped from the PDF listing the same way HTML does. The inline badge is rendered as a typst superscript / inline note marker on the source line. Bodies stay in slice 6's markdown blockquote shape after the listing, each entry keyed by the same badge number. `pdf_callouts` integration test asserts both the inline marker and the blockquote bodies are present in the extracted PDF text. |
-| 9 | Sidecar TOML loader + overlay logic (ACs 4, 5). New playwright-rs test asserting a sidecar-only callout renders correctly when the source has no marker. Builds on top of the slice 7/8 final rendered shape, so the sidecar tests are written against the final selectors from day one. |
+| 8 | Screenshot-tool subcommands and include-block locator anchors. The preprocessor intercepts `{{#include listings/TAG.ext}}` directives before mdbook's built-in `links` preprocessor runs and emits a `<div data-listing-tag="TAG">` anchor after the rendered fenced block — mirroring what `{{#diff}}` already does. The capture-screenshots tool is split into two subcommands matching the two listing-rendering shapes (`include LISTING` and `diff LEFT RIGHT`). No new acceptance criterion (this is tooling, not user-visible book behavior). |
+| 9 | PDF rendered-shape pivot (ACs 11, 12 — PDF half). Marker comment is stripped from the PDF listing the same way HTML does. The inline badge is rendered as a typst superscript / inline note marker on the source line. Bodies stay in slice 6's markdown blockquote shape after the listing, each entry keyed by the same badge number. `pdf_callouts` integration test asserts both the inline marker and the blockquote bodies are present in the extracted PDF text. |
+| 10 | Sidecar TOML loader + overlay logic (ACs 4, 5). New playwright-rs test asserting a sidecar-only callout renders correctly when the source has no marker. Builds on top of the slice 7/9 final rendered shape, so the sidecar tests are written against the final selectors from day one. |
 | refactor | Optional. |
 | wrap-up | Update `ROADMAP.md` to mark the callouts primitive shipped, materialize "What this story does not solve". |
 
@@ -412,8 +413,16 @@ the new PDF emitter — together they're the entire user-visible
 production-code change in this slice:
 
 ```rust
-{{#include listings/callout-pdf-emit-snippet.rs}}
+{{#include snippets/callout-pdf-emit-snippet-v1.rs}}
 ```
+
+The file lives under `book/src/snippets/` rather than
+`book/src/listings/` because it is a hand-curated excerpt rather
+than a frozen tag — the `mdbook-listings freeze` discipline only
+applies to byte-exact mirrors of an upstream source file. Snippets
+are versioned by convention (`-v1`, `-v2`, …) so a later slice
+that needs to extend the curated excerpt mints a new file rather
+than mutating an earlier slice's frozen-in-time reference.
 
 The snippet itself dogfoods a CALLOUT marker on the new
 `render_callout_list_pdf` function (`pdf-emit`), so the splicer
@@ -468,6 +477,97 @@ output; the page number itself shifts as the book grows. CI runs
 `cargo test --test pdf_callouts` against the just-built PDF on
 every push, so any regression in the PDF emitter surfaces as a
 failed assertion rather than a quietly-broken render.
+
+### Slice 7 — HTML rendered-shape pivot
+
+Slice 7 closes the HTML half of ACs 11 and 12. The slice-3
+placeholder shape (CALLOUT comment line visible in the listing
+plus a trailing `<dl class="callouts">` of bodies) is replaced
+with the final shape:
+
+- The marker comment is **stripped** from the rendered listing
+  for `{{#include}}` blocks (every recognised language with an
+  inline-marker syntax). Diff blocks pass through unchanged so
+  the diff format stays valid; the canonical badge anchor lives
+  on the include, not on the diff history.
+- The trailing `<dl>` is gone. In its place an absolutely-
+  positioned `<div class="callout-overlay">` sibling holds one
+  interactive `<button class="callout-badge">` per marker, each
+  carrying the post-strip `data-callout-line` so CSS positions it
+  on the line that previously held the marker comment.
+- The vertical positioning is completely JavaScript-free. The Rust
+  HTML emitter calculates the total lines in the code block and
+  injects `--callout-listing-lines` directly into the DOM, which
+  the bundled CSS uses to perfectly align the badge to the line.
+- Hovering or keyboard-focusing the badge reveals its body in a
+  popover (a sibling `<div class="callout-body">`). The entrance
+  and exit animations are choreographed purely in CSS using
+  `clip-path`, `color`, and `visibility` transitions (eliminating
+  the need for abrupt `[hidden]` attribute toggles). Label-only
+  markers emit no popover at all — just the badge.
+
+Slice 7 mints a new version of the slice-6 snippet,
+`callout-pdf-emit-snippet-v2`, that extends the curated excerpt
+with the two cross-ref-related functions (`replace_callout_refs`
+and `render_callout_ref`) so the callout markers attached to them
+(`cross-ref-replace`, `cross-ref-emit`) now have rendered
+`<button>` anchors. Slice 5's `{{#callout cross-ref-emit}}`
+cross-reference resolves to that anchor:
+
+```rust
+{{#include snippets/callout-pdf-emit-snippet-v2.rs}}
+```
+
+Snippets are versioned by convention because slice 6's narrative
+references v1 and that text shouldn't silently drift when later
+slices extend the excerpt; minting a new file preserves the
+slice-6 reference verbatim.
+
+To dogfood the label-only form (`cli-parse`) under the new shape,
+the slice-4 frozen `capture-screenshots-v2.rs` is included here
+as well. The `// CALLOUT: cli-parse` line is stripped from the
+rendered listing; in its place the splicer's overlay div holds a
+bare badge button on the `Cli::parse()` line:
+```rust
+{{#include listings/capture-screenshots-v2.rs}}
+```
+
+`src/callout.rs` gains the new `splice_callout_lists_html`
+emitter that walks each fenced block, calls `strip_marker_lines`
+to rewrite the body without marker comments, and appends
+`render_callout_overlay_html` after the closing fence. The PDF
+emitter (`splice_callout_lists_pdf`) is unchanged from slice 6 —
+slice 9 is the PDF-side rendered-shape pivot.
+
+The bundled CSS asset (`assets/mdbook-listings.css`) gains the
+positioning + hover rules for the new shape. The `install`
+command writes this file into the book's theme directory just
+like before; users who already installed mdbook-listings need
+to rerun `mdbook-listings install` to pick up the slice-7 CSS.
+
+Snapshot (slice 7) of the rendered HTML for the screenshot tool
+include — the marker comment is gone and the badge sits at the
+right margin of its line:
+
+![Slice 7 rendered HTML for capture-screenshots-v2 include: marker comment stripped, two badges (one with body for locator-pick, one bare for cli-parse) overlaid on their respective lines.](images/ch04-slice7-overlay.png)
+
+The dl is gone; the badges are interactive; the body popover
+shows on hover. Visual reference is from the day slice 7 shipped
+— later slices may restyle.
+
+The screenshot above was produced by the workspace tool
+`tools/capture-screenshots/`, which slice 7 also evolved: it now
+takes a positional listing tag (`capture-screenshots
+e2e-callouts-v5`) and finds the listing in the rendered HTML via the
+`<div data-listing-tag>` anchor that the diff splicer just learned to
+emit, with a callout-badge fallback for `{{#include}}` blocks whose
+source has at least one `CALLOUT:` marker. That fallback has a blind
+spot — listings without callouts and not on the right side of any
+diff aren't addressable. Slice 8 closes that gap by re-engineering
+the tool into two subcommands (`include LISTING` and
+`diff LEFT RIGHT`) backed by a preprocessor pass that injects the
+same kind of locator anchor after every `{{#include listings/...}}`
+block.
 
 <!--
 Scaffolding for later slices — sidecar TOML format sketch,

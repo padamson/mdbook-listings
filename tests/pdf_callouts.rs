@@ -6,6 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 
 #[test]
+#[ignore = "slow (~20s): extracts full book PDF — run with `cargo test --test pdf_callouts -- --ignored`"]
 fn ch04_pdf_contains_callout_bodies_emitted_by_pdf_splicer() {
     let pdf_path = pdf_path();
     let bytes =

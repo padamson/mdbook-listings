@@ -271,7 +271,16 @@ pub fn splice_chapter(
         out.push_str(&content[cursor..d.span.start]);
         out.push_str("```diff\n");
         out.push_str(&body);
-        out.push_str("```");
+        out.push_str("```\n");
+        // Locator anchor for the capture-screenshots tool. typst-pdf strips
+        // raw <div> elements from its markdown→typst conversion (verified
+        // by extracting text from the built PDF and confirming zero leaked
+        // occurrences), so this stays unconditional rather than gated on
+        // renderer.
+        out.push_str(&format!(
+            "<div data-listing-tag=\"{}\" aria-hidden=\"true\"></div>",
+            d.right,
+        ));
         cursor = d.span.end;
     }
     out.push_str(&content[cursor..]);
@@ -592,6 +601,10 @@ mod tests {
         assert!(
             !out.contains("{{#diff"),
             "directive should be consumed; got:\n{out}",
+        );
+        assert!(
+            out.contains("data-listing-tag=\"right-tag\""),
+            "expected listing-tag anchor for the right operand; got:\n{out}",
         );
     }
 

@@ -50,6 +50,10 @@ cd book && mdbook serve
 
 # After editing src/*.rs, the installed preprocessor is stale. Reinstall:
 cargo install --path . --locked --force
+
+# After editing assets/mdbook-listings.css, the CSS embedded in the binary is stale.
+# To see changes without a full recompile, bypass the binary and copy directly:
+cp assets/mdbook-listings.css book/mdbook-listings.css
 ```
 
 ## Release process

@@ -8,6 +8,7 @@ description = "Managed code listings for mdbook: inline callouts, freezing, and 
 repository = "https://github.com/padamson/mdbook-listings"
 categories = ["command-line-utilities", "text-processing"]
 keywords = ["mdbook", "preprocessor", "documentation", "code-listing"]
+exclude = ["book/"]
 
 [dependencies]
 anyhow = "1"

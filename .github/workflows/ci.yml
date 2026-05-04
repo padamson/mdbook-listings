@@ -169,8 +169,10 @@ jobs:
 
       - name: Run PDF content tests
         # Asserts the typst-pdf renderer's callout output. Requires the
-        # PDF that the previous `mdbook build` step produced.
-        run: cargo test --test pdf_callouts
+        # PDF that the previous `mdbook build` step produced. The test is
+        # `#[ignore]`d locally (~20s extracting the full book PDF) and
+        # explicitly opted into here.
+        run: cargo test --test pdf_callouts -- --ignored
 
       - name: Bundle PDF into the HTML site
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

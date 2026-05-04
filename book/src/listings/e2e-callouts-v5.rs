@@ -146,7 +146,7 @@ async fn callout_marker_comment_is_stripped_and_body_reveals_on_hover() {
                 const body = document.getElementById('callout-body-cross-ref-emit'); \
                 if (!body) return 'NO_BODY'; \
                 const cs = window.getComputedStyle(body); \
-                return cs.visibility === 'hidden' ? 'HIDDEN' : 'VISIBLE'; \
+                return cs.display === 'none' ? 'HIDDEN' : 'VISIBLE'; \
             })()",
         )
         .await

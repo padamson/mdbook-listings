@@ -186,7 +186,7 @@ fn splice_callout_lists_html(content: &str) -> String {
         if callouts.is_empty() {
             return;
         }
-        let (rewritten_body, post_strip_lines, total_lines) = strip_marker_lines(block_text, info);
+        let (rewritten_body, post_strip_lines) = strip_marker_lines(block_text, info);
         // Find the opening fence line to copy verbatim, then the rewritten
         // body, then the closing fence line that follows.
         let pre_fence = &content[cursor..body_start];
@@ -201,7 +201,6 @@ fn splice_callout_lists_html(content: &str) -> String {
         out.push_str(&render_callout_overlay_html(
             &callouts,
             &post_strip_lines,
-            total_lines,
             &mut emitted_anchor,
         ));
         out.push('\n');
@@ -215,7 +214,7 @@ fn splice_callout_lists_html(content: &str) -> String {
 /// post-strip 1-based line numbers each marker now lands on (i.e. the
 /// line that took its place after the strip — typically the next non-
 /// marker code line).
-fn strip_marker_lines(block_text: &str, info: &str) -> (String, Vec<usize>, usize) {
+fn strip_marker_lines(block_text: &str, info: &str) -> (String, Vec<usize>) {
     let prefix = comment_prefix_for_language(info);
     let lines: Vec<&str> = block_text.split_inclusive('\n').collect();
     let mut out = String::with_capacity(block_text.len());
@@ -238,7 +237,7 @@ fn strip_marker_lines(block_text: &str, info: &str) -> (String, Vec<usize>, usiz
             emitted_count += 1;
         }
     }
-    (out, post_strip_lines, emitted_count)
+    (out, post_strip_lines)
 }
 
 fn closing_fence_text(content: &str, close_end: usize) -> &str {
@@ -524,7 +523,6 @@ fn render_callout_list(
 fn render_callout_overlay_html(
     callouts: &[Callout],
     post_strip_lines: &[usize],
-    total_lines: usize,
     emitted_anchor: &mut HashSet<String>,
 ) -> String {
     let mut s = String::new();
@@ -539,21 +537,18 @@ fn render_callout_overlay_html(
             String::new()
         };
         s.push_str(&format!(
-            "  <div class=\"callout-entry\" data-callout-line=\"{line}\" \
-             style=\"--callout-line: {line}; --callout-listing-lines: {total_lines};\">\n",
-        ));
-        s.push_str(&format!(
-            "    <button type=\"button\" class=\"callout-badge\"{id_attr} \
+            "  <button type=\"button\" class=\"callout-badge\"{id_attr} \
              data-callout-badge=\"{label_esc}\" data-callout-ordinal=\"{ordinal}\" \
-             aria-describedby=\"callout-body-{label_esc}\">{ordinal}</button>\n",
+             data-callout-line=\"{line}\" \
+             aria-describedby=\"callout-body-{label_esc}\" \
+             style=\"--callout-line: {line};\">{ordinal}</button>\n",
         ));
         if let Some(body) = &c.body {
             s.push_str(&format!(
-                "    <div class=\"callout-body\" id=\"callout-body-{label_esc}\" role=\"tooltip\">{}</div>\n",
+                "  <div class=\"callout-body\" id=\"callout-body-{label_esc}\" role=\"tooltip\" hidden>{}</div>\n",
                 html_escape(body),
             ));
         }
-        s.push_str("  </div>\n");
     }
     s.push_str("</div>");
     s

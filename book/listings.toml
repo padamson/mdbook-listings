@@ -335,3 +335,21 @@ tag = "cargo-toml-v5"
 source = "../Cargo.toml"
 frozen = "src/listings/cargo-toml-v5.toml"
 sha256 = "10ad3056b4dea87fd5af5bca28c42564af341ebbac8a867dda97a6d6c01bd8c2"
+
+[[listing]]
+tag = "callout-v5"
+source = "../src/callout.rs"
+frozen = "src/listings/callout-v5.rs"
+sha256 = "5a8363118aaea2399a0e126e7c60ab3305e87f46564f48f8fd04ef268fa40fa9"
+
+[[listing]]
+tag = "e2e-callouts-v5"
+source = "../tests/e2e_callouts.rs"
+frozen = "src/listings/e2e-callouts-v5.rs"
+sha256 = "5759bfa7f07f5886f24568e8799d7ce9cbded2ec84c3ea55f2760b6b1de60667"
+
+[[listing]]
+tag = "listings-css-v2"
+source = "../assets/mdbook-listings.css"
+frozen = "src/listings/listings-css-v2.css"
+sha256 = "001f6ac8f989cfe8050cbd3245e0f0ac79c1aff7de6b205a1b0badcf5d3991c0"

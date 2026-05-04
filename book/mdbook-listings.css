@@ -1,10 +1,165 @@
-/* mdbook-listings — placeholder CSS.
+/* mdbook-listings — callout overlay styles (slice 7).
  *
- * The Render Inline Callouts story (ch. 4) will replace this with the real
- * styling for callout badges and <details> blocks. Until then the asset
- * exists only so the install pipeline has something to ship and so the
- * build-time bundling can be smoke-tested.
+ * The HTML splicer strips `// CALLOUT: <label> <body>` lines from the
+ * rendered listing and emits a sibling `<div class="callout-overlay">`
+ * containing one `<div class="callout-entry">` per marker. Each entry
+ * carries `data-callout-line` and `--callout-line` (post-strip 1-based
+ * line number). The HTML splicer also injects `--callout-listing-lines`
+ * on each entry with the pre's actual line count so the CSS formula can
+ * position the badge on the correct line.
  *
- * Sentinel string used by unit tests to confirm the bundled bytes are the
- * expected build-time asset: mdbook-listings-css-v1
+ * Sentinel string used by unit tests to confirm the bundled bytes are
+ * the expected build-time asset: mdbook-listings-css-v1
  */
+
+.callout-overlay {
+  position: relative;
+  height: 0;
+  margin-top: 0;
+  pointer-events: none;
+  z-index: 2;
+  /* Match mdbook's <pre> font metrics so em-based line counting works perfectly */
+  font-size: 0.875em;
+  line-height: 1.5;
+}
+
+/* One entry per callout marker. Sized to the badge (1.5 em tall);
+ * the body is absolutely positioned inside so it never shifts the
+ * badge when it appears. `--callout-listing-lines` is set by JS. */
+.callout-entry {
+  position: absolute;
+  right: 0;
+  top: calc(
+    (var(--callout-line, 1) - 1 - var(--callout-listing-lines, 0)) * 1.5em - 0.75em
+  );
+  height: 1.5em;
+  pointer-events: none;
+}
+
+.callout-badge {
+  position: absolute;
+  right: 0;
+  top: 0;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5em;
+  height: 1.5em;
+  padding: 0 0.4em;
+  border: 1px solid currentColor;
+  border-radius: 0.75em;
+  background: var(--bg, #fff);
+  color: var(--fg, #333);
+  font-family: var(--mono-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.85em;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.callout-badge:hover,
+.callout-badge:focus-visible {
+  background: var(--fg, #333);
+  color: var(--bg, #fff);
+  outline: none;
+}
+
+/* Visually distinguish bare anchor badges from interactive popover badges */
+.callout-badge:only-child {
+  cursor: default;               /* No pointer finger on hover */
+  background: transparent;       /* Hollow look */
+  border: 1px dashed currentColor;
+  opacity: 0.6;                  /* Slightly muted */
+}
+
+/* Bare badges shouldn't invert on hover since they aren't interactive */
+.callout-badge:only-child:hover,
+.callout-badge:only-child:focus-visible {
+  background: transparent;
+  color: var(--fg, #333);
+}
+
+/* Body box: absolutely positioned to the left of the badge, vertically
+ * centred on the entry (and therefore on the badge). */
+.callout-body {
+  position: absolute;
+  right: 2em;
+  top: 50%;
+  transform: translateY(-50%);
+  width: max-content;
+  max-width: 28em;
+  padding: 0.5em 0.75em;
+  border: 1px solid var(--theme-popup-border, #ccc);
+  border-radius: 0.25em;
+  background: var(--theme-popup-bg, #fff);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 0.9em;
+  pointer-events: auto;
+  white-space: normal;
+
+  /* Base state (transition OUT): Box is clipped to the right edge (arrow is
+   * still visible due to negative right inset, but box is 0-width), text
+   * is transparent, and visibility is hidden. */
+  visibility: hidden;
+  clip-path: inset(-2em -2em -2em 100%);
+  color: transparent;
+
+  /* Transition OUT choreography:
+   * 1. color fades out instantly
+   * 2. clip-path retracts box (waits 0.15s for text to fade)
+   * 3. visibility becomes hidden (waits 0.35s for both to finish) */
+  transition: color 0.15s ease-out, clip-path 0.2s ease-out 0.15s, visibility 0s 0.35s;
+}
+
+/* Right-pointing triangle arrow on the body's right edge.
+ * ::after draws the border colour; ::before fills it with the body
+ * background so the arrow looks outlined rather than solid. */
+.callout-body::after {
+  content: '';
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 0.35em solid transparent;
+  border-bottom: 0.35em solid transparent;
+  border-left: 0.5em solid var(--theme-popup-border, #ccc);
+}
+
+.callout-body::before {
+  content: '';
+  position: absolute;
+  left: calc(100% - 1px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: calc(0.35em - 1px) solid transparent;
+  border-bottom: calc(0.35em - 1px) solid transparent;
+  border-left: calc(0.5em - 1px) solid var(--theme-popup-bg, #fff);
+  z-index: 1;
+}
+
+/* Hover/focus state (transition IN): Adjacent-sibling selector works because
+ * button precedes div in DOM order inside .callout-entry. */
+.callout-entry .callout-badge:hover + .callout-body,
+.callout-entry .callout-badge:focus-visible + .callout-body {
+  visibility: visible;
+  clip-path: inset(-2em -2em -2em -2em);
+  color: var(--fg, #333);
+
+  /* Transition IN choreography:
+   * 1. visibility becomes visible instantly
+   * 2. clip-path expands box (draws line instantly)
+   * 3. color fades in (waits 0.2s for box to draw) */
+  transition: visibility 0s, clip-path 0.2s ease-out, color 0.15s ease-out 0.2s;
+}
+
+/* Cross-reference badge in chapter prose (slice 5). Same circle shape
+ * as the listing-side badge but static-positioned inline with text. */
+.callout-badge.callout-ref {
+  position: static;
+  margin: 0 0.15em;
+}

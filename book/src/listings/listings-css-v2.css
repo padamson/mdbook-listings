@@ -1,0 +1,94 @@
+/* mdbook-listings — callout overlay styles (slice 7).
+ *
+ * The HTML splicer strips `// CALLOUT: <label> <body>` lines from the
+ * rendered listing and emits a sibling `<div class="callout-overlay">`
+ * containing one `<button class="callout-badge">` per marker plus an
+ * optional `<div class="callout-body">` popover. Each badge carries
+ * `data-callout-line` and a `--callout-line` CSS custom property
+ * holding the post-strip 1-based line number.
+ *
+ * Sentinel string used by unit tests to confirm the bundled bytes are
+ * the expected build-time asset: mdbook-listings-css-v1
+ */
+
+.callout-overlay {
+  position: relative;
+  height: 0;
+  margin-top: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.callout-badge {
+  position: absolute;
+  right: 0.5em;
+  /* Position the badge upward into the preceding pre. The badge's
+   * line (computed from --callout-line) is offset above the overlay's
+   * natural position; --callout-listing-lines (set by JS in a future
+   * slice or guessed at by the author's CSS override) lets us measure
+   * how far up to go. */
+  top: calc(
+    (var(--callout-line, 1) - 1 - var(--callout-listing-lines, 0)) *
+      var(--callout-line-height, 1.45em) - 0.25em
+  );
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5em;
+  height: 1.5em;
+  padding: 0 0.4em;
+  border: 1px solid currentColor;
+  border-radius: 0.75em;
+  background: var(--bg, #fff);
+  color: var(--fg, #333);
+  font-family: var(--mono-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.85em;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.callout-badge:hover,
+.callout-badge:focus-visible {
+  background: var(--inline-code-color, #f0f0f0);
+  outline: none;
+}
+
+.callout-body {
+  position: absolute;
+  right: 0.5em;
+  top: calc(
+    (var(--callout-line, 1) - var(--callout-listing-lines, 0)) *
+      var(--callout-line-height, 1.45em) + 0.25em
+  );
+  max-width: min(36em, 70vw);
+  padding: 0.5em 0.75em;
+  border: 1px solid var(--theme-popup-border, #ccc);
+  border-radius: 0.25em;
+  background: var(--theme-popup-bg, #fff);
+  color: var(--fg, #333);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 0.9em;
+  pointer-events: auto;
+  z-index: 3;
+}
+
+/* Pure-CSS hover/focus reveal: the [hidden] attribute keeps the body
+ * out of layout by default; the rule below shows it when the preceding
+ * badge is hovered or keyboard-focused. */
+.callout-overlay .callout-badge:hover + .callout-body[hidden],
+.callout-overlay .callout-badge:focus-visible + .callout-body[hidden] {
+  display: block;
+}
+
+.callout-overlay .callout-body[hidden] {
+  display: none;
+}
+
+/* Cross-reference badge in chapter prose (slice 5). The same shape as
+ * the listing-side badge but rendered inline with surrounding text. */
+.callout-badge.callout-ref {
+  position: static;
+  margin: 0 0.15em;
+}
