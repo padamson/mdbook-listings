@@ -346,7 +346,7 @@ sha256 = "5a8363118aaea2399a0e126e7c60ab3305e87f46564f48f8fd04ef268fa40fa9"
 tag = "e2e-callouts-v5"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v5.rs"
-sha256 = "5759bfa7f07f5886f24568e8799d7ce9cbded2ec84c3ea55f2760b6b1de60667"
+sha256 = "6a3cfcc81e7a9cfcd4022498bf96af2ec7b08d5e0c26206778ece7c711eda782"
 
 [[listing]]
 tag = "listings-css-v2"
@@ -394,4 +394,16 @@ sha256 = "54048f86b83515858460891aa43286ae8d121649be4891b8ad5b6f2245e377ae"
 tag = "capture-screenshots-v3"
 source = "../tools/capture-screenshots/src/main.rs"
 frozen = "src/listings/capture-screenshots-v3.rs"
-sha256 = "13f69eedd3702419b1670742953bc7f568ce41c246361aa47e302764e302420d"
+sha256 = "95a4075e52b61df071f20eff1ce4455ab5347bf3872dfb808b8cb015d9873244"
+
+[[listing]]
+tag = "callout-v6"
+source = "../src/callout.rs"
+frozen = "src/listings/callout-v6.rs"
+sha256 = "49c8850572aa8faf25f8396fe4dddd5eb0c68cef02dc92032150b4194a31e86c"
+
+[[listing]]
+tag = "e2e-callouts-v6"
+source = "../tests/e2e_callouts.rs"
+frozen = "src/listings/e2e-callouts-v6.rs"
+sha256 = "88ec5e9273465447c841e661062abb37cdb5b872807b85a5556c413a3f3a337a"

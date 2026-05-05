@@ -23,7 +23,7 @@
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
-use playwright_rs::Playwright;
+use playwright_rs::{Playwright, locator};
 use tracing_subscriber::EnvFilter;
 
 const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
@@ -139,7 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let png = page
-        .locator("#__capture_target__")
+        .locator(locator!("#__capture_target__"))
         .await
         .screenshot(None)
         .await?;

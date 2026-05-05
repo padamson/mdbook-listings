@@ -112,6 +112,8 @@ to satisfy it.
 | 6 | typst-pdf emitter — admonish-note block after the code block (AC 2). Non-browser; assertion is visual or assert_cmd-on-PDF-bytes — decided in the slice. |
 | 7 | HTML rendered-shape pivot (ACs 11, 12 — HTML half). The slice-3 placeholder shape (CALLOUT comment line visible + trailing `<dl>` of bodies) is replaced with the final shape: marker comment is **stripped** from the rendered listing, and an inline interactive `<span class="callout-badge">` is overlaid on the line that previously held it. Hovering the badge reveals the body in a popover (CSS-only or `<details>`-driven). The trailing `<dl>` is removed for HTML. Cross-refs from slice 5 still resolve to the new badge anchor. New playwright-rs test asserting the comment is gone, the inline badge exists, and the body becomes visible on hover. |
 | 8 | Screenshot-tool subcommands and include-block locator anchors. The preprocessor intercepts `\{{#include listings/TAG.ext}}` directives before mdbook's built-in `links` preprocessor runs and emits a `<div data-listing-tag="TAG">` anchor after the rendered fenced block — mirroring what `\{{#diff}}` already does. The capture-screenshots tool is split into two subcommands matching the two listing-rendering shapes (`include LISTING` and `diff LEFT RIGHT`). No new acceptance criterion (this is tooling, not user-visible book behavior). |
+| refactor (e2e migration) | Adopt `playwright-rs-macros` `locator!()` for compile-time selector validation, then migrate every JS-string `evaluate_value` sweep in `tests/e2e_callouts.rs` to playwright-rs `Locator` + `expect(...).to_have_*()` assertions. Surfaces a slice-8 dedup bug (duplicate `id="callout-body-LABEL"` when the same label appears in two blocks) and fixes it. No new ACs; pure test-quality + small splicer hardening. |
+| refactor (test infra) | Wire `tracing_subscriber::fmt()` into the e2e test binary so playwright-rs's `#[tracing::instrument]` spans surface in test output; add `playwright-rs-trace` to record traces of failing runs (drop into Playwright trace viewer); share one `Playwright::launch` + `Browser` across the test binary with per-test `BrowserContext` for storage isolation, cutting per-test browser overhead. |
 | 9 | PDF rendered-shape pivot (ACs 11, 12 — PDF half). Marker comment is stripped from the PDF listing the same way HTML does. The inline badge is rendered as a typst superscript / inline note marker on the source line. Bodies stay in slice 6's markdown blockquote shape after the listing, each entry keyed by the same badge number. `pdf_callouts` integration test asserts both the inline marker and the blockquote bodies are present in the extracted PDF text. |
 | 10 | Sidecar TOML loader + overlay logic (ACs 4, 5). New playwright-rs test asserting a sidecar-only callout renders correctly when the source has no marker. Builds on top of the slice 7/9 final rendered shape, so the sidecar tests are written against the final selectors from day one. |
 | refactor | Optional. |
@@ -672,6 +674,53 @@ instrumentation merges. Local debugging gets richer for free with
 no per-callsite logging.
 
 {{#diff cargo-toml-v5 cargo-toml-v6}}
+
+### Refactor (e2e migration) — `locator!()` macro and the assertion API
+
+This refactor doesn't satisfy any chapter AC; it's pure test-quality
+work that takes advantage of two playwright-rs surfaces that landed
+on the upstream `padamson/playwright-rust` `main` branch and that
+slice 8 sourced via the workspace git dep:
+
+- The **`playwright-rs-macros` crate** ships a `locator!(...)`
+  proc-macro that compile-time-validates Playwright selector strings
+  for empty input, unbalanced brackets, and unknown engine prefixes.
+  Adopted at every direct `page.locator(...)` call site (3 sites
+  total — most of our locator usage lives inside JS strings fed to
+  `evaluate_value`, which the proc-macro can't reach). Verified by
+  deliberately introducing an unbalanced `[data-callout-badge`
+  selector and observing `error: unclosed `[`` at compile time.
+- The **`expect(locator).to_have_*()` assertion API** (added across
+  the v0.12.x line) auto-retries on flake, returns precise failure
+  messages with line numbers, and reads more like the test's intent
+  than the equivalent JS-blob `evaluate_value` returning a CSV.
+
+Migrating `tests/e2e_callouts.rs` from the slice-7/8-era JS-blob
+sweeps to locator + assertion calls is a substantial rewrite — every
+DOM query, every attribute check, every visibility assertion. Only
+one JS line remains (a `history.replaceState(...)` mutation in the
+click-through test, since that's a history-API operation with no
+playwright equivalent).
+
+{{#diff e2e-callouts-v5 e2e-callouts-v6}}
+
+The migration surfaced a real slice-8 splicer bug. playwright-rs's
+strict-mode locator refused to resolve `#callout-body-cross-ref-emit`
+because the rendered chapter contained TWO `<div>` elements with
+that id — one from the snippet `{{#include}}` of
+`callout-pdf-emit-snippet-v2.rs`, one from the diff `+`-line marker
+addition slice 8 wired badge emission for. The button id was
+already dedup'd via the existing `emitted_anchor: HashSet<String>`,
+but the body div's id was not. Fix: lockstep dedup of the body
+div's `id` and the button's `aria-describedby` against the same
+`is_first_occurrence` boolean — callout {{#callout body-id-dedup}}.
+
+{{#diff callout-v5 callout-v6}}
+
+The fix is small but the lesson is bigger: the JS-blob sweeps
+silently ignored the duplicate-id violation because `document.
+getElementById` returns the first match. The locator-API migration
+made the bug observable.
 
 <!--
 Scaffolding for later slices — sidecar TOML format sketch,
