@@ -111,7 +111,7 @@ to satisfy it.
 | 5 | Cross-reference directive `{{#callout <label>}}` (ACs 6, 10). New playwright-rs test asserting the prose-rendered badge is hyperlinked to the listing-rendered badge anchor. |
 | 6 | typst-pdf emitter — admonish-note block after the code block (AC 2). Non-browser; assertion is visual or assert_cmd-on-PDF-bytes — decided in the slice. |
 | 7 | HTML rendered-shape pivot (ACs 11, 12 — HTML half). The slice-3 placeholder shape (CALLOUT comment line visible + trailing `<dl>` of bodies) is replaced with the final shape: marker comment is **stripped** from the rendered listing, and an inline interactive `<span class="callout-badge">` is overlaid on the line that previously held it. Hovering the badge reveals the body in a popover (CSS-only or `<details>`-driven). The trailing `<dl>` is removed for HTML. Cross-refs from slice 5 still resolve to the new badge anchor. New playwright-rs test asserting the comment is gone, the inline badge exists, and the body becomes visible on hover. |
-| 8 | Screenshot-tool subcommands and include-block locator anchors. The preprocessor intercepts `{{#include listings/TAG.ext}}` directives before mdbook's built-in `links` preprocessor runs and emits a `<div data-listing-tag="TAG">` anchor after the rendered fenced block — mirroring what `{{#diff}}` already does. The capture-screenshots tool is split into two subcommands matching the two listing-rendering shapes (`include LISTING` and `diff LEFT RIGHT`). No new acceptance criterion (this is tooling, not user-visible book behavior). |
+| 8 | Screenshot-tool subcommands and include-block locator anchors. The preprocessor intercepts `\{{#include listings/TAG.ext}}` directives before mdbook's built-in `links` preprocessor runs and emits a `<div data-listing-tag="TAG">` anchor after the rendered fenced block — mirroring what `\{{#diff}}` already does. The capture-screenshots tool is split into two subcommands matching the two listing-rendering shapes (`include LISTING` and `diff LEFT RIGHT`). No new acceptance criterion (this is tooling, not user-visible book behavior). |
 | 9 | PDF rendered-shape pivot (ACs 11, 12 — PDF half). Marker comment is stripped from the PDF listing the same way HTML does. The inline badge is rendered as a typst superscript / inline note marker on the source line. Bodies stay in slice 6's markdown blockquote shape after the listing, each entry keyed by the same badge number. `pdf_callouts` integration test asserts both the inline marker and the blockquote bodies are present in the extracted PDF text. |
 | 10 | Sidecar TOML loader + overlay logic (ACs 4, 5). New playwright-rs test asserting a sidecar-only callout renders correctly when the source has no marker. Builds on top of the slice 7/9 final rendered shape, so the sidecar tests are written against the final selectors from day one. |
 | refactor | Optional. |
@@ -566,8 +566,112 @@ spot — listings without callouts and not on the right side of any
 diff aren't addressable. Slice 8 closes that gap by re-engineering
 the tool into two subcommands (`include LISTING` and
 `diff LEFT RIGHT`) backed by a preprocessor pass that injects the
-same kind of locator anchor after every `{{#include listings/...}}`
+same kind of locator anchor after every `\{{#include listings/...}}`
 block.
+
+### Slice 8 — screenshot-tool subcommands and include-block locator anchors
+
+Slice 8 doesn't satisfy any chapter AC (those are 1–12 from the
+section above); it's tooling that closes a usability gap exposed by
+slice 7 dogfooding. With slice 7 the screenshot tool can address
+listings shown via `\{{#diff}}` (locator: the `<div data-listing-tag>`
+anchor the diff splicer learned to emit) and listings shown via
+`\{{#include}}` *that have at least one `CALLOUT:` marker* (fallback
+locator: the `button[id="callout-LABEL"]` element from the rendered
+overlay). Listings without callouts and not referenced by any diff
+were unreachable.
+
+The fix has two parts: a preprocessor side (a new include splicer +
+a richer diff anchor) and a tool side (subcommands matching the two
+listing-rendering shapes).
+
+**Preprocessor — new `src/include.rs` module.** Intercepts
+`\{{#include listings/TAG.ext}}` directives BEFORE mdbook's built-in
+`links` preprocessor would expand them, replaces each with the
+file's bytes, and emits a `<div data-listing-tag="TAG">` anchor
+after the enclosing fenced block's closing fence line. To run
+before `links`, the `book/book.toml` listings-preprocessor entry
+adds `before = ["admonish", "links"]` — without that ordering,
+`links` expands every `\{{#include}}` first and the include splicer
+silently no-ops. The splicer's path-prefix dispatch is at callout
+{{#callout snippets-intercept}}; the entry point that drives the
+whole replace-and-emit walk is at callout {{#callout
+include-splice-entry}}; the line that drops the locator anchor is
+at callout {{#callout include-anchor-emit}}:
+
+```rust
+{{#include listings/include-v1.rs}}
+```
+
+`\{{#include snippets/...}}` paths are also intercepted (callout
+{{#callout snippets-intercept}}) — *without* an anchor — so the
+callout splicer downstream sees their `CALLOUT:` markers (otherwise
+mdbook's `links` would expand them after our callout pass and the
+markers would land in the rendered HTML with no overlay buttons).
+All other includes (`../some/path`, line-range syntax `:N:M`,
+anchor refs `:setup`) pass through untouched for `links` to handle.
+
+The diff splicer's anchor also expands from the slice-7
+single-attribute `data-listing-tag="RIGHT"` to the dual-attribute
+`data-listing-diff-left="LEFT" data-listing-diff-right="RIGHT"`
+(callout {{#callout diff-anchor-dual}}), so the locator is unique
+even when several diffs share a right operand. Slice 8 also evolves
+the HTML splicer to process diff blocks for callouts: `+`-prefixed
+and ` `-prefixed marker lines are stripped and emit a badge keyed
+to the line that previously held them; `-`-prefixed marker lines
+are dropped silently with no badge — the callout is gone in the
+new state, so neither the comment nor a marker for it appears in
+the rendered diff:
+
+{{#diff diff-v7 diff-v8}}
+
+The preprocessor wires the new include splicer into `preprocess()`
+as the first stage of a three-stage chain — includes → diffs →
+callouts (callout {{#callout preprocessor-chain}}). Order matters:
+the callout splicer needs included source bytes inline so it can
+parse `CALLOUT:` markers from them.
+
+{{#diff main-v8 main-v9}}
+
+Five integration tests in `tests/includes.rs` exercise the new
+splicer end-to-end through the JSON envelope: directive replacement,
+anchor emission position, snippet expansion without anchor, both
+include and diff anchors emitted from one chapter, and the
+missing-file error path:
+
+```rust
+{{#include listings/includes-tests-v1.rs}}
+```
+
+**Tool — subcommand redesign.** `tools/capture-screenshots/` becomes
+a clap `Subcommand` with `include LISTING` and `diff LEFT RIGHT`
+arms. Each subcommand discovers the chapter by scanning chapter
+`.md` files for the directive substring (`\{{#include
+listings/LISTING.` or `\{{#diff LEFT RIGHT`), navigates Chromium to
+the chapter HTML via
+[playwright-rs](https://crates.io/crates/playwright-rs), and
+locates the rendered `<pre>` via a single CSS selector
+(`[data-listing-tag="LISTING"]` or
+`[data-listing-diff-left="LEFT"][data-listing-diff-right="RIGHT"]`).
+The slice-7 callout-badge fallback is gone — anchors cover both
+shapes now. Default output paths are
+`book/src/images/<LISTING>.png` and
+`book/src/images/<LEFT>__to__<RIGHT>.png`. The subcommand is
+dispatched at callout {{#callout subcommand-dispatch}}:
+
+{{#diff capture-screenshots-v2 capture-screenshots-v3}}
+
+The tool also dogfoods the unreleased v0.13.0 work in the
+[`padamson/playwright-rust`](https://github.com/padamson/playwright-rust)
+repo: the workspace `Cargo.toml`'s `[workspace.dependencies]` table
+now sources `playwright-rs` as a git dep on `branch = "main"`, and
+the tool wires up `tracing_subscriber` so playwright-rs's new
+`#[tracing::instrument]` spans (every `goto`, `evaluate_value`,
+`screenshot`, `browser.close`) log automatically once the upstream
+instrumentation merges. Local debugging gets richer for free with
+no per-callsite logging.
+
+{{#diff cargo-toml-v5 cargo-toml-v6}}
 
 <!--
 Scaffolding for later slices — sidecar TOML format sketch,

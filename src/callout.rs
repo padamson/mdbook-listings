@@ -179,16 +179,23 @@ fn splice_callout_lists_html(content: &str) -> String {
     let mut cursor = 0;
     let mut emitted_anchor: HashSet<String> = HashSet::new();
     for_each_fenced_block_with_span(content, |info, block_text, body_start, close_end| {
-        if info == "diff" {
-            return;
-        }
         let callouts = callouts_for_block(info, block_text);
-        if callouts.is_empty() {
+        let is_diff = info == "diff";
+        // Diff blocks always go through the strip pass even when no `+`/` `
+        // callouts exist — `-`-side markers still need to be dropped from
+        // the rendered body.
+        if callouts.is_empty() && !is_diff {
             return;
         }
-        let (rewritten_body, post_strip_lines, total_lines) = strip_marker_lines(block_text, info);
-        // Find the opening fence line to copy verbatim, then the rewritten
-        // body, then the closing fence line that follows.
+        let (rewritten_body, post_strip_lines, total_lines) = if is_diff {
+            strip_marker_lines_diff(block_text)
+        } else {
+            strip_marker_lines(block_text, info)
+        };
+        if is_diff && callouts.is_empty() && rewritten_body == block_text {
+            // No-op diff: no markers of any kind to rewrite.
+            return;
+        }
         let pre_fence = &content[cursor..body_start];
         let close_fence_line = closing_fence_text(content, close_end);
         out.push_str(pre_fence);
@@ -241,6 +248,53 @@ fn strip_marker_lines(block_text: &str, info: &str) -> (String, Vec<usize>, usiz
     (out, post_strip_lines, emitted_count)
 }
 
+// CALLOUT: strip-diff Diff-aware strip: drop `-`-prefixed marker lines entirely (no badge — the callout is gone in the new state); strip `+`-prefixed and ` `-prefixed marker lines and record post-strip positions so badges land on the line that previously held them in the diff's right-hand side.
+fn strip_marker_lines_diff(block_text: &str) -> (String, Vec<usize>, usize) {
+    let lines: Vec<&str> = block_text.split_inclusive('\n').collect();
+    let mut out = String::with_capacity(block_text.len());
+    let mut post_strip_lines: Vec<usize> = Vec::new();
+    let mut emitted_count: usize = 0;
+    for raw_line in lines {
+        let line_no_newline = raw_line.strip_suffix('\n').unwrap_or(raw_line);
+        // Diff metadata lines pass through unchanged.
+        if line_no_newline.starts_with("---")
+            || line_no_newline.starts_with("+++")
+            || line_no_newline.starts_with("@@")
+            || line_no_newline.starts_with('\\')
+        {
+            out.push_str(raw_line);
+            emitted_count += 1;
+            continue;
+        }
+        // Identify the diff-line prefix and try to parse the trailing
+        // payload as a marker against any known comment prefix.
+        let (prefix_char, payload) = if let Some(rest) = line_no_newline.strip_prefix('+') {
+            (Some('+'), rest)
+        } else if let Some(rest) = line_no_newline.strip_prefix('-') {
+            (Some('-'), rest)
+        } else if let Some(rest) = line_no_newline.strip_prefix(' ') {
+            (Some(' '), rest)
+        } else {
+            (None, line_no_newline)
+        };
+        let is_marker = ALL_COMMENT_PREFIXES
+            .iter()
+            .any(|p| parse_line(payload, p, 0).is_some());
+        if is_marker {
+            // `+` and ` ` markers: strip the line, record post-strip position
+            // for badge placement. `-` markers: drop silently.
+            if matches!(prefix_char, Some('+') | Some(' ')) {
+                let target = (emitted_count + 1).max(1);
+                post_strip_lines.push(target);
+            }
+        } else {
+            out.push_str(raw_line);
+            emitted_count += 1;
+        }
+    }
+    (out, post_strip_lines, emitted_count)
+}
+
 fn closing_fence_text(content: &str, close_end: usize) -> &str {
     // close_end is one past the trailing newline of the closing fence
     // (or equal to bytes.len() if the file ends without a trailing newline).
@@ -277,7 +331,7 @@ fn splice_callout_lists_pdf(content: &str, label_to_ordinal: &HashMap<String, us
     out
 }
 
-fn for_each_fenced_block_with_span<F>(content: &str, mut visit: F)
+pub(crate) fn for_each_fenced_block_with_span<F>(content: &str, mut visit: F)
 where
     F: FnMut(&str, &str, usize, usize),
 {
@@ -815,6 +869,104 @@ mod tests {
             b_two_ordinal.starts_with("2\""),
             "second listing's second marker should be ordinal 2; got prefix {}",
             &b_two_ordinal[..b_two_ordinal.len().min(10)],
+        );
+    }
+
+    #[test]
+    fn splice_chapter_html_strips_added_marker_lines_from_diff_and_emits_badge() {
+        let content = concat!(
+            "```diff\n",
+            "--- a-tag\n",
+            "+++ b-tag\n",
+            "@@ -1,1 +1,2 @@\n",
+            " fn unchanged() {}\n",
+            "+// CALLOUT: added-marker Body for an added marker.\n",
+            "+fn added() {}\n",
+            "```\n",
+        );
+        let out = splice_chapter(content, SupportedRenderer::Html).expect("splice");
+        assert!(
+            !out.contains("// CALLOUT: added-marker"),
+            "added marker comment line should be stripped from rendered diff; got:\n{out}",
+        );
+        assert!(
+            out.contains("data-callout-badge=\"added-marker\""),
+            "expected badge for the added marker; got:\n{out}",
+        );
+        assert!(
+            out.contains("+fn added() {}"),
+            "non-marker `+` line should survive; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_html_strips_context_marker_lines_from_diff_and_emits_badge() {
+        let content = concat!(
+            "```diff\n",
+            "--- a-tag\n",
+            "+++ b-tag\n",
+            "@@ -1,2 +1,2 @@\n",
+            " // CALLOUT: kept-marker A marker carried over unchanged.\n",
+            " fn carried() {}\n",
+            "```\n",
+        );
+        let out = splice_chapter(content, SupportedRenderer::Html).expect("splice");
+        assert!(
+            !out.contains("// CALLOUT: kept-marker"),
+            "context marker comment line should be stripped; got:\n{out}",
+        );
+        assert!(
+            out.contains("data-callout-badge=\"kept-marker\""),
+            "expected badge for the carried-over marker; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_html_drops_removed_marker_lines_from_diff_with_no_badge() {
+        let content = concat!(
+            "```diff\n",
+            "--- a-tag\n",
+            "+++ b-tag\n",
+            "@@ -1,2 +1,1 @@\n",
+            "-// CALLOUT: gone-marker Removed in this slice.\n",
+            " fn unchanged() {}\n",
+            "```\n",
+        );
+        let out = splice_chapter(content, SupportedRenderer::Html).expect("splice");
+        assert!(
+            !out.contains("// CALLOUT: gone-marker"),
+            "removed marker comment line should be dropped, not visible; got:\n{out}",
+        );
+        assert!(
+            !out.contains("data-callout-badge=\"gone-marker\""),
+            "removed-side marker must not produce a badge; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_html_dedups_id_when_label_appears_in_diff_then_include() {
+        // First non-empty fenced block to contain a label gets the
+        // `id="callout-LABEL"` anchor. Subsequent occurrences (same label
+        // in another block) emit the badge but skip the id so the HTML
+        // stays valid (no duplicate IDs).
+        let content = concat!(
+            "```diff\n",
+            "--- a-tag\n",
+            "+++ b-tag\n",
+            "@@ -1 +1,2 @@\n",
+            " fn unchanged() {}\n",
+            "+// CALLOUT: same-label First occurrence is in a diff.\n",
+            "```\n\n",
+            "```rust\n",
+            "// CALLOUT: same-label Second occurrence is in an include.\n",
+            "fn body() {}\n",
+            "```\n",
+        );
+        let out = splice_chapter(content, SupportedRenderer::Html).expect("splice");
+        let id_count = out.matches("id=\"callout-same-label\"").count();
+        assert_eq!(
+            id_count, 1,
+            "expected exactly one id=\"callout-same-label\" across the chapter; got {id_count} in:\n{out}",
         );
     }
 

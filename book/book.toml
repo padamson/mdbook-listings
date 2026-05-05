@@ -18,7 +18,12 @@ assets_version = "3.1.0" # do not edit: managed by `mdbook-admonish install`
 
 [preprocessor.listings]
 command = "mdbook-listings"
-before = ["admonish"]
+# `before = ["links"]` is REQUIRED for the include splicer to see raw
+# `{{#include listings/...}}` directives. Without it, mdbook's built-in
+# `links` preprocessor expands those includes to file bytes before
+# mdbook-listings runs, and the include splicer silently no-ops (no
+# directives to find → no `<div data-listing-tag>` anchors emitted).
+before = ["admonish", "links"]
 
 [output.html]
 additional-css = ["./mdbook-admonish.css", "./mdbook-listings.css"]

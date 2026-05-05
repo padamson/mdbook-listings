@@ -37,17 +37,31 @@ registries = []
 
 [bans]
 multiple-versions = "warn"
-wildcards = "deny"
+# `wildcards` is set to "warn" rather than "deny" because cargo-deny
+# misreads `{ workspace = true }` inheritance as a literal `*` version
+# requirement. Once cargo-deny is bumped to a release that understands
+# workspace deps natively, this can flip back to "deny".
+wildcards = "warn"
 highlight = "all"
 workspace-default-features = "allow"
 external-default-features = "allow"
 allow = []
 deny = []
 skip = []
-skip-tree = []
+# winnow appears twice because mdbook-core (mdbook 0.5) pulls toml 0.9 →
+# winnow 0.7, while our own toml 1.1 / toml_edit 0.25 deps pull winnow 1.0.
+# Both are transitive; we can't unify until mdbook-core upgrades its
+# toml. Skip-tree the older one's parent to silence the duplicate.
+skip-tree = [
+    { name = "mdbook-core" },
+]
 
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = []
+# Dogfood the unreleased v0.13.0 work in the upstream playwright-rs main
+# branch (tracing instrumentation, ARIA snapshots, the macros and trace
+# crates). Cargo.lock pins the actual revision for reproducibility; bump
+# with `cargo update -p playwright-rs`.
+allow-git = ["https://github.com/padamson/playwright-rust"]

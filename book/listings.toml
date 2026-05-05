@@ -353,3 +353,45 @@ tag = "listings-css-v2"
 source = "../assets/mdbook-listings.css"
 frozen = "src/listings/listings-css-v2.css"
 sha256 = "001f6ac8f989cfe8050cbd3245e0f0ac79c1aff7de6b205a1b0badcf5d3991c0"
+
+[[listing]]
+tag = "cargo-toml-v6"
+source = "../Cargo.toml"
+frozen = "src/listings/cargo-toml-v6.toml"
+sha256 = "602be4cee3bbb7bb85a289bb6fb53a08402b3e48c73057c9fb8547ffd5fc5097"
+
+[[listing]]
+tag = "main-v9"
+source = "../src/main.rs"
+frozen = "src/listings/main-v9.rs"
+sha256 = "671bc850ce4de3803f470245d765ca295b774aa3d55c4039c3cf695e91ca92d2"
+
+[[listing]]
+tag = "diff-v8"
+source = "../src/diff.rs"
+frozen = "src/listings/diff-v8.rs"
+sha256 = "5cbbb8d0c95a95e46e5b08460c5eeadfa96d526b8575d485cfa84e2456a14e50"
+
+[[listing]]
+tag = "include-v1"
+source = "../src/include.rs"
+frozen = "src/listings/include-v1.rs"
+sha256 = "da44fe7b41d79ac3a1a2b350dd50a0aba59317cbd2e66a170daa393c14e69943"
+
+[[listing]]
+tag = "includes-tests-v1"
+source = "../tests/includes.rs"
+frozen = "src/listings/includes-tests-v1.rs"
+sha256 = "1fe9878ccae4c52554ace910a0ac5596f54c1d27470087e150ff02c225279765"
+
+[[listing]]
+tag = "lib-v5"
+source = "../src/lib.rs"
+frozen = "src/listings/lib-v5.rs"
+sha256 = "54048f86b83515858460891aa43286ae8d121649be4891b8ad5b6f2245e377ae"
+
+[[listing]]
+tag = "capture-screenshots-v3"
+source = "../tools/capture-screenshots/src/main.rs"
+frozen = "src/listings/capture-screenshots-v3.rs"
+sha256 = "13f69eedd3702419b1670742953bc7f568ce41c246361aa47e302764e302420d"
