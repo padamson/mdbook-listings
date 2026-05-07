@@ -23,11 +23,15 @@ toml_edit = "0.25"
 
 [dev-dependencies]
 assert_cmd = "2"
+futures = "0.3"
 pdf-extract = "0.9"
 playwright-rs = { workspace = true }
+playwright-rs-trace = { git = "https://github.com/padamson/playwright-rust", branch = "main" }
 predicates = "3"
 tempfile = "3"
 tokio = { workspace = true }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Workspace tools live alongside the crate but are not part of the published
 # crate (each carries `publish = false`). Run with `cargo run -p <name>`.

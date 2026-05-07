@@ -84,8 +84,8 @@ fn install_orders_before_admonish_when_admonish_is_registered() {
 
     let book_toml = fs::read_to_string(book_root.join("book.toml")).unwrap();
     assert!(
-        book_toml.contains(r#"before = ["admonish"]"#),
-        "listings should be ordered before admonish; got:\n{book_toml}",
+        book_toml.contains(r#"before = ["admonish", "links"]"#),
+        "listings should be ordered before both admonish and links; got:\n{book_toml}",
     );
     assert!(
         book_toml.contains("[preprocessor.listings]"),

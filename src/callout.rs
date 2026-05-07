@@ -1093,17 +1093,23 @@ mod tests {
     fn splice_chapter_html_escapes_label_and_body() {
         let content = "```yaml\n# CALLOUT: lbl Body with <script> in it.\n```\n";
         let out = splice_chapter(content, SupportedRenderer::Html).expect("splice");
-        let overlay = out
-            .split("<div class=\"callout-overlay\"")
+        // Scope the check to the rendered callout-body div, since the
+        // overlay is now followed by a measurement <script> emitted by
+        // the splicer itself (not user content).
+        let body = out
+            .split("<div class=\"callout-body\"")
             .nth(1)
+            .unwrap_or("")
+            .split("</div>")
+            .next()
             .unwrap_or("");
         assert!(
-            overlay.contains("&lt;script&gt;"),
-            "overlay body should escape <script>; got:\n{overlay}",
+            body.contains("&lt;script&gt;"),
+            "callout body must escape user-supplied <script>; got:\n{body}",
         );
         assert!(
-            !overlay.contains("<script>"),
-            "overlay body must not contain raw <script>; got:\n{overlay}",
+            !body.contains("<script>"),
+            "callout body must not contain raw <script>; got:\n{body}",
         );
     }
 

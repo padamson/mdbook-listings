@@ -113,7 +113,7 @@ to satisfy it.
 | 7 | HTML rendered-shape pivot (ACs 11, 12 — HTML half). The slice-3 placeholder shape (CALLOUT comment line visible + trailing `<dl>` of bodies) is replaced with the final shape: marker comment is **stripped** from the rendered listing, and an inline interactive `<span class="callout-badge">` is overlaid on the line that previously held it. Hovering the badge reveals the body in a popover (CSS-only or `<details>`-driven). The trailing `<dl>` is removed for HTML. Cross-refs from slice 5 still resolve to the new badge anchor. New playwright-rs test asserting the comment is gone, the inline badge exists, and the body becomes visible on hover. |
 | 8 | Screenshot-tool subcommands and include-block locator anchors. The preprocessor intercepts `\{{#include listings/TAG.ext}}` directives before mdbook's built-in `links` preprocessor runs and emits a `<div data-listing-tag="TAG">` anchor after the rendered fenced block — mirroring what `\{{#diff}}` already does. The capture-screenshots tool is split into two subcommands matching the two listing-rendering shapes (`include LISTING` and `diff LEFT RIGHT`). No new acceptance criterion (this is tooling, not user-visible book behavior). |
 | refactor (e2e migration) | Adopt `playwright-rs-macros` `locator!()` for compile-time selector validation, then migrate every JS-string `evaluate_value` sweep in `tests/e2e_callouts.rs` to playwright-rs `Locator` + `expect(...).to_have_*()` assertions. Surfaces a slice-8 dedup bug (duplicate `id="callout-body-LABEL"` when the same label appears in two blocks) and fixes it. No new ACs; pure test-quality + small splicer hardening. |
-| refactor (test infra) | Wire `tracing_subscriber::fmt()` into the e2e test binary so playwright-rs's `#[tracing::instrument]` spans surface in test output; add `playwright-rs-trace` to record traces of failing runs (drop into Playwright trace viewer); share one `Playwright::launch` + `Browser` across the test binary with per-test `BrowserContext` for storage isolation, cutting per-test browser overhead. |
+| refactor (test infra) | Move shared e2e setup into `tests/common/e2e_harness.rs`: per-test `BrowserContext` for storage isolation, `tracing_subscriber::fmt()` so playwright-rs's `#[tracing::instrument]` spans surface under `RUST_LOG`, and per-test `BrowserContext::tracing()` recording with the trace dropped on success and saved to `target/playwright-traces/<name>.zip` on panic. The harness also dogfoods the new `playwright-rs-trace` crate by parsing the saved trace and printing failed actions to stderr inline. Sharing one `Browser` across tests via `OnceCell` was tried and reverted — `Browser` channels are bound to the `#[tokio::test]` runtime that created them, so subsequent tests deadlock; the per-test launch is the price of `#[tokio::test]` runtime isolation. Also folds in the upstream resolution of [playwright-rust#89](https://github.com/padamson/playwright-rust/issues/89): bump the `playwright-rs` git pin past `401be500` and replace the lone `history.replaceState` JS string in the click-through-navigation test with the new typed `page.clear_url_fragment().await`. The e2e suite is now JS-string-free. The migration also surfaced and fixed a long-standing badge-positioning bug exposed by the slice's 600-line v6→v7 diff: the overlay's CSS positioning formula assumed each line rendered at 1.5em, but mdbook's `<pre>` uses `line-height: normal` (~1.13 for monospace), so badges in long diffs drifted ~3px per line above their intended row, eventually landing in sibling pres above. Fix: a per-book init script (registered via `additional-js`) measures the previous pre's actual rendered height and writes a `--callout-line-px` CSS custom property the formula picks up. New regression test `every_badge_renders_inside_its_owning_pre` guards against the drift returning. |
 | 9 | PDF rendered-shape pivot (ACs 11, 12 — PDF half). Marker comment is stripped from the PDF listing the same way HTML does. The inline badge is rendered as a typst superscript / inline note marker on the source line. Bodies stay in slice 6's markdown blockquote shape after the listing, each entry keyed by the same badge number. `pdf_callouts` integration test asserts both the inline marker and the blockquote bodies are present in the extracted PDF text. |
 | 10 | Sidecar TOML loader + overlay logic (ACs 4, 5). New playwright-rs test asserting a sidecar-only callout renders correctly when the source has no marker. Builds on top of the slice 7/9 final rendered shape, so the sidecar tests are written against the final selectors from day one. |
 | refactor | Optional. |
@@ -702,6 +702,12 @@ one JS line remains (a `history.replaceState(...)` mutation in the
 click-through test, since that's a history-API operation with no
 playwright equivalent).
 
+The full diff against `tests/e2e_callouts.rs` (v5 → v6) shows
+every JS-blob `evaluate_value` call replaced with a typed
+`page.locator(...).await` plus an `expect(...).to_have_*()`
+assertion (or a `Locator::nth(i)` iteration when the test sweeps
+multiple matches):
+
 {{#diff e2e-callouts-v5 e2e-callouts-v6}}
 
 The migration surfaced a real slice-8 splicer bug. playwright-rs's
@@ -711,9 +717,11 @@ that id — one from the snippet `{{#include}}` of
 `callout-pdf-emit-snippet-v2.rs`, one from the diff `+`-line marker
 addition slice 8 wired badge emission for. The button id was
 already dedup'd via the existing `emitted_anchor: HashSet<String>`,
-but the body div's id was not. Fix: lockstep dedup of the body
-div's `id` and the button's `aria-describedby` against the same
-`is_first_occurrence` boolean — callout {{#callout body-id-dedup}}.
+but the body div's id was not. Fix in `src/callout.rs`: lockstep
+dedup of the body div's `id` and the button's `aria-describedby`
+against the same `is_first_occurrence` boolean — callout
+{{#callout body-id-dedup}}. The diff against `src/callout.rs`
+(v5 → v6) shows the splicer change:
 
 {{#diff callout-v5 callout-v6}}
 
@@ -721,6 +729,126 @@ The fix is small but the lesson is bigger: the JS-blob sweeps
 silently ignored the duplicate-id violation because `document.
 getElementById` returns the first match. The locator-API migration
 made the bug observable.
+
+### Refactor (test infra) — shared e2e harness, tracing, and trace-on-failure
+
+Continues the playwright-rs adoption from the previous refactor by
+moving the per-test browser setup into a shared
+`tests/common/e2e_harness.rs` and dogfooding two more upstream
+surfaces:
+
+- **`tracing_subscriber` integration.** The harness initialises
+  `tracing_subscriber::fmt().with_test_writer()` once per test
+  process, scoped through `EnvFilter` (defaults to `info`,
+  `RUST_LOG` overrides). playwright-rs's `#[tracing::instrument]`
+  spans on every `goto`, `evaluate_value`, `screenshot`,
+  `browser.close`, etc. now surface in test output on demand —
+  drop in `RUST_LOG=playwright_rs=info cargo test --test
+  e2e_callouts -- --nocapture` to watch the protocol play out.
+- **`playwright-rs-trace` recording on failure.** Each test wraps
+  its body in `BrowserContext::tracing().start(...)` and stops with
+  a save path only on panic. Failing tests leave
+  `target/playwright-traces/<test>.zip` — drag into
+  https://trace.playwright.dev or `npx playwright show-trace` for
+  step-through inspection. The harness also runs the saved trace
+  through `playwright_rs_trace::open()` and prints any
+  errored-action summary inline so quick triage doesn't require
+  leaving the terminal.
+- **Per-test `BrowserContext`** for storage isolation between
+  tests. `file://` URLs don't really need it today but the pattern
+  is correct.
+
+The harness wraps each test body in
+`std::panic::AssertUnwindSafe(...).catch_unwind()` (via the
+`futures` crate) so a panic in the test body still flows through
+trace cleanup before re-raising.
+
+The diff against `tests/e2e_callouts.rs` (v6 → v7) shows every
+test body collapsing into a `with_traced_chapter("test-name",
+CH04, |page| async move { ... }).await` call — the per-test
+`Playwright::launch`, `pw.chromium().launch()`, `browser.new_page()`,
+and `browser.close()` move into the harness, and the test body
+inherits a `Page` already navigated to the chapter HTML.
+
+{{#diff e2e-callouts-v6 e2e-callouts-v7}}
+
+Three strategically placed callout markers anchor the long diff
+above: the harness import (callout {{#callout harness-import}}), the
+canonical call shape every test now follows
+(callout {{#callout harness-call}}), and the line that drops the
+last JS string in the suite (callout {{#callout clear-url-fragment}}).
+
+The harness landed without the originally-planned shared `Browser`
+optimisation. Each `#[tokio::test]` creates its own tokio runtime;
+a `Browser` handle's internal channels are bound to the runtime
+that created them. Sharing a `Browser` via `tokio::sync::OnceCell`
+across tests deadlocks once the first test's runtime exits —
+subsequent tests block forever waiting for responses on dead
+channels. Per-test `Playwright::launch + browser.launch` is the
+price of `#[tokio::test]` runtime isolation.
+
+The dogfooding cycle filed this as
+[playwright-rust#90](https://github.com/padamson/playwright-rust/issues/90)
+and the upstream response landed within the same pass: a
+debug-build assertion that captures the launching runtime's ID at
+`Connection` construction and panics in `Connection::send_message`
+when the current runtime differs. Silent deadlock is now a loud
+panic with a clear message. The mdbook-listings harness also
+gained verbose chatter at `playwright_rs=debug` from the same
+upstream — each protocol message dispatched dumped tens of KB per
+test. Filed as
+[playwright-rust#91](https://github.com/padamson/playwright-rust/issues/91);
+upstream demoted the per-message log lines from `debug` to `trace`,
+making `RUST_LOG=playwright_rs=debug` usable for triage again.
+
+This refactor also folds in the upstream resolution of
+[playwright-rust#89](https://github.com/padamson/playwright-rust/issues/89).
+The previous refactor's locator/assertion migration left exactly
+one JS string in the suite — a `history.replaceState(null, '',
+location.pathname)` mutation in the click-through-navigation test,
+since playwright-rs had no typed equivalent. Filed
+[#89](https://github.com/padamson/playwright-rust/issues/89)
+upstream; resolved within the dogfooding pass as commit
+[`401be500`](https://github.com/padamson/playwright-rust/commit/401be50)
+which adds `Page::clear_url_fragment()`. Bumping the workspace
+`playwright-rs` git pin past that commit and replacing the JS
+line with `page.clear_url_fragment().await` (visible in the
+v6 → v7 diff above) makes the e2e suite JS-string-free.
+
+The migration also surfaced a long-standing positioning bug. The
+v6 → v7 diff above is ~600 lines tall — its first two callouts
+(`harness-import` at line 9, `harness-call` at line 35) sit near
+the top, the third (`clear-url-fragment` at line 529) near the
+bottom. In the browser, only the third one rendered where it
+should; the other two visually appeared inside the *previous*
+diff (the `callout-v5 → callout-v6` block in the previous
+refactor section). The cross-references still navigated to the
+right anchors — the IDs were correct — but the badges themselves
+had drifted ~1800px above their intended rows.
+
+Root cause: the overlay's CSS positioning formula assumed each
+listing line rendered at 1.5em (in the overlay's 0.875em font =
+21px). mdbook's `<pre>` actually uses `line-height: normal`,
+which Chromium computes as ~1.13 for monospace = ~18px. A 3px
+per-line gap × 600 lines compounds to ~1800px of cumulative
+drift — enough to push the line-9 and line-35 badges entirely
+out of the v6 → v7 diff and into the previous sibling pre.
+
+Fix: ship a tiny per-book init script (registered via
+`additional-js` in `book.toml`, alongside the existing
+`additional-css` entry) that walks every `.callout-overlay` on
+page load, measures the previous `<pre>`'s actual rendered height,
+divides by the listing's line count, and writes the per-line pixel
+value as a CSS custom property `--callout-line-px` on the overlay.
+The CSS formula then uses `var(--callout-line-px, 1.5em)` instead
+of the bare `1.5em`, so the bug doesn't reappear no matter what
+font or theme an author drops in. A new e2e regression test —
+`every_badge_renders_inside_its_owning_pre` — asserts that every
+badge's bounding box lies within its sibling pre's, so this can't
+silently regress. The diff against `tests/e2e_callouts.rs` (v7 →
+v8) shows the new test:
+
+{{#diff e2e-callouts-v7 e2e-callouts-v8}}
 
 <!--
 Scaffolding for later slices — sidecar TOML format sketch,

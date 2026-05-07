@@ -9,20 +9,27 @@ use toml_edit::{Array, DocumentMut, Item, Table, Value};
 /// Compiled in so `cargo install mdbook-listings` produces a self-contained
 /// binary with nothing external to fetch at install time.
 pub const CSS_ASSET: &[u8] = include_bytes!("../assets/mdbook-listings.css");
+pub const JS_ASSET: &[u8] = include_bytes!("../assets/mdbook-listings.js");
 
 /// Catches builds that stripped or replaced the asset — a missing sentinel
 /// means the bundled bytes are not the expected build-time asset.
-pub const CSS_ASSET_SENTINEL: &str = "mdbook-listings-css-v1";
+pub const CSS_ASSET_SENTINEL: &str = "mdbook-listings-css-v2";
+pub const JS_ASSET_SENTINEL: &str = "mdbook-listings-js-v1";
 
-/// Shared between [`write_css_asset`] and
-/// [`BookConfig::register_listings_css`] so the two can't drift.
+/// Shared between the writer and the registrar so the two can't drift.
 pub const CSS_ASSET_FILENAME: &str = "mdbook-listings.css";
+pub const JS_ASSET_FILENAME: &str = "mdbook-listings.js";
 
 /// Always overwrites — install ships the bundled bytes, not whatever a
 /// stale on-disk copy happens to contain.
 pub fn write_css_asset(book_root: &Path) -> Result<()> {
     let path = book_root.join(CSS_ASSET_FILENAME);
     fs::write(&path, CSS_ASSET).with_context(|| format!("writing CSS asset to {}", path.display()))
+}
+
+pub fn write_js_asset(book_root: &Path) -> Result<()> {
+    let path = book_root.join(JS_ASSET_FILENAME);
+    fs::write(&path, JS_ASSET).with_context(|| format!("writing JS asset to {}", path.display()))
 }
 
 /// Idempotent: book.toml and the CSS asset on disk are only rewritten if
@@ -45,12 +52,17 @@ pub fn install(book_root: &Path) -> Result<InstallOutcome> {
     let mut config = BookConfig::parse(&original)?;
     config.register_listings_preprocessor();
     config.register_listings_css();
+    config.register_listings_js();
     let new = config.render();
 
     let css_path = book_root.join(CSS_ASSET_FILENAME);
     let css_already_correct = fs::read(&css_path)
         .ok()
         .is_some_and(|bytes| bytes.as_slice() == CSS_ASSET);
+    let js_path = book_root.join(JS_ASSET_FILENAME);
+    let js_already_correct = fs::read(&js_path)
+        .ok()
+        .is_some_and(|bytes| bytes.as_slice() == JS_ASSET);
 
     let toml_changed = new != original;
     if toml_changed {
@@ -60,12 +72,17 @@ pub fn install(book_root: &Path) -> Result<InstallOutcome> {
     if !css_already_correct {
         write_css_asset(book_root)?;
     }
+    if !js_already_correct {
+        write_js_asset(book_root)?;
+    }
 
-    Ok(if toml_changed || !css_already_correct {
-        InstallOutcome::Installed
-    } else {
-        InstallOutcome::Unchanged
-    })
+    Ok(
+        if toml_changed || !css_already_correct || !js_already_correct {
+            InstallOutcome::Installed
+        } else {
+            InstallOutcome::Unchanged
+        },
+    )
 }
 
 /// Lets the CLI tell the author whether a re-install was a no-op (AC 3).
@@ -93,36 +110,49 @@ impl BookConfig {
     }
 
     /// Idempotent: a second call on an already-registered config is a no-op
-    /// in the rendered output. If `[preprocessor.admonish]` is registered,
-    /// the listings entry gets `before = ["admonish"]` so the
-    /// callout → admonish-note pipeline produces correctly styled PDF
+    /// in the rendered output. The listings entry always declares
+    /// `before = ["links"]` so the include splicer sees raw
+    /// `{{#include listings/...}}` directives before mdbook's built-in
+    /// `links` preprocessor expands them. If `[preprocessor.admonish]` is
+    /// also registered, `"admonish"` is added to the same `before` list so
+    /// the callout → admonish-note pipeline produces correctly styled PDF
     /// output.
     pub fn register_listings_preprocessor(&mut self) {
         let preprocessor = subtable_mut(self.0.as_table_mut(), "preprocessor");
         let admonish_present = preprocessor.contains_key("admonish");
         let listings = subtable_mut(preprocessor, "listings");
         listings["command"] = toml_edit::value("mdbook-listings");
+        let mut before = Array::new();
         if admonish_present {
-            let mut before = Array::new();
             before.push("admonish");
-            listings["before"] = toml_edit::value(before);
         }
+        before.push("links");
+        listings["before"] = toml_edit::value(before);
     }
 
     /// Idempotent: duplicate entries are not appended.
     pub fn register_listings_css(&mut self) {
-        let entry = format!("./{CSS_ASSET_FILENAME}");
-        let html = subtable_mut(subtable_mut(self.0.as_table_mut(), "output"), "html");
-        let array = html
-            .entry("additional-css")
-            .or_insert_with(|| Item::Value(Value::Array(Array::new())))
-            .as_value_mut()
-            .expect("additional-css must be a value")
-            .as_array_mut()
-            .expect("additional-css must be an array");
-        if !array.iter().any(|v| v.as_str() == Some(entry.as_str())) {
-            array.push(entry);
-        }
+        register_html_asset(self.0.as_table_mut(), "additional-css", CSS_ASSET_FILENAME);
+    }
+
+    /// Idempotent: duplicate entries are not appended.
+    pub fn register_listings_js(&mut self) {
+        register_html_asset(self.0.as_table_mut(), "additional-js", JS_ASSET_FILENAME);
+    }
+}
+
+fn register_html_asset(root: &mut Table, key: &'static str, filename: &str) {
+    let entry = format!("./{filename}");
+    let html = subtable_mut(subtable_mut(root, "output"), "html");
+    let array = html
+        .entry(key)
+        .or_insert_with(|| Item::Value(Value::Array(Array::new())))
+        .as_value_mut()
+        .unwrap_or_else(|| panic!("{key} must be a value"))
+        .as_array_mut()
+        .unwrap_or_else(|| panic!("{key} must be an array"));
+    if !array.iter().any(|v| v.as_str() == Some(entry.as_str())) {
+        array.push(entry);
     }
 }
 
@@ -152,6 +182,20 @@ mod tests {
         assert!(
             contents.contains(CSS_ASSET_SENTINEL),
             "bundled CSS asset must contain sentinel `{CSS_ASSET_SENTINEL}`; got:\n{contents}",
+        );
+    }
+
+    #[test]
+    fn js_asset_is_non_empty() {
+        assert!(!JS_ASSET.is_empty(), "bundled JS asset must not be empty");
+    }
+
+    #[test]
+    fn js_asset_contains_sentinel() {
+        let contents = std::str::from_utf8(JS_ASSET).expect("JS asset must be UTF-8");
+        assert!(
+            contents.contains(JS_ASSET_SENTINEL),
+            "bundled JS asset must contain sentinel `{JS_ASSET_SENTINEL}`; got:\n{contents}",
         );
     }
 
@@ -227,14 +271,41 @@ command = \"mdbook-admonish\"
     }
 
     #[test]
-    fn book_config_register_listings_preprocessor_orders_before_admonish_when_present() {
+    fn book_config_register_listings_js_adds_entry() {
+        let mut cfg = BookConfig::parse("[book]\ntitle = \"Test\"\n").unwrap();
+        cfg.register_listings_js();
+        let rendered = cfg.render();
+        assert!(
+            rendered.contains(r#"additional-js = ["./mdbook-listings.js"]"#),
+            "rendered config should reference the JS asset; got:\n{rendered}",
+        );
+    }
+
+    #[test]
+    fn book_config_register_listings_js_is_idempotent() {
+        let input = "[book]\ntitle = \"Test\"\n";
+        let mut cfg = BookConfig::parse(input).unwrap();
+        cfg.register_listings_js();
+        let after_first = cfg.render();
+        let mut cfg2 = BookConfig::parse(&after_first).unwrap();
+        cfg2.register_listings_js();
+        let after_second = cfg2.render();
+        assert_eq!(
+            after_first, after_second,
+            "register_listings_js must be idempotent"
+        );
+    }
+
+    #[test]
+    fn book_config_register_listings_preprocessor_orders_before_admonish_and_links_when_admonish_present()
+     {
         let input = "[preprocessor.admonish]\ncommand = \"mdbook-admonish\"\n";
         let mut cfg = BookConfig::parse(input).unwrap();
         cfg.register_listings_preprocessor();
         let rendered = cfg.render();
         assert!(
-            rendered.contains(r#"before = ["admonish"]"#),
-            "listings should declare before = [\"admonish\"]; got:\n{rendered}",
+            rendered.contains(r#"before = ["admonish", "links"]"#),
+            "listings should declare before = [\"admonish\", \"links\"]; got:\n{rendered}",
         );
         assert!(
             rendered.contains("[preprocessor.admonish]"),
@@ -243,13 +314,16 @@ command = \"mdbook-admonish\"
     }
 
     #[test]
-    fn book_config_register_listings_preprocessor_skips_before_when_admonish_absent() {
+    fn book_config_register_listings_preprocessor_orders_before_links_when_admonish_absent() {
+        // The include splicer requires `before = ["links"]` so it sees raw
+        // `{{#include listings/...}}` before mdbook's built-in `links`
+        // expands them. Without this, the splicer silently no-ops.
         let mut cfg = BookConfig::parse("[book]\ntitle = \"Test\"\n").unwrap();
         cfg.register_listings_preprocessor();
         let rendered = cfg.render();
         assert!(
-            !rendered.contains("before"),
-            "listings should not declare a before field when admonish is absent; got:\n{rendered}",
+            rendered.contains(r#"before = ["links"]"#),
+            "listings should declare before = [\"links\"] when admonish is absent; got:\n{rendered}",
         );
     }
 

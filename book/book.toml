@@ -27,6 +27,7 @@ before = ["admonish", "links"]
 
 [output.html]
 additional-css = ["./mdbook-admonish.css", "./mdbook-listings.css"]
+additional-js = ["./mdbook-listings.js"]
 
 # Requires `cargo install mdbook-typst-pdf`. `pdf = true` makes it actually
 # compile to PDF; without it, the renderer is a no-op (it only emits a `.typ`

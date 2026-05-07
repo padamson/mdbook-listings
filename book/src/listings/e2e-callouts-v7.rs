@@ -36,10 +36,7 @@ async fn callout_badge_renders_with_data_attribute_in_ch04() {
         |page| async move {
             let badges = page.locator(locator!("[data-callout-badge]")).await;
             let count = badges.count().await.expect("count badges");
-            assert!(
-                count > 0,
-                "expected at least one [data-callout-badge]; got 0"
-            );
+            assert!(count > 0, "expected at least one [data-callout-badge]; got 0");
             let text = badges.first().text_content().await.expect("badge text");
             assert!(
                 text.as_deref().is_some_and(|s| !s.trim().is_empty()),
@@ -306,60 +303,6 @@ async fn clicking_each_cross_ref_scrolls_target_badge_into_viewport() {
                 failures.len(),
                 labels.len(),
                 failures.join("\n  - "),
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn every_badge_renders_inside_its_owning_pre() {
-    // Regression guard for the long-diff badge mispositioning bug:
-    // each callout badge must visually land within the y-range of the
-    // <pre> it belongs to (the one immediately preceding its
-    // .callout-overlay parent). Pre-fix, badges in long diffs drifted
-    // ~3px per line above their intended row because the overlay's
-    // assumed line-height (1.5em at 0.875em font = 21px) didn't match
-    // the pre's rendered line-height (`normal` ~ 18px for monospace).
-    // For a 600-line diff that compounds to ~1800px, landing badges
-    // inside the wrong sibling pre.
-    with_traced_chapter(
-        "every_badge_renders_inside_its_owning_pre",
-        CH04,
-        |page| async move {
-            // For each .callout-overlay, locate its sibling <pre> and
-            // every .callout-badge inside, and verify each badge's y
-            // sits within the pre's y-range.
-            let report: String = page
-                .evaluate_value(
-                    r#"(() => {
-                      const failures = [];
-                      const overlays = document.querySelectorAll('.callout-overlay');
-                      overlays.forEach((o, i) => {
-                        const pre = o.previousElementSibling;
-                        if (!pre || pre.tagName !== 'PRE') return;
-                        const preBox = pre.getBoundingClientRect();
-                        const preTopAbs = preBox.top + window.scrollY;
-                        const preBotAbs = preBox.bottom + window.scrollY;
-                        o.querySelectorAll('.callout-badge').forEach(b => {
-                          const bb = b.getBoundingClientRect();
-                          const bAbs = bb.top + window.scrollY;
-                          if (bAbs < preTopAbs - 2 || bAbs > preBotAbs + 2) {
-                            failures.push(
-                              `overlay#${i} badge#${b.id || b.dataset.calloutBadge}: ` +
-                              `y=${bAbs.toFixed(0)} pre=[${preTopAbs.toFixed(0)}..${preBotAbs.toFixed(0)}]`
-                            );
-                          }
-                        });
-                      });
-                      return failures.join('\n');
-                    })()"#,
-                )
-                .await
-                .expect("evaluate badges-vs-pre");
-            assert!(
-                report.is_empty(),
-                "badges rendered outside their owning <pre>:\n{report}"
             );
         },
     )

@@ -1,15 +1,26 @@
-/* mdbook-listings — callout overlay styles (slice 7).
+/* mdbook-listings — callout overlay styles.
  *
  * The HTML splicer strips `// CALLOUT: <label> <body>` lines from the
  * rendered listing and emits a sibling `<div class="callout-overlay">`
  * containing one `<div class="callout-entry">` per marker. Each entry
- * carries `data-callout-line` and `--callout-line` (post-strip 1-based
- * line number). The HTML splicer also injects `--callout-listing-lines`
- * on each entry with the pre's actual line count so the CSS formula can
- * position the badge on the correct line.
+ * carries `--callout-line` (post-strip 1-based line) and
+ * `--callout-listing-lines` (the pre's total line count).
+ *
+ * The em-based formula was load-bearing on a fragile assumption:
+ * that the overlay's per-line height (1.5em at 0.875em font) matches
+ * the rendered pre's per-line height. mdbook's pre uses
+ * `line-height: normal` (~1.13 for monospace), so the assumed 21px
+ * was off from the true ~18px by 3px per line. For a 600-line diff
+ * the cumulative drift pulled badges 1800px above their intended
+ * line — landing inside whatever sibling pre happened to sit there.
+ *
+ * Fix: an inline `<script>` emitted after each overlay measures the
+ * previous pre's rendered height, divides by listing-lines, and sets
+ * `--callout-line-px` on the overlay. The fallback `1.5em` keeps
+ * pre-script behaviour for any environment where JS doesn't run.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes are
- * the expected build-time asset: mdbook-listings-css-v1
+ * the expected build-time asset: mdbook-listings-css-v2
  */
 
 .callout-overlay {
@@ -18,21 +29,17 @@
   margin-top: 0;
   pointer-events: none;
   z-index: 2;
-  /* Match mdbook's <pre> font metrics so em-based line counting works perfectly */
-  font-size: 0.875em;
-  line-height: 1.5;
 }
 
-/* One entry per callout marker. Sized to the badge (1.5 em tall);
- * the body is absolutely positioned inside so it never shifts the
- * badge when it appears. `--callout-listing-lines` is set by JS. */
 .callout-entry {
   position: absolute;
   right: 0;
   top: calc(
-    (var(--callout-line, 1) - 1 - var(--callout-listing-lines, 0)) * 1.5em - 0.75em
+    (var(--callout-line, 1) - 1 - var(--callout-listing-lines, 0))
+      * var(--callout-line-px, 1.5em)
+      - calc(var(--callout-line-px, 1.5em) / 2)
   );
-  height: 1.5em;
+  height: var(--callout-line-px, 1.5em);
   pointer-events: none;
 }
 

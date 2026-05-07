@@ -284,7 +284,23 @@ criteria = "safe-to-deploy"
 version = "0.1.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.futures]]
+version = "0.3.32"
+criteria = "safe-to-run"
+
+[[exemptions.futures-channel]]
+version = "0.3.32"
+criteria = "safe-to-deploy"
+
 [[exemptions.futures-core]]
+version = "0.3.32"
+criteria = "safe-to-deploy"
+
+[[exemptions.futures-executor]]
+version = "0.3.32"
+criteria = "safe-to-run"
+
+[[exemptions.futures-io]]
 version = "0.3.32"
 criteria = "safe-to-deploy"
 
@@ -573,7 +589,7 @@ version = "0.3.33"
 criteria = "safe-to-deploy"
 
 [[exemptions.playwright-rs]]
-version = "0.12.3@git:abd9e6a2d8d74e3bc0c89c5e8583d9d9a3d52f50"
+version = "0.12.3@git:cc75cfc7cc338b5dd9d68d942f5adc9e444dbec0"
 criteria = "safe-to-deploy"
 
 [[exemptions.png]]
