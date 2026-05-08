@@ -21,10 +21,17 @@ self-documenting book for the full story for each).
 - **Show Diffs Between Slices** *(shipped)* — render a unified diff
   between two frozen tags inline in a chapter, with a `live:` escape
   hatch for diffing against current source.
-- **Render Inline Callouts** — attach prose to specific lines of a
-  frozen listing, with stable cross-references from surrounding text.
-  Inline (markers in source) and sidecar (separate TOML) forms; works
-  on any language with a recognised single-line comment syntax.
+- **Render Inline Callouts** *(shipped)* — attach prose to specific
+  lines of a frozen listing via inline `// CALLOUT: <label>` markers,
+  with stable cross-references from surrounding text. Works on any
+  language with a recognised single-line comment syntax. Also ships
+  line-range support (`{{#diff a b 1:30 1:30}}`,
+  `{{#include foo.rs:1:30}}`) and `data-listing-tag-range` locator
+  anchors for the screenshot tool. Sidecar (separate TOML) callouts
+  and PDF inline-badge rendering — features adjacent to this
+  primitive — have design sketches in the book's
+  [ch.7 (Future Work)](https://padamson.github.io/mdbook-listings/ch07-future-work.html);
+  they are not in v0.1.0's scope.
 - **Verify Sync with Source** — drift-detection check that fails CI
   when the latest frozen listing for a source file no longer matches
   the source.

@@ -1,22 +1,12 @@
 # Render Inline Callouts
 
-```admonish note title="This chapter is in progress"
-The story is being built outside-in, and the first slice is the
-furthest *out* this book has reached: a real Chromium driven by
-[playwright-rs](https://crates.io/crates/playwright-rs) asserts on
-the rendered DOM of a callout in this very chapter. Each slice
-ships as one commit; the **Outside-in narrative** sub-section
-grows by one sub-section per slice.
-
-**Note on the visual rendering of callouts.** The shape callouts
-take in this rendered chapter evolves slice by slice. Slice 3
-ships the simplest viable form — a `<dl class="callouts">`
-appended below each code block, listing each marker's badge and
-body. Later slices replace the dl with proper inline badges
-positioned at the marker's line, expandable annotations, side-
-margin layouts, and styled themes. What you see right now in any
-demo block reflects the latest slice that has shipped at the
-time of this build.
+```admonish note title="How this chapter was built"
+The story shipped in v0.1.0 outside-in. The first slice was the
+furthest *out* this book had reached: a real Chromium driven by
+[playwright-rs](https://crates.io/crates/playwright-rs) asserting
+on the rendered DOM of a callout in this very chapter. Each
+slice shipped as one commit; the **Outside-in narrative**
+sub-section below grew by one sub-section per slice.
 ```
 
 ## Story
@@ -45,60 +35,43 @@ Inline form (callout markers in the source itself):
    rendered. This form serves purely as a stable cross-reference
    target.
 
-Out-of-band form (callouts attached to a listing without modifying
-its bytes):
-
-4. Callouts can be attached to a frozen listing without modifying
-   the listing itself — i.e., authors can annotate code they do
-   not own, or that they want to keep callout-free in the source.
-5. Inline-form and out-of-band callouts compose: both sets render.
-   Label collisions across the two sources fail the build.
-
 Cross-reference and numbering:
 
-6. Chapter prose can reference a callout by its label, and the
+4. Chapter prose can reference a callout by its label, and the
    reference renders as the same numbered badge, hyperlinked back
    to the listing occurrence.
-7. Badge numbers are assigned ordinally within each listing and
+5. Badge numbers are assigned ordinally within each listing and
    reset between listings. Adding or removing a callout above an
    existing one renumbers the badges visually but does not break
    label-based references.
 
 Passthrough and robustness:
 
-8. A frozen listing whose language has no recognised inline-
+6. A frozen listing whose language has no recognised inline-
    marker syntax is rendered unchanged for inline-form parsing.
-   Out-of-band callouts still apply — they don't depend on the
-   listing's language.
-9. A comment that resembles a callout marker but does not parse
+7. A comment that resembles a callout marker but does not parse
    cleanly is left unchanged in the rendered output (no silent
    misparse).
-10. A chapter reference to a callout label that does not exist
-    fails the build with a diagnostic that names the missing
-    label and the chapter.
+8. A chapter reference to a callout label that does not exist
+   fails the build with a diagnostic that names the missing
+   label and the chapter.
 
-Rendered shape (refining ACs 1–3 once the splicer matures past its
-slice-3 placeholder dl shape):
+HTML rendered shape (refining ACs 1, 3 once the splicer matures
+past its slice-3 placeholder dl shape):
 
-11. The `CALLOUT:` marker comment line is **removed** from the
-    rendered listing in both HTML and PDF — the surrounding code
-    is shown verbatim, but the comment that carries the marker
-    metadata does not appear as visible text in any rendered
-    output.
-12. The numbered badge is **inline** on the line that previously
-    held the marker comment, in both HTML and PDF. In HTML the
-    badge is interactive: hovering it reveals the body text in a
-    popover, and there is no trailing `<dl>`/list element below
-    the listing. In PDF the badge is non-interactive (no hover
-    in print), and the bodies render in a styled note block
-    after the listing (markdown blockquote per slice 6), each
-    entry keyed by the same badge number that appears on the
-    source line.
+9. The `CALLOUT:` marker comment line is **removed** from the
+   rendered HTML listing — the surrounding code is shown
+   verbatim, but the comment that carries the marker metadata
+   does not appear as visible text.
+10. The numbered badge is **inline** on the line that previously
+    held the marker comment in the rendered HTML. Hovering it
+    reveals the body text in a popover; there is no trailing
+    `<dl>`/list element below the listing.
 
 Authoring ergonomics (added in slice 9 in response to the long-diff
 visual issue surfaced by the test-infra refactor):
 
-13. Authors can render a fragment of a frozen listing via
+11. Authors can render a fragment of a frozen listing via
     `START:END` line-range syntax in `{{#diff}}` and
     `{{#include}}` directives. `{{#diff a b 1:30 1:30}}` renders
     only lines 1-30 of each operand; `{{#include listings/foo.rs:1:30}}`
@@ -109,8 +82,8 @@ visual issue surfaced by the test-infra refactor):
 
 ## The slice — outside-in narrative outline
 
-The story ships as ten slices plus a refactor and a wrap-up
-chore. Slice 1 is the outermost layer — a browser-driving
+The story ships as nine slices plus two refactor passes and a
+wrap-up chore. Slice 1 is the outermost layer — a browser-driving
 acceptance test — and the inner slices fill in the layers needed
 to satisfy it.
 
@@ -120,17 +93,14 @@ to satisfy it.
 | 2 | Comment-syntax table + generic `parse_callouts` parser parameterised on prefix. Pure unit tests for every prefix in the initial table; verifies body and no-body forms; ignores malformed. |
 | 3 | HTML emitter — badge at line, `<details>` nearby — wires parser into preprocessor. Handles both `{{#include}}` (the source language's comment prefix) and `{{#diff}}` (the splicer strips diff `+`/space indicators and tries every comment prefix; removed `-` lines are skipped). Slice 1's `#[ignore]` comes off and the test goes green for AC 1. `SupportedRenderer` enum extracted here. |
 | 4 | Label-only inline form (AC 3). Small addition to emitter; new playwright-rs test asserting the bare-anchor case. |
-| 5 | Cross-reference directive `{{#callout <label>}}` (ACs 6, 10). New playwright-rs test asserting the prose-rendered badge is hyperlinked to the listing-rendered badge anchor. |
+| 5 | Cross-reference directive `{{#callout <label>}}` (ACs 4, 8). New playwright-rs test asserting the prose-rendered badge is hyperlinked to the listing-rendered badge anchor. |
 | 6 | typst-pdf emitter — admonish-note block after the code block (AC 2). Non-browser; assertion is visual or assert_cmd-on-PDF-bytes — decided in the slice. |
-| 7 | HTML rendered-shape pivot (ACs 11, 12 — HTML half). The slice-3 placeholder shape (CALLOUT comment line visible + trailing `<dl>` of bodies) is replaced with the final shape: marker comment is **stripped** from the rendered listing, and an inline interactive `<span class="callout-badge">` is overlaid on the line that previously held it. Hovering the badge reveals the body in a popover (CSS-only or `<details>`-driven). The trailing `<dl>` is removed for HTML. Cross-refs from slice 5 still resolve to the new badge anchor. New playwright-rs test asserting the comment is gone, the inline badge exists, and the body becomes visible on hover. |
+| 7 | HTML rendered-shape pivot (ACs 9, 10). The slice-3 placeholder shape (CALLOUT comment line visible + trailing `<dl>` of bodies) is replaced with the final shape: marker comment is **stripped** from the rendered listing, and an inline interactive `<span class="callout-badge">` is overlaid on the line that previously held it. Hovering the badge reveals the body in a popover (CSS-only or `<details>`-driven). The trailing `<dl>` is removed for HTML. Cross-refs from slice 5 still resolve to the new badge anchor. New playwright-rs test asserting the comment is gone, the inline badge exists, and the body becomes visible on hover. |
 | 8 | Screenshot-tool subcommands and include-block locator anchors. The preprocessor intercepts `\{{#include listings/TAG.ext}}` directives before mdbook's built-in `links` preprocessor runs and emits a `<div data-listing-tag="TAG">` anchor after the rendered fenced block — mirroring what `\{{#diff}}` already does. The capture-screenshots tool is split into two subcommands matching the two listing-rendering shapes (`include LISTING` and `diff LEFT RIGHT`). No new acceptance criterion (this is tooling, not user-visible book behavior). |
 | refactor (e2e migration) | Adopt `playwright-rs-macros` `locator!()` for compile-time selector validation, then migrate every JS-string `evaluate_value` sweep in `tests/e2e_callouts.rs` to playwright-rs `Locator` + `expect(...).to_have_*()` assertions. Surfaces a slice-8 dedup bug (duplicate `id="callout-body-LABEL"` when the same label appears in two blocks) and fixes it. No new ACs; pure test-quality + small splicer hardening. |
 | refactor (test infra) | Move shared e2e setup into `tests/common/e2e_harness.rs`: per-test `BrowserContext` for storage isolation, `tracing_subscriber::fmt()` so playwright-rs's `#[tracing::instrument]` spans surface under `RUST_LOG`, and per-test `BrowserContext::tracing()` recording with the trace dropped on success and saved to `target/playwright-traces/<name>.zip` on panic. The harness also dogfoods the new `playwright-rs-trace` crate by parsing the saved trace and printing failed actions to stderr inline. Sharing one `Browser` across tests via `OnceCell` was tried and reverted — `Browser` channels are bound to the `#[tokio::test]` runtime that created them, so subsequent tests deadlock; the per-test launch is the price of `#[tokio::test]` runtime isolation. Also folds in the upstream resolution of [playwright-rust#89](https://github.com/padamson/playwright-rust/issues/89): bump the `playwright-rs` git pin past `401be500` and replace the lone `history.replaceState` JS string in the click-through-navigation test with the new typed `page.clear_url_fragment().await`. The e2e suite is now JS-string-free. The migration also surfaced and fixed a long-standing badge-positioning bug exposed by the slice's 600-line v6→v7 diff: the overlay's CSS positioning formula assumed each line rendered at 1.5em, but mdbook's `<pre>` uses `line-height: normal` (~1.13 for monospace), so badges in long diffs drifted ~3px per line above their intended row, eventually landing in sibling pres above. Fix: a per-book init script (registered via `additional-js`) measures the previous pre's actual rendered height and writes a `--callout-line-px` CSS custom property the formula picks up. New regression test `every_badge_renders_inside_its_owning_pre` guards against the drift returning. |
-| 9 | Line-range support for `\{{#diff}}` and `\{{#include}}` directives. Both directives accept optional `START:END` arguments to render a fragment of a frozen listing — `\{{#diff a b 1:30 1:30}}` and `\{{#include listings/foo.rs:1:30}}`. Surfaced in the previous refactor: a 600-line diff with three callouts spread across it puts cross-ref prose ~600 lines below its first badge. Authors can now break long diffs and includes into multiple smaller rendered blocks interleaved with prose, without freezing snippet listings for each fragment. New AC: "Author can render a fragment of a frozen listing via `START:END` line-range syntax in `\{{#diff}}` and `\{{#include}}` directives." |
-| 10 | PDF rendered-shape pivot (ACs 11, 12 — PDF half). Marker comment is stripped from the PDF listing the same way HTML does. The inline badge is rendered as a typst superscript / inline note marker on the source line. Bodies stay in slice 6's markdown blockquote shape after the listing, each entry keyed by the same badge number. `pdf_callouts` integration test asserts both the inline marker and the blockquote bodies are present in the extracted PDF text. |
-| 11 | Sidecar TOML loader + overlay logic (ACs 4, 5). New playwright-rs test asserting a sidecar-only callout renders correctly when the source has no marker. Builds on top of the slice 7/10 final rendered shape, so the sidecar tests are written against the final selectors from day one. |
-| refactor | Optional. |
-| wrap-up | Update `ROADMAP.md` to mark the callouts primitive shipped, materialize "What this story does not solve". |
+| 9 | Line-range support for `\{{#diff}}` and `\{{#include}}` directives (AC 11). Both directives accept optional `START:END` arguments to render a fragment of a frozen listing — `\{{#diff a b 1:30 1:30}}` and `\{{#include listings/foo.rs:1:30}}`. Surfaced in the previous refactor: a 600-line diff with three callouts spread across it puts cross-ref prose ~600 lines below its first badge. Authors can now break long diffs and includes into multiple smaller rendered blocks interleaved with prose, without freezing snippet listings for each fragment. |
+| wrap-up | Mark the callouts primitive shipped in `ROADMAP.md` and materialize this chapter's "What this story does not solve" section. |
 
 ## Outside-in narrative
 
@@ -199,7 +169,7 @@ The marker grammar:
 — exactly one space after the prefix, the literal `CALLOUT:`,
 exactly one space, then a label of `[A-Za-z0-9_-]+`, then either
 end-of-line or one whitespace + the rest as body. Anything that
-doesn't match this exactly is silently skipped (AC 9 — no silent
+doesn't match this exactly is silently skipped (AC 7 — no silent
 misparse, the line stays in the rendered listing as-is). Fourteen
 unit tests cover the happy paths for all three prefixes plus the
 malformed-skip cases (wrong prefix, missing space after prefix,
@@ -222,7 +192,7 @@ HTML badges. The simplest emission shape that satisfies the
 slice-1 acceptance test: leave the rendered code block alone, and
 append a `<dl class="callouts">` after the closing fence with one
 `<dt>` per marker (carrying a numbered badge) and one `<dd>`
-per marker that has a body. Per-listing ordinal numbering (AC 7)
+per marker that has a body. Per-listing ordinal numbering (AC 5)
 falls out naturally — each fenced block walks its own marker list.
 
 {{#diff callout-v1 callout-v2}}
@@ -332,7 +302,7 @@ record.
 
 ### Slice 5 — cross-reference directive `{{#callout <label>}}`
 
-Slice 5 closes ACs 6 and 10: chapter prose can reference a callout
+Slice 5 closes ACs 4 and 8: chapter prose can reference a callout
 by label and the reference renders as the same numbered badge,
 hyperlinked back to the listing-side `<dt id="callout-<label>">`
 anchor; a reference to a label that no marker in the chapter
@@ -495,7 +465,7 @@ failed assertion rather than a quietly-broken render.
 
 ### Slice 7 — HTML rendered-shape pivot
 
-Slice 7 closes the HTML half of ACs 11 and 12. The slice-3
+Slice 7 closes ACs 9 and 10. The slice-3
 placeholder shape (CALLOUT comment line visible in the listing
 plus a trailing `<dl class="callouts">` of bodies) is replaced
 with the final shape:
@@ -1076,36 +1046,31 @@ correctness issue; the ergonomics improvement here is for future
 authoring rather than retroactive cleanup of the current
 materialization.
 
-<!--
-Scaffolding for later slices — sidecar TOML format sketch,
-retrospective application to earlier chapters, and the "What this
-story does not solve" section. Materialized in the wrap-up chore
-once the story has shipped.
+## What this story does not solve
 
-Sidecar format sketch (subject to change):
+This chapter handles inline callouts (markers embedded in source
+code as `// CALLOUT: <label> <body>` lines) plus prose-side
+`{{#callout LABEL}}` cross-references and the line-range support
+that breaks long diffs and includes into reader-friendly
+fragments. Two related features sit outside the chapter's scope
+and are sketched in [ch.7 (Future Work)](ch07-future-work.md):
 
-    # book/src/listings/manifest-v1.callouts.toml
-    [[callout]]
-    line = 47
-    label = "upsert-order"
-    body = "Preserves insertion order on replacement."
+- **Out-of-band callouts via sidecar TOML files.** Some listings
+  can't carry inline markers — third-party code the author
+  doesn't own, or block-comment-only languages like CSS where a
+  single-line `// CALLOUT:` form doesn't apply. A sidecar
+  `<tag>.callouts.toml` file alongside the frozen listing would
+  let an author attach annotations without modifying the source.
+- **PDF inline-badge rendering.** In HTML, the marker comment
+  is stripped from the rendered listing and replaced with an
+  inline interactive badge (slice 7). In PDF, the rendering uses
+  a complementary shape: the marker comment stays visible, and
+  bodies render as a styled blockquote below the listing (slice
+  6). A future iteration could match the HTML inline-badge form
+  in PDF too — the design lives in ch.7.
 
-    [[callout]]
-    line = 62
-    label = "empty-manifest"
-    # no body field → bare anchor
-
-Retrospective application to earlier chapters:
-
-After this story ships, a chore-level follow-up walks back through
-the listings already frozen by ch. 1 (Install), ch. 2 (Freeze),
-and ch. 3 (Show Diffs) and adds callouts to them — preferentially
-via sidecar files, since the source code itself doesn't need to
-change. The point is to demonstrate, in place, how callouts
-replace the conventional inline-comment style of code
-documentation: the prose lives in the chapter, the labels make
-the prose addressable from the source position, and the source
-stays comment-light. This is not a new user story; it's an
-application of the now-available primitive to the book's own
-back-catalogue.
--->
+A retrospective chore — adding callouts via the sidecar form to
+the listings already frozen by ch.1 (Install), ch.2 (Freeze),
+and ch.3 (Show Diffs) — also lives in ch.7. It demonstrates how
+callouts replace inline-comment-style code documentation, but it
+needs the sidecar form available first.

@@ -7,3 +7,4 @@
 - [Render Inline Callouts](ch04-render-inline-callouts.md)
 - [Verify Sync with Source](ch05-verify-sync.md)
 - [Recipes](ch06-recipes.md)
+- [Future Work](ch07-future-work.md)
