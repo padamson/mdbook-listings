@@ -419,3 +419,27 @@ tag = "e2e-callouts-v8"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v8.rs"
 sha256 = "825cef8cdcca342aab42e9f8f4551681d010d44a621c51cf2d3d4b2070359319"
+
+[[listing]]
+tag = "diff-v9"
+source = "../src/diff.rs"
+frozen = "src/listings/diff-v9.rs"
+sha256 = "db778d79ab2b2f27488c6749a8a5b9af83fd40e8e205c1da77a584a2493ae13a"
+
+[[listing]]
+tag = "include-v2"
+source = "../src/include.rs"
+frozen = "src/listings/include-v2.rs"
+sha256 = "bdb49f59c6b0f7b2a94a2f7a6808af33a9082b190994066ca56114dddb70d432"
+
+[[listing]]
+tag = "diff-line-ranges-v1"
+source = "../tests/diff_line_ranges.rs"
+frozen = "src/listings/diff-line-ranges-v1.rs"
+sha256 = "c0b8e5115b119211ad72c783812b0180175db0e6e04e202583d321447600ad17"
+
+[[listing]]
+tag = "include-line-ranges-v1"
+source = "../tests/include_line_ranges.rs"
+frozen = "src/listings/include-line-ranges-v1.rs"
+sha256 = "8c1a9797cc31f1bc49fd7659534b49e85be4ee01edfb87046f7a20a6cf4b0bc2"

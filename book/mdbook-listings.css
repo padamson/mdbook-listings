@@ -20,7 +20,7 @@
  * pre-script behaviour for any environment where JS doesn't run.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes are
- * the expected build-time asset: mdbook-listings-css-v2
+ * the expected build-time asset: mdbook-listings-css-v3
  */
 
 .callout-overlay {
@@ -72,8 +72,12 @@
   outline: none;
 }
 
-/* Visually distinguish bare anchor badges from interactive popover badges */
-.callout-badge:only-child {
+/* Visually distinguish bare anchor badges from interactive popover badges.
+ * Scoped to .callout-entry (listing-side overlay) — cross-ref <a> badges
+ * in chapter prose are often the only ELEMENT child of their <p> parent
+ * (text nodes don't count for `:only-child`), so an unscoped selector
+ * would accidentally mute every inline cross-ref. */
+.callout-entry .callout-badge:only-child {
   cursor: default;               /* No pointer finger on hover */
   background: transparent;       /* Hollow look */
   border: 1px dashed currentColor;
@@ -81,8 +85,8 @@
 }
 
 /* Bare badges shouldn't invert on hover since they aren't interactive */
-.callout-badge:only-child:hover,
-.callout-badge:only-child:focus-visible {
+.callout-entry .callout-badge:only-child:hover,
+.callout-entry .callout-badge:only-child:focus-visible {
   background: transparent;
   color: var(--fg, #333);
 }

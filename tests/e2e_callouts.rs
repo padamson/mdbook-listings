@@ -313,6 +313,73 @@ async fn clicking_each_cross_ref_scrolls_target_badge_into_viewport() {
 }
 
 #[tokio::test]
+async fn cross_ref_badges_in_prose_render_with_full_opacity_not_subdued() {
+    // Regression guard: a bare-anchor listing badge (label-only marker
+    // with no body popover) is styled muted/dashed via
+    // `.callout-entry .callout-badge:only-child`. Pre-fix that rule was
+    // unscoped (`.callout-badge:only-child`) and matched every cross-ref
+    // <a> in chapter prose — they're typically the only ELEMENT child
+    // of their <p> parent (text nodes don't count for :only-child), so
+    // every inline cross-ref ended up muted/dashed. The scoping fix
+    // requires the badge to live inside a `.callout-entry` overlay
+    // before muting kicks in.
+    with_traced_chapter(
+        "cross_ref_badges_in_prose_render_with_full_opacity_not_subdued",
+        CH04,
+        |page| async move {
+            let opacity: String = page
+                .evaluate_value(
+                    r#"(() => {
+                      const a = document.querySelector('a.callout-badge.callout-ref');
+                      if (!a) return 'no-cross-ref-found';
+                      return getComputedStyle(a).opacity;
+                    })()"#,
+                )
+                .await
+                .expect("read computed opacity");
+            assert_eq!(
+                opacity, "1",
+                "cross-ref badge in prose should have full opacity; got `{opacity}` \
+                 (subdued styling means the .callout-entry scope on `:only-child` regressed)",
+            );
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn callout_inside_a_sliced_include_renders_with_resolvable_cross_ref() {
+    // Slice 9 demo: the chapter slices `include-line-ranges-v1.rs:73:96`
+    // and the slice carries a `// CALLOUT: include-range-cross-ref-resolves`
+    // marker. Verify the full pipeline end-to-end: the badge button has
+    // the expected id, and the prose-side `{{#callout ...}}` cross-ref
+    // resolves to that id.
+    with_traced_chapter(
+        "callout_inside_a_sliced_include_renders_with_resolvable_cross_ref",
+        CH04,
+        |page| async move {
+            let badge = page
+                .locator(locator!("button#callout-include-range-cross-ref-resolves"))
+                .await;
+            expect(badge)
+                .to_have_count(1)
+                .await
+                .expect("badge for callout inside sliced include must exist");
+            let cross_ref = page
+                .locator(locator!(
+                    r#"a[data-callout-ref="include-range-cross-ref-resolves"]"#
+                ))
+                .await;
+            expect(cross_ref)
+                .to_have_attribute("href", "#callout-include-range-cross-ref-resolves")
+                .await
+                .expect("cross-ref href must point at the badge anchor");
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn every_badge_renders_inside_its_owning_pre() {
     // Regression guard for the long-diff badge mispositioning bug:
     // each callout badge must visually land within the y-range of the

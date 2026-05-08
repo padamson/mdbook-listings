@@ -95,6 +95,18 @@ slice-3 placeholder dl shape):
     entry keyed by the same badge number that appears on the
     source line.
 
+Authoring ergonomics (added in slice 9 in response to the long-diff
+visual issue surfaced by the test-infra refactor):
+
+13. Authors can render a fragment of a frozen listing via
+    `START:END` line-range syntax in `{{#diff}}` and
+    `{{#include}}` directives. `{{#diff a b 1:30 1:30}}` renders
+    only lines 1-30 of each operand; `{{#include listings/foo.rs:1:30}}`
+    inlines only lines 1-30 of the file. Endpoints are inclusive
+    and 1-based; empty endpoints (`200:`, `:100`, `:`) mean "to
+    end" / "to start" / "whole file". Out-of-range endpoints clamp
+    silently to the file's actual line count.
+
 ## The slice — outside-in narrative outline
 
 The story ships as ten slices plus a refactor and a wrap-up
@@ -114,8 +126,9 @@ to satisfy it.
 | 8 | Screenshot-tool subcommands and include-block locator anchors. The preprocessor intercepts `\{{#include listings/TAG.ext}}` directives before mdbook's built-in `links` preprocessor runs and emits a `<div data-listing-tag="TAG">` anchor after the rendered fenced block — mirroring what `\{{#diff}}` already does. The capture-screenshots tool is split into two subcommands matching the two listing-rendering shapes (`include LISTING` and `diff LEFT RIGHT`). No new acceptance criterion (this is tooling, not user-visible book behavior). |
 | refactor (e2e migration) | Adopt `playwright-rs-macros` `locator!()` for compile-time selector validation, then migrate every JS-string `evaluate_value` sweep in `tests/e2e_callouts.rs` to playwright-rs `Locator` + `expect(...).to_have_*()` assertions. Surfaces a slice-8 dedup bug (duplicate `id="callout-body-LABEL"` when the same label appears in two blocks) and fixes it. No new ACs; pure test-quality + small splicer hardening. |
 | refactor (test infra) | Move shared e2e setup into `tests/common/e2e_harness.rs`: per-test `BrowserContext` for storage isolation, `tracing_subscriber::fmt()` so playwright-rs's `#[tracing::instrument]` spans surface under `RUST_LOG`, and per-test `BrowserContext::tracing()` recording with the trace dropped on success and saved to `target/playwright-traces/<name>.zip` on panic. The harness also dogfoods the new `playwright-rs-trace` crate by parsing the saved trace and printing failed actions to stderr inline. Sharing one `Browser` across tests via `OnceCell` was tried and reverted — `Browser` channels are bound to the `#[tokio::test]` runtime that created them, so subsequent tests deadlock; the per-test launch is the price of `#[tokio::test]` runtime isolation. Also folds in the upstream resolution of [playwright-rust#89](https://github.com/padamson/playwright-rust/issues/89): bump the `playwright-rs` git pin past `401be500` and replace the lone `history.replaceState` JS string in the click-through-navigation test with the new typed `page.clear_url_fragment().await`. The e2e suite is now JS-string-free. The migration also surfaced and fixed a long-standing badge-positioning bug exposed by the slice's 600-line v6→v7 diff: the overlay's CSS positioning formula assumed each line rendered at 1.5em, but mdbook's `<pre>` uses `line-height: normal` (~1.13 for monospace), so badges in long diffs drifted ~3px per line above their intended row, eventually landing in sibling pres above. Fix: a per-book init script (registered via `additional-js`) measures the previous pre's actual rendered height and writes a `--callout-line-px` CSS custom property the formula picks up. New regression test `every_badge_renders_inside_its_owning_pre` guards against the drift returning. |
-| 9 | PDF rendered-shape pivot (ACs 11, 12 — PDF half). Marker comment is stripped from the PDF listing the same way HTML does. The inline badge is rendered as a typst superscript / inline note marker on the source line. Bodies stay in slice 6's markdown blockquote shape after the listing, each entry keyed by the same badge number. `pdf_callouts` integration test asserts both the inline marker and the blockquote bodies are present in the extracted PDF text. |
-| 10 | Sidecar TOML loader + overlay logic (ACs 4, 5). New playwright-rs test asserting a sidecar-only callout renders correctly when the source has no marker. Builds on top of the slice 7/9 final rendered shape, so the sidecar tests are written against the final selectors from day one. |
+| 9 | Line-range support for `\{{#diff}}` and `\{{#include}}` directives. Both directives accept optional `START:END` arguments to render a fragment of a frozen listing — `\{{#diff a b 1:30 1:30}}` and `\{{#include listings/foo.rs:1:30}}`. Surfaced in the previous refactor: a 600-line diff with three callouts spread across it puts cross-ref prose ~600 lines below its first badge. Authors can now break long diffs and includes into multiple smaller rendered blocks interleaved with prose, without freezing snippet listings for each fragment. New AC: "Author can render a fragment of a frozen listing via `START:END` line-range syntax in `\{{#diff}}` and `\{{#include}}` directives." |
+| 10 | PDF rendered-shape pivot (ACs 11, 12 — PDF half). Marker comment is stripped from the PDF listing the same way HTML does. The inline badge is rendered as a typst superscript / inline note marker on the source line. Bodies stay in slice 6's markdown blockquote shape after the listing, each entry keyed by the same badge number. `pdf_callouts` integration test asserts both the inline marker and the blockquote bodies are present in the extracted PDF text. |
+| 11 | Sidecar TOML loader + overlay logic (ACs 4, 5). New playwright-rs test asserting a sidecar-only callout renders correctly when the source has no marker. Builds on top of the slice 7/10 final rendered shape, so the sidecar tests are written against the final selectors from day one. |
 | refactor | Optional. |
 | wrap-up | Update `ROADMAP.md` to mark the callouts primitive shipped, materialize "What this story does not solve". |
 
@@ -849,6 +862,219 @@ silently regress. The diff against `tests/e2e_callouts.rs` (v7 →
 v8) shows the new test:
 
 {{#diff e2e-callouts-v7 e2e-callouts-v8}}
+
+### Slice 9 — line-range support for `{{#diff}}` and `{{#include}}`
+
+The previous refactor's badge-positioning fix put every callout back
+on the line that previously held its `CALLOUT:` marker. But the
+visual UX problem that prompted the fix has another side: a
+600-line diff is taller than the browser viewport regardless of
+where badges land within it. Cross-ref prose at the bottom of a
+long diff anchor-jumps the reader hundreds of em above; on the way
+back down, the prior section's overlay (with its own ordinal-1 and
+ordinal-2 badges) sits in the line of sight long before the
+intended diff scrolls back into view. The author can fight this by
+freezing snippet listings — extract just the first 30 lines of
+`tests/e2e_callouts.rs` v7 as `e2e-callouts-v7-imports.rs`,
+freeze it, diff *that* against the corresponding slice of v6 — but
+that's a lot of boilerplate per fragment, plus a maintenance tax
+every time the parent listing evolves.
+
+This slice adds line-range support to the two directives that
+render frozen-listing bytes: `{{#diff}}` and `{{#include}}`. Both
+accept optional `START:END` arguments to render only the
+corresponding fragment of the source files. Endpoints are
+inclusive and 1-based; empty endpoints (`200:`, `:100`, `:`) mean
+"to end" / "to start" / "whole file". Out-of-range endpoints clamp
+silently — authors using `200:` to mean "from line 200 to whatever
+the end happens to be" don't have to know the file's exact length.
+
+The `{{#diff}}` form takes two ranges (one per operand) since line
+numbers shift between versions:
+
+```text
+\{{#diff a b}}                    # whole files (today's behaviour)
+\{{#diff a b 1:50 1:60}}          # left lines 1-50 vs right lines 1-60
+\{{#diff a b 200: 220:}}          # from line N to end-of-file
+\{{#diff a b :100 :100}}          # from start to line 100
+```
+
+The `{{#include}}` form re-uses mdBook's existing `:start:end`
+suffix syntax — same shape readers already learn for the built-in
+include directive:
+
+```text
+\{{#include listings/foo.rs}}              # whole file
+\{{#include listings/foo.rs:1:30}}         # lines 1-30
+\{{#include listings/foo.rs:200:}}         # from line 200 to EOF
+```
+
+The diff splicer slices both source files to their respective
+ranges before running the diff algorithm; the include splicer
+slices the file body before inlining. CALLOUT-marker stripping
+and badge emission run on the post-slice content, so
+`--callout-line` values refer to the rendered slice (line 5 in
+the slice = line 5 in the rendered `<pre>`, regardless of where
+that line was in the original file). The locator anchors emitted
+for the screenshot tool gain a range data-attribute when ranges
+are present — `data-listing-diff-left-range="1:50"`,
+`data-listing-tag-range="1:30"` — keeping the (tag, range) pair
+unique even when the same listing is shown sliced more than once
+in a chapter.
+
+The new `LineRange` struct lives in `src/diff.rs` (and is re-used
+by the include splicer). The diff against the slice-8 state of
+`src/diff.rs` (v8 → v9), sliced to the prelude where the struct
+and its `slice()` / `render()` helpers live, shows the new types
+landing as a pure addition between the existing `DiffDirective`
+struct and the parser:
+
+{{#diff diff-v8 diff-v9 1:30 1:113}}
+
+The directive parser grows from a single 2-token shape to a
+3-armed match that accepts `2` tokens (whole-file, today's shape)
+or `4` tokens (with two `START:END` ranges). Anything else —
+malformed ranges, wrong arity — falls through and skips the
+directive, same shape as today's wrong-arity handling, so authors
+who fat-finger a range get a literal `\{{#diff …}}` in the
+rendered chapter rather than an opaque silent failure:
+
+{{#diff diff-v8 diff-v9 56:75 146:175}}
+
+The splicer applies the slice between the byte-load and the diff
+render, branching on `Option<LineRange>` so the no-range case
+still loans bytes through the existing diff engine without an
+intermediate copy. The locator anchor's data attributes pick up
+the new `data-listing-diff-{left,right}-range` keys when ranges
+are present:
+
+{{#diff diff-v8 diff-v9 263:295 435:495}}
+
+The include splicer mirrors the diff splicer's shape. Its parser
+splits the directive's path on the first `:` to peel off any
+`:start:end` suffix — falling through to mdBook's built-in
+`links` preprocessor for unrecognised suffix forms (anchor names
+like `:setup`) so authors who already use those keep their
+expected behaviour:
+
+{{#diff include-v1 include-v2 50:90 55:105}}
+
+The splicer slices the file body before the inline expansion and
+emits a `data-listing-tag-range` attribute on the locator anchor
+when a range is set:
+
+{{#diff include-v1 include-v2 159:215 181:240}}
+
+Both call sites use the same `slice()` method and `render()`
+formatter from `src/diff.rs`, so range semantics stay consistent
+across the two directives.
+
+A subtle correctness consideration: when the diff splicer hands a
+slice of each operand to `similar`, the resulting unified-diff
+hunk headers (`@@ -A,B +C,D @@`) are keyed to slice-relative line
+numbers. A reader looking at a `+` line in the rendered diff would
+have no way to map it back to its position in the parent listing.
+The splicer post-processes `similar`'s output to shift every hunk
+header's start lines by `(range.start - 1)` per side, so
+`{{#diff a b 56:75 146:175}}` renders `@@ -58,18 +148,28 @@`
+rather than the raw `@@ -3,18 +3,28 @@` `similar` emits. The
+include splicer mirrors the diff splicer's two-line header shape:
+where a unified diff opens with `--- left-tag\n+++ right-tag\n@@ -A,B +C,D @@`,
+a sliced include opens with `// basename\n// @@ start,end @@`
+(language-aware comment prefix when the file extension has a
+known one). Line 1 plays the role of the diff's `--- TAG`; line
+2 plays the role of the diff's `@@ -A,B +C,D @@`. Readers can
+tell at a glance that they're looking at a fragment, not the
+whole file, and they know which file the fragment came from.
+
+Both behaviours are covered by integration tests in
+`tests/diff_line_ranges.rs` and `tests/include_line_ranges.rs`.
+The include test file is itself a useful demo: it's about 165
+lines of Rust split across five tests + a small harness, and
+slice 9 shows the whole thing in chunks via the very `{{#include
+listings/foo.rs:start:end}}` syntax it tests. Each chunk gets a
+brief intro paragraph; the `// basename\n// @@ start,end @@`
+header prepended by the splicer makes each fragment
+self-locating against the unsliced file.
+
+Doc comment + imports + harness use:
+
+```rust
+{{#include listings/include-line-ranges-v1.rs:1:17}}
+```
+
+The first test asserts the basic slicing contract — lines outside
+the requested range never appear in the rendered chapter
+(callout {{#callout include-range-slices}}):
+
+```rust
+{{#include listings/include-line-ranges-v1.rs:19:32}}
+```
+
+The header-line test pins the contract that the rendered slice is
+prefixed with a two-line `// basename\n// @@ start,end @@` banner
+(callout {{#callout include-range-header}}):
+
+```rust
+{{#include listings/include-line-ranges-v1.rs:34:49}}
+```
+
+The header's comment prefix is language-aware — Rust gets `//`,
+Python/YAML/TOML/shell get `#`, SQL gets `--`, anything else gets
+a raw header with no prefix at all. Three more tests pin each
+case, so the contract is explicit (callout
+{{#callout include-range-header-language-aware}}):
+
+```rust
+{{#include listings/include-line-ranges-v1.rs:51:93}}
+```
+
+The data-attribute test pins the locator-anchor contract — the
+screenshot tool can address the sliced include via
+`[data-listing-tag-range="..."]` (callout
+{{#callout include-range-anchor}}):
+
+```rust
+{{#include listings/include-line-ranges-v1.rs:95:105}}
+```
+
+The callout-composition test verifies that a `// CALLOUT:` marker
+inside the slice window flows through the include splicer, then
+the callout splicer, and emerges as a `<button id="callout-LABEL">`
+badge — the line-range form composes with callouts the same way
+whole-file includes do (callout
+{{#callout include-range-callout-composes}}):
+
+```rust
+{{#include listings/include-line-ranges-v1.rs:107:131}}
+```
+
+The cross-reference test pins the half of the contract you've
+been clicking through this slice — chapter prose can
+`{{#callout LABEL}}` to a marker that lives inside a sliced
+include, and the directive resolves to the same
+`id="callout-LABEL"` anchor the badge gets (callout
+{{#callout include-range-cross-ref-resolves}}):
+
+```rust
+{{#include listings/include-line-ranges-v1.rs:133:160}}
+```
+
+And the harness, completing the file:
+
+```rust
+{{#include listings/include-line-ranges-v1.rs:162:210}}
+```
+
+A future refactor could extract the test-infra refactor's
+`{{#diff e2e-callouts-v6 e2e-callouts-v7}}` into three smaller
+ranged diffs interleaved with prose — one for the imports + first
+test, one for the click-through test fragment, and one tying
+back to the cross-refs. We're leaving the existing diff intact
+for now since the badge-positioning fix already addressed the
+correctness issue; the ergonomics improvement here is for future
+authoring rather than retroactive cleanup of the current
+materialization.
 
 <!--
 Scaffolding for later slices — sidecar TOML format sketch,

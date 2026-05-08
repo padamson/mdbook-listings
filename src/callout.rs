@@ -397,11 +397,25 @@ fn replace_callout_refs(
             .any(|&(start, end)| pos >= start && pos < end)
     };
 
+    let bytes = content.as_bytes();
+    // Same shape as the diff/include parsers: count single backticks on
+    // the line BEFORE the directive's opening offset; an odd count means
+    // the directive sits between `…` markers (inline code span) and is a
+    // documentation example, not a real cross-ref.
+    let in_inline_backticks = |pos: usize| {
+        let line_start = content[..pos].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        bytes[line_start..pos]
+            .iter()
+            .filter(|&&b| b == b'`')
+            .count()
+            % 2
+            == 1
+    };
     let mut out = String::with_capacity(content.len());
     let mut cursor = 0;
     while let Some(rel) = content[cursor..].find(CALLOUT_DIRECTIVE_OPEN) {
         let open_at = cursor + rel;
-        if in_fence(open_at) {
+        if in_fence(open_at) || in_inline_backticks(open_at) {
             // Step past the opener so we don't loop on it forever.
             out.push_str(&content[cursor..open_at + CALLOUT_DIRECTIVE_OPEN.len()]);
             cursor = open_at + CALLOUT_DIRECTIVE_OPEN.len();
@@ -652,11 +666,13 @@ fn render_callout_list_pdf(callouts: &[Callout]) -> String {
     s
 }
 
+// CALLOUT: html-escape Standard HTML escapes plus `{` → `&#123;` so a callout body that documents a `{{#callout LABEL}}` or `{{#diff a b}}` directive (rendered into the overlay HTML, which sits OUTSIDE its fenced code block) doesn't get its example syntax mistaken for a real directive by the cross-ref scanner downstream. The browser still renders `&#123;&#123;` as `{{` visually.
 fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+        .replace('{', "&#123;")
 }
 
 #[cfg(test)]
@@ -1086,6 +1102,49 @@ mod tests {
         assert!(
             !out.contains("data-callout-badge=\"not-real-marker\""),
             "the marker inside the embedded string is YAML, not Rust — and the outer fence is rust; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn replace_callout_refs_skips_directives_inside_inline_backticks_in_prose() {
+        // A chapter that documents the cross-ref syntax in prose like
+        // "use `{{#callout LABEL}}` to ..." must not have the example
+        // text resolve as a real cross-ref — the inline backticks mark
+        // it as a documentation example, mirroring how the diff parser
+        // skips directives between `…` on the same line.
+        let content =
+            "```rust\n// CALLOUT: greeting Hello.\n```\n\nUse `{{#callout LABEL}}` to refer.\n";
+        let out = splice_chapter(content, SupportedRenderer::Html).expect("splice");
+        assert!(
+            out.contains("`{{#callout LABEL}}`"),
+            "literal example syntax in inline backticks must survive verbatim; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_html_escapes_curly_braces_in_body_to_protect_cross_ref_scanner() {
+        // A callout body that documents the `{{#callout LABEL}}` syntax
+        // would, post-overlay-emit, land OUTSIDE its fenced code block
+        // — the overlay div is a sibling of the pre. Without escaping,
+        // the cross-ref scanner downstream sees the literal directive
+        // text and tries to resolve `LABEL`, failing the build.
+        let content =
+            "```rust\n// CALLOUT: lbl Authors write `{{#callout LABEL}}` to cross-ref.\n```\n";
+        let out = splice_chapter(content, SupportedRenderer::Html).expect("splice");
+        let body = out
+            .split("<div class=\"callout-body\"")
+            .nth(1)
+            .unwrap_or("")
+            .split("</div>")
+            .next()
+            .unwrap_or("");
+        assert!(
+            body.contains("&#123;&#123;#callout LABEL"),
+            "expected `{{` escaped to `&#123;` so the cross-ref scanner can't see it; got body:\n{body}",
+        );
+        assert!(
+            !body.contains("{{#callout LABEL"),
+            "raw `{{#callout LABEL}}` must not survive into the overlay body; got body:\n{body}",
         );
     }
 
