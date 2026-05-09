@@ -4,14 +4,14 @@ mod common;
 // CALLOUT: harness-import Pulls in the shared per-test e2e harness (tests/common/e2e_harness.rs) — every test in this file goes through `with_traced_chapter`, so per-test Playwright launch + trace recording + tracing_subscriber init all live in one place.
 use common::e2e_harness::with_traced_chapter;
 
-const CH04: &str = "ch04-render-inline-callouts";
+const CH05: &str = "ch05-render-inline-callouts";
 
 #[tokio::test]
 async fn label_only_callout_renders_badge_without_following_body() {
     // CALLOUT: harness-call Canonical call shape. The harness opens a per-test BrowserContext, navigates to the chapter HTML, starts a Playwright trace, runs the closure body with the resulting Page, and on panic saves the trace to target/playwright-traces/<name>.zip + prints a failed-action summary parsed via playwright-rs-trace.
     with_traced_chapter(
         "label_only_callout_renders_badge_without_following_body",
-        CH04,
+        CH05,
         |page| async move {
             let badge = page.locator(locator!("button#callout-cli-parse")).await;
             expect(badge)
@@ -32,7 +32,7 @@ async fn label_only_callout_renders_badge_without_following_body() {
 async fn callout_badge_renders_with_data_attribute_in_ch04() {
     with_traced_chapter(
         "callout_badge_renders_with_data_attribute_in_ch04",
-        CH04,
+        CH05,
         |page| async move {
             let badges = page.locator(locator!("[data-callout-badge]")).await;
             let count = badges.count().await.expect("count badges");
@@ -51,7 +51,7 @@ async fn callout_badge_renders_with_data_attribute_in_ch04() {
 async fn callout_cross_ref_renders_as_anchor_to_listing_badge() {
     with_traced_chapter(
         "callout_cross_ref_renders_as_anchor_to_listing_badge",
-        CH04,
+        CH05,
         |page| async move {
             let cross_ref = page
                 .locator(locator!(r#"a[data-callout-ref="cross-ref-emit"]"#))
@@ -76,7 +76,7 @@ async fn callout_cross_ref_renders_as_anchor_to_listing_badge() {
 async fn callout_marker_comment_is_stripped_and_body_reveals_on_hover() {
     with_traced_chapter(
         "callout_marker_comment_is_stripped_and_body_reveals_on_hover",
-        CH04,
+        CH05,
         |page| async move {
             // Find the <pre> whose sibling overlay carries the cross-ref-emit
             // badge (xpath does the sibling traversal that CSS can't). The
@@ -122,7 +122,7 @@ async fn every_callout_cross_ref_resolves_to_a_badge_with_matching_ordinal_and_t
     // 4. The rendered text on the ref matches the target badge's text
     with_traced_chapter(
         "every_callout_cross_ref_resolves_to_a_badge_with_matching_ordinal_and_text",
-        CH04,
+        CH05,
         |page| async move {
             let refs = page.locator(locator!("a[data-callout-ref]")).await;
             let count = refs.count().await.expect("count refs");
@@ -192,7 +192,7 @@ async fn every_cross_refed_label_has_a_visible_badge_in_the_chapter() {
     // `button[id="callout-LABEL"]` somewhere in the rendered page.
     with_traced_chapter(
         "every_cross_refed_label_has_a_visible_badge_in_the_chapter",
-        CH04,
+        CH05,
         |page| async move {
             let refs = page.locator(locator!("a[data-callout-ref]")).await;
             let count = refs.count().await.expect("count refs");
@@ -236,7 +236,7 @@ async fn clicking_each_cross_ref_scrolls_target_badge_into_viewport() {
     // up visible (the natural in-page anchor-jump behaviour).
     with_traced_chapter(
         "clicking_each_cross_ref_scrolls_target_badge_into_viewport",
-        CH04,
+        CH05,
         |page| async move {
             let refs = page.locator(locator!("a[data-callout-ref]")).await;
             let count = refs.count().await.expect("count refs");

@@ -1,6 +1,6 @@
 //! Integration tests for slice 9: the `{{#diff a b START:END START:END}}`
 //! line-range form. Each test exercises one facet of the feature; the
-//! file is frozen as `diff-line-ranges-v1.rs` and shown in ch.4 slice 9
+//! file is frozen as `diff-line-ranges-v1.rs` and shown in ch.5 slice 9
 //! via `{{#include listings/diff-line-ranges-v1.rs:LR}}` to dogfood the
 //! companion `{{#include}}` line-range syntax in the same slice that
 //! introduces it.

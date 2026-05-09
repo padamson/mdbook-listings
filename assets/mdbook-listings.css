@@ -168,6 +168,24 @@
   transition: visibility 0s, clip-path 0.2s ease-out, color 0.15s ease-out 0.2s;
 }
 
+/* mdbook's book.js runs highlight.js across every `<code>` on the
+ * page at load, adding `.hljs` to the outer `<code>` and wrapping
+ * the inner text in `<span class="hljs-…">` elements that hold
+ * their own theme colours. Those colours override `color: inherit`
+ * and don't pick up the parent's transition, so they "appear
+ * instantly / vanish last" while the rest of the body fades. Match
+ * the body's color animation on every hljs element so the popover
+ * fades uniformly. */
+.callout-body [class*="hljs"] {
+  color: transparent;
+  transition: color 0.15s ease-out;
+}
+.callout-entry .callout-badge:hover + .callout-body [class*="hljs"],
+.callout-entry .callout-badge:focus-visible + .callout-body [class*="hljs"] {
+  color: var(--fg, #333);
+  transition: color 0.15s ease-out 0.2s;
+}
+
 /* Cross-reference badge in chapter prose (slice 5). Same circle shape
  * as the listing-side badge but static-positioned inline with text. */
 .callout-badge.callout-ref {

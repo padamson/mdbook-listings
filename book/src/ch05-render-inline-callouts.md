@@ -89,7 +89,7 @@ to satisfy it.
 
 | Slice | What it adds |
 |---|---|
-| 1 | playwright-rs harness. A failing `#[tokio::test] #[ignore]` in `tests/e2e_callouts.rs` launches Chromium against the rendered ch. 4 HTML and asserts a `[data-callout-badge]` element exists. The test fails (no callouts in ch. 4 yet, no parser, no HTML emitter); ignore keeps the green-build chain passing while later slices grow the rest. |
+| 1 | playwright-rs harness. A failing `#[tokio::test] #[ignore]` in `tests/e2e_callouts.rs` launches Chromium against the rendered ch. 5 HTML and asserts a `[data-callout-badge]` element exists. The test fails (no callouts in ch. 5 yet, no parser, no HTML emitter); ignore keeps the green-build chain passing while later slices grow the rest. |
 | 2 | Comment-syntax table + generic `parse_callouts` parser parameterised on prefix. Pure unit tests for every prefix in the initial table; verifies body and no-body forms; ignores malformed. |
 | 3 | HTML emitter — badge at line, `<details>` nearby — wires parser into preprocessor. Handles both `{{#include}}` (the source language's comment prefix) and `{{#diff}}` (the splicer strips diff `+`/space indicators and tries every comment prefix; removed `-` lines are skipped). Slice 1's `#[ignore]` comes off and the test goes green for AC 1. `SupportedRenderer` enum extracted here. |
 | 4 | Label-only inline form (AC 3). Small addition to emitter; new playwright-rs test asserting the bare-anchor case. |
@@ -110,7 +110,7 @@ The first slice introduces the outermost-layer test that the rest
 of the story races to satisfy: a Rust integration test that
 launches a real Chromium via
 [playwright-rs](https://crates.io/crates/playwright-rs), navigates
-to the rendered `ch04-render-inline-callouts.html` on disk, and
+to the rendered `ch05-render-inline-callouts.html` on disk, and
 asserts that a `[data-callout-badge]` element exists with non-empty
 text content. The test fails today — there's no parser, no HTML
 emitter, and no callout-marked listing in this chapter yet.
@@ -217,7 +217,7 @@ those three markers.
 Snapshot (slice 3) of the diff path's dl as it looked the day
 slice 3 shipped:
 
-![Slice 3 rendered dl from the diff path: three badges 1–3 with bodies for the parse-entry, label-grammar, and splice-entry markers added in callout-v2.](images/ch04-slice3-diff-callouts.png)
+![Slice 3 rendered dl from the diff path: three badges 1–3 with bodies for the parse-entry, label-grammar, and splice-entry markers added in callout-v2.](images/ch05-slice3-diff-callouts.png)
 
 To exercise the splicer's `{{#include}}` path on a different
 input shape, here is the source of the screenshot tool — a small
@@ -233,7 +233,7 @@ showing the marker doing real work in this very chapter.
 
 Snapshot (slice 3) of the include path's dl:
 
-![Slice 3 rendered dl from the include path: a single badge 1 with body text describing how the screenshot tool picks which match to capture.](images/ch04-slice3-include-callouts.png)
+![Slice 3 rendered dl from the include path: a single badge 1 with body text describing how the screenshot tool picks which match to capture.](images/ch05-slice3-include-callouts.png)
 
 Both images are frozen-in-time snapshots. Readers viewing this
 chapter on a build *after* a later slice will see the live
@@ -257,7 +257,7 @@ callout rendering both apply to every chapter.
 {{#diff main-v5 main-v6}}
 
 `tests/e2e_callouts.rs` drops its `#[ignore]`. The Playwright
-test now runs against the just-built ch. 4 HTML, finds the
+test now runs against the just-built ch. 5 HTML, finds the
 `[data-callout-badge]` elements emitted by the splicer above,
 and goes green — closing AC 1 end-to-end.
 
@@ -271,7 +271,7 @@ but no annotation. As it turns out, the slice-3 emitter already
 handles this — when `body.is_none()` the emitter skips the `<dd>`,
 so a label-only marker renders as a `<dt>` with badge and no
 following `<dd>`. Slice 4's job is therefore a small one: add a
-label-only marker somewhere ch. 4 includes, and add a Playwright
+label-only marker somewhere ch. 5 includes, and add a Playwright
 test that pins the visual contract so future slices can't
 regress it.
 
@@ -286,7 +286,7 @@ screenshot tool's rendered source — two entries this slice
 (`locator-pick` from slice 3 with a body, plus `cli-parse` added
 just now as a bare anchor):
 
-![Slice 4 rendered dl below the screenshot tool's listing: two badges 1 and 2; the first with a body, the second a bare badge.](images/ch04-slice4-include-callouts.png)
+![Slice 4 rendered dl below the screenshot tool's listing: two badges 1 and 2; the first with a body, the second a bare badge.](images/ch05-slice4-include-callouts.png)
 
 A new e2e test queries the post-render DOM for the
 `callout-cli-parse` `<dt>` and asserts its `nextElementSibling`
@@ -331,7 +331,7 @@ from slice 3 — the new code was added near it) and the two
 brand-new markers from this slice, `cross-ref-replace` and
 `cross-ref-emit`:
 
-![Slice 5 rendered dl below the callout-v2→v3 diff: three badges 1–3 with bodies for splice-entry, cross-ref-replace, and cross-ref-emit.](images/ch04-slice5-diff-callouts.png)
+![Slice 5 rendered dl below the callout-v2→v3 diff: three badges 1–3 with bodies for splice-entry, cross-ref-replace, and cross-ref-emit.](images/ch05-slice5-diff-callouts.png)
 
 `src/main.rs`'s `preprocess` chain propagates the new
 `SpliceError` out of `splice_callouts`, so the build stops at the
@@ -359,7 +359,7 @@ this reference resolves to.
 Snapshot (slice 5) of the live cross-reference badge embedded in
 the prose paragraph above:
 
-![Slice 5 inline cross-reference badge: a numbered anchor matching the cross-ref-emit listing badge, hyperlinked back to it.](images/ch04-slice5-cross-ref.png)
+![Slice 5 inline cross-reference badge: a numbered anchor matching the cross-ref-emit listing badge, hyperlinked back to it.](images/ch05-slice5-cross-ref.png)
 
 Same caveat as the earlier slices' snapshots: the image freezes
 slice 5's rendered shape, while the live badge above will track
@@ -415,7 +415,7 @@ emits a `<dl class="callouts">` directly below the snippet above.
 Snapshot (slice 6) of that HTML dl as it looked the day slice 6
 shipped:
 
-![Slice 6 rendered dl below the pdf-emit snippet: one badge with body explaining the new typst-pdf emitter shape.](images/ch04-slice6-snippet-callouts.png)
+![Slice 6 rendered dl below the pdf-emit snippet: one badge with body explaining the new typst-pdf emitter shape.](images/ch05-slice6-snippet-callouts.png)
 
 `src/main.rs`'s `preprocess` resolves the renderer once and passes
 it through:
@@ -455,7 +455,7 @@ the diff appears here as a quoted note block — three entries,
 bold ordinal + label, em-dash + body — directly under the diff
 fence:
 
-![Slice 6 rendered PDF page: a typst-pdf rendering of the callout-v2→v3 diff with three blockquote entries below it, one per CALLOUT marker.](images/ch04-slice6-pdf-callouts.png)
+![Slice 6 rendered PDF page: a typst-pdf rendering of the callout-v2→v3 diff with three blockquote entries below it, one per CALLOUT marker.](images/ch05-slice6-pdf-callouts.png)
 
 The visual on this page is a frozen snapshot of slice 6's PDF
 output; the page number itself shifts as the book grows. CI runs
@@ -534,7 +534,7 @@ Snapshot (slice 7) of the rendered HTML for the screenshot tool
 include — the marker comment is gone and the badge sits at the
 right margin of its line:
 
-![Slice 7 rendered HTML for capture-screenshots-v2 include: marker comment stripped, two badges (one with body for locator-pick, one bare for cli-parse) overlaid on their respective lines.](images/ch04-slice7-overlay.png)
+![Slice 7 rendered HTML for capture-screenshots-v2 include: marker comment stripped, two badges (one with body for locator-pick, one bare for cli-parse) overlaid on their respective lines.](images/ch05-slice7-overlay.png)
 
 The dl is gone; the badges are interactive; the body popover
 shows on hover. Visual reference is from the day slice 7 shipped
@@ -748,7 +748,7 @@ trace cleanup before re-raising.
 
 The diff against `tests/e2e_callouts.rs` (v6 → v7) shows every
 test body collapsing into a `with_traced_chapter("test-name",
-CH04, |page| async move { ... }).await` call — the per-test
+CH05, |page| async move { ... }).await` call — the per-test
 `Playwright::launch`, `pw.chromium().launch()`, `browser.new_page()`,
 and `browser.close()` move into the harness, and the test body
 inherits a `Page` already navigated to the chapter HTML.
@@ -1053,7 +1053,7 @@ code as `// CALLOUT: <label> <body>` lines) plus prose-side
 `{{#callout LABEL}}` cross-references and the line-range support
 that breaks long diffs and includes into reader-friendly
 fragments. Two related features sit outside the chapter's scope
-and are sketched in [ch.7 (Future Work)](ch07-future-work.md):
+and are sketched in [ch.9 (Future Work)](ch09-future-work.md):
 
 - **Out-of-band callouts via sidecar TOML files.** Some listings
   can't carry inline markers — third-party code the author
@@ -1067,10 +1067,10 @@ and are sketched in [ch.7 (Future Work)](ch07-future-work.md):
   a complementary shape: the marker comment stays visible, and
   bodies render as a styled blockquote below the listing (slice
   6). A future iteration could match the HTML inline-badge form
-  in PDF too — the design lives in ch.7.
+  in PDF too — the design lives in ch.9.
 
 A retrospective chore — adding callouts via the sidecar form to
-the listings already frozen by ch.1 (Install), ch.2 (Freeze),
-and ch.3 (Show Diffs) — also lives in ch.7. It demonstrates how
+the listings already frozen by ch.2 (Install), ch.3 (Freeze),
+and ch.4 (Show Diffs) — also lives in ch.9. It demonstrates how
 callouts replace inline-comment-style code documentation, but it
 needs the sidecar form available first.

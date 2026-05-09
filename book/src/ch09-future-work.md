@@ -39,17 +39,17 @@ two sources (the same label inline AND in the sidecar) fail the
 build with a diagnostic naming the duplicate label and both
 source locations.
 
-This adds two acceptance criteria to ch.4's primitive: callouts
+This adds two acceptance criteria to ch.5's primitive: callouts
 can be attached without modifying the listing's bytes, and inline
 + sidecar callouts compose cleanly.
 
 ## PDF inline-badge rendering
 
 HTML callouts render as interactive inline badges on the line
-that previously held the marker comment (ch.4 slice 7). PDF
+that previously held the marker comment (ch.5 slice 7). PDF
 renders the same callouts in a complementary shape: marker
 comment visible in the listing + a styled blockquote below
-(ch.4 slice 6). A future iteration could match the HTML form in
+(ch.5 slice 6). A future iteration could match the HTML form in
 PDF — strip the marker comment from the PDF listing too, and
 render a typst inline-superscript marker on the source line
 instead. Bodies stay in the blockquote (no hover popover in
@@ -63,8 +63,8 @@ stay.
 ## Retrospective application of callouts to earlier chapters
 
 Once sidecar callouts are available, a chore-level pass walks
-back through the listings frozen by ch.1 (Install), ch.2
-(Freeze), and ch.3 (Show Diffs) and adds callouts to them via
+back through the listings frozen by ch.2 (Install), ch.3
+(Freeze), and ch.4 (Show Diffs) and adds callouts to them via
 the sidecar form. The point is to demonstrate, in place, how
 callouts replace the conventional inline-comment style of code
 documentation: the prose lives in the chapter, the labels make

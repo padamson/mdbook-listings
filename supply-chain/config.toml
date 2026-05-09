@@ -624,6 +624,14 @@ criteria = "safe-to-deploy"
 version = "1.0.106"
 criteria = "safe-to-deploy"
 
+[[exemptions.pulldown-cmark]]
+version = "0.13.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.pulldown-cmark-escape]]
+version = "0.11.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.pxfm]]
 version = "0.1.29"
 criteria = "safe-to-deploy"
@@ -914,6 +922,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.typenum]]
 version = "1.20.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.unicase]]
+version = "2.9.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.unicode-bidi]]

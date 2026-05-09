@@ -443,3 +443,15 @@ tag = "include-line-ranges-v1"
 source = "../tests/include_line_ranges.rs"
 frozen = "src/listings/include-line-ranges-v1.rs"
 sha256 = "8c1a9797cc31f1bc49fd7659534b49e85be4ee01edfb87046f7a20a6cf4b0bc2"
+
+[[listing]]
+tag = "callout-v7"
+source = "../src/callout.rs"
+frozen = "src/listings/callout-v7.rs"
+sha256 = "fdc05b9928677e380ae238a83c0efeffa6b50fb7fa9fec46edbc2a14d4cf8b2f"
+
+[[listing]]
+tag = "e2e-callouts-v9"
+source = "../tests/e2e_callouts.rs"
+frozen = "src/listings/e2e-callouts-v9.rs"
+sha256 = "b8280174d112dac6c83365f9a6bfaf458a318e365d66d15ac13cee95179f49cd"

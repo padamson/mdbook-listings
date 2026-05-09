@@ -489,7 +489,7 @@ red-green-refactor loop on top of the refactor:
 * **AC 7: `live:<path>` resolves relative to the chapter's source
   directory, not `book_root`.** Slice 6's resolution against
   `book_root` is awkward: every `live:` reference in this very
-  chapter (which lives at `book/src/ch03-…md`) had to spell out
+  chapter (which lives at `book/src/ch04-…md`) had to spell out
   `live:../src/diff.rs` rather than the more natural
   `live:../../src/diff.rs` (mdbook's own `{{#include}}` already
   uses chapter-relative paths). The fix threads a `chapter_dir`

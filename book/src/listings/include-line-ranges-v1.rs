@@ -1,6 +1,6 @@
 //! Integration tests for slice 9: the `{{#include path:START:END}}` line-
 //! range form. Each test exercises one facet of the feature; the file is
-//! frozen as `include-line-ranges-v1.rs` and shown in ch.4 slice 9 via
+//! frozen as `include-line-ranges-v1.rs` and shown in ch.5 slice 9 via
 //! `{{#include listings/include-line-ranges-v1.rs:LR}}` — the slice
 //! demonstrates the include-line-range syntax by using it on this very
 //! file.

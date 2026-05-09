@@ -215,7 +215,7 @@ fn locator_js_for(css_selector: &str) -> String {
 
 /// Scans `src_dir` for a `.md` file containing `pattern` (a substring like
 /// `"{{#include listings/foo."` or `"{{#diff foo bar"`). Returns the
-/// chapter's filename stem (e.g. `ch04-render-inline-callouts`).
+/// chapter's filename stem (e.g. `ch05-render-inline-callouts`).
 fn find_chapter_for_pattern(src_dir: &Path, pattern: &str) -> Option<String> {
     let entries = std::fs::read_dir(src_dir).ok()?;
     for entry in entries {

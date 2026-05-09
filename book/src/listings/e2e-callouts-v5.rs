@@ -402,5 +402,5 @@ fn chapter_path() -> PathBuf {
         .join("book")
         .join("build")
         .join("html")
-        .join("ch04-render-inline-callouts.html")
+        .join("ch05-render-inline-callouts.html")
 }
