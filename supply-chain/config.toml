@@ -477,7 +477,7 @@ version = "0.4.26"
 criteria = "safe-to-deploy"
 
 [[exemptions.lopdf]]
-version = "0.36.0"
+version = "0.38.0"
 criteria = "safe-to-run"
 
 [[exemptions.lzma-rust2]]
@@ -573,7 +573,7 @@ version = "0.13.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.pdf-extract]]
-version = "0.9.0"
+version = "0.10.0"
 criteria = "safe-to-run"
 
 [[exemptions.percent-encoding]]
@@ -589,7 +589,7 @@ version = "0.3.33"
 criteria = "safe-to-deploy"
 
 [[exemptions.playwright-rs]]
-version = "0.12.3@git:cc75cfc7cc338b5dd9d68d942f5adc9e444dbec0"
+version = "0.12.3@git:62d79d80064cde231d4d84e942cf847840f47b03"
 criteria = "safe-to-deploy"
 
 [[exemptions.png]]
@@ -837,7 +837,7 @@ version = "1.11.0"
 criteria = "safe-to-run"
 
 [[exemptions.tokio]]
-version = "1.52.1"
+version = "1.52.3"
 criteria = "safe-to-deploy"
 
 [[exemptions.tokio-macros]]
@@ -895,6 +895,10 @@ criteria = "safe-to-deploy"
 [[exemptions.tracing-subscriber]]
 version = "0.3.23"
 criteria = "safe-to-deploy"
+
+[[exemptions.ttf-parser]]
+version = "0.25.1"
+criteria = "safe-to-run"
 
 [[exemptions.tungstenite]]
 version = "0.29.0"

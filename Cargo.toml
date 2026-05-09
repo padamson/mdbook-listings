@@ -24,7 +24,7 @@ toml_edit = "0.25"
 [dev-dependencies]
 assert_cmd = "2"
 futures = "0.3"
-pdf-extract = "0.9"
+pdf-extract = "0.10"
 playwright-rs = { workspace = true }
 playwright-rs-trace = { git = "https://github.com/padamson/playwright-rust", branch = "main" }
 predicates = "3"

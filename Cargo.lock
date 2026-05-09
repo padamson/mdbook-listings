@@ -1073,9 +1073,9 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "lopdf"
-version = "0.36.0"
+version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59fa2559e99ba0f26a12458aabc754432c805bbb8cba516c427825a997af1fb7"
+checksum = "c7184fdea2bc3cd272a1acec4030c321a8f9875e877b3f92a53f2f6033fdc289"
 dependencies = [
  "aes 0.8.4",
  "bitflags",
@@ -1083,6 +1083,7 @@ dependencies = [
  "ecb",
  "encoding_rs",
  "flate2",
+ "getrandom 0.3.4",
  "indexmap",
  "itoa",
  "log",
@@ -1094,6 +1095,7 @@ dependencies = [
  "sha2 0.10.9",
  "stringprep",
  "thiserror",
+ "ttf-parser",
  "weezl",
 ]
 
@@ -1377,9 +1379,9 @@ dependencies = [
 
 [[package]]
 name = "pdf-extract"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c2f44c6c642e359e2fe7f662bf5438db3811b6b4be60afc6de04b619ce51e1a"
+checksum = "1e28ba1758a3d3f361459645780e09570b573fc3c82637449e9963174c813a98"
 dependencies = [
  "adobe-cmap-parser",
  "cff-parser",
@@ -1413,7 +1415,7 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 [[package]]
 name = "playwright-rs"
 version = "0.12.3"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#cc75cfc7cc338b5dd9d68d942f5adc9e444dbec0"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#62d79d80064cde231d4d84e942cf847840f47b03"
 dependencies = [
  "async-trait",
  "base64",
@@ -1440,7 +1442,7 @@ dependencies = [
 [[package]]
 name = "playwright-rs-macros"
 version = "0.1.0"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#cc75cfc7cc338b5dd9d68d942f5adc9e444dbec0"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#62d79d80064cde231d4d84e942cf847840f47b03"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1450,7 +1452,7 @@ dependencies = [
 [[package]]
 name = "playwright-rs-trace"
 version = "0.1.0"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#cc75cfc7cc338b5dd9d68d942f5adc9e444dbec0"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#62d79d80064cde231d4d84e942cf847840f47b03"
 dependencies = [
  "serde",
  "serde_json",
@@ -2089,9 +2091,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.52.1"
+version = "1.52.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b67dee974fe86fd92cc45b7a95fdd2f99a36a6d7b0d431a231178d3d670bbcc6"
+checksum = "8fc7f01b389ac15039e4dc9531aa973a135d7a4135281b12d7c1bc79fd57fffe"
 dependencies = [
  "bytes",
  "libc",
@@ -2274,6 +2276,12 @@ dependencies = [
  "tracing-core",
  "tracing-log",
 ]
+
+[[package]]
+name = "ttf-parser"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 
 [[package]]
 name = "tungstenite"
