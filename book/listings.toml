@@ -455,3 +455,21 @@ tag = "e2e-callouts-v9"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v9.rs"
 sha256 = "b8280174d112dac6c83365f9a6bfaf458a318e365d66d15ac13cee95179f49cd"
+
+[[listing]]
+tag = "install-v9"
+source = "../src/install.rs"
+frozen = "src/listings/install-v9.rs"
+sha256 = "b5633496aff13d5f7dc079129419b57926d6611f5f3a783fec6a802568537d0f"
+
+[[listing]]
+tag = "main-v10"
+source = "../src/main.rs"
+frozen = "src/listings/main-v10.rs"
+sha256 = "596425292360f415a575d303cce645986f9b42d666befd6fde10fb1cab377bee"
+
+[[listing]]
+tag = "install-tests-v5"
+source = "../tests/install.rs"
+frozen = "src/listings/install-tests-v5.rs"
+sha256 = "f8238285a240deb00f5614244c5dfb4d92a880e9adff2daf57765a6257c20700"

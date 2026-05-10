@@ -32,23 +32,39 @@ slices — there is no "out of scope" exit door.
    markdown (lists, blockquotes, headings) is out of scope: callouts
    are inline annotations. Raw HTML in a callout body renders as
    escaped text, not as pass-through HTML.
-2. **Callout popover never covers the line it annotates.** The
+2. **Bundled assets refresh on every build, not just at install
+   time.** Today `install` writes `mdbook-listings.css` and
+   `mdbook-listings.js` into the book source tree as a one-time
+   snapshot, then the bytes drift as the binary version moves
+   forward — `additional-css`/`additional-js` keep referencing the
+   stale on-disk copies until the author manually re-runs `install`.
+   The preprocessor — which already runs on every `mdbook build` —
+   instead writes the bundled bytes into the book root, refreshing
+   them automatically when the binary is upgraded. `install` keeps
+   the `book.toml` registration job and adds the two asset paths to
+   `.gitignore` so downstream books treat them as build artifacts
+   (matches `target/`). Author override works the same way it does
+   for any other mdbook stylesheet: drop `theirs.css` into the book
+   directory and add `additional-css = ["./theirs.css"]` to
+   `book.toml`. mdbook cascades the second `additional-css` entry
+   after the first, so author rules win.
+3. **Callout popover never covers the line it annotates.** The
    default opens the popover to the right of the badge (the
    un-annotated gutter), an author override switches a specific
    callout to the left for narrow viewports, and a transparent /
    `backdrop-filter: blur` fallback keeps the underlying code legible
    when overlap is unavoidable.
-3. **`freeze` output closes the authoring loop.** Every successful
+4. **`freeze` output closes the authoring loop.** Every successful
    `freeze` prints the frozen path AND the ready-to-paste
    `\{{#include listings/<tag>.<ext>}}` directive — the author
    shouldn't have to grep `listings.toml` to find the include path.
-4. **A `list` (or `status`) subcommand prints `tag → frozen path →
+5. **A `list` (or `status`) subcommand prints `tag → frozen path →
    source` rows** so authors can browse the manifest as a book
    accumulates listings.
-5. **`install` is idempotent.** Re-running `install` on an
+6. **`install` is idempotent.** Re-running `install` on an
    already-configured book is a no-op with a friendly "already
    installed" message; never duplicates registrations.
-6. **`freeze` derives a default tag when `--tag` is omitted.** The
+7. **`freeze` derives a default tag when `--tag` is omitted.** The
    default `<basename>-v<next>` removes the "invent your own scheme"
    tax on every first-time author. Already on the v0.2.0 ROADMAP;
    downstream surfaced it as a real pain point, so it lives here.
@@ -58,18 +74,19 @@ slices — there is no "out of scope" exit door.
 | Slice | What it adds |
 |---|---|
 | 1 | Inline markdown in callout body text (AC 1). Downstream dogfooding noticed that backticks around an identifier in a callout body rendered as literal backtick characters rather than a `<code>` span. The fix routes the body through pulldown-cmark's inline parser before wrapping it in the `<div class="callout-body">`, strips the synthetic `<p>` wrapper, and re-applies the `{` → `&#123;` escape for cross-ref-scanner safety. Raw HTML events are remapped to text events so a body containing `<script>` still renders as `&lt;script&gt;`, not as pass-through HTML. |
-| 2 | Open the popover to the right by default (AC 2, fix 1 of 3). CSS-only positioning change on the `<div class="callout-body">` so the natural reading direction (left-to-right) drops the popover into the un-annotated gutter rather than over the line it annotates. |
-| 3 | Per-callout `--align` override (AC 2, fix 2 of 3). Tiny extension to the `// CALLOUT: <label>` grammar — `// CALLOUT: <label> --align=left <body>` flips a single callout when the right-side gutter isn't usable (sidebar, narrow viewport, badge near the page edge). The extension is shaped to scale to other per-callout options later (width, theme). |
-| 4 | Transparent / `backdrop-filter: blur` fallback (AC 2, fix 3 of 3). Pure CSS. When the popover must cover the listing (narrow viewport, author override, very long body), a translucent background + backdrop blur keeps the underlying code legible behind it. |
-| 5 | `freeze` output closes the loop (AC 3). Augments the `created: <tag>` line with the frozen path and the exact `\{{#include listings/<tag>.<ext>}}` directive to copy-paste into the chapter. |
-| 6 | `mdbook-listings list` subcommand (AC 4). Prints one row per `[[listing]]` in `listings.toml`: tag, frozen path, source path. No filtering options yet — just the basic catalogue view. |
-| 7 | `install` idempotency (AC 5). The first run continues to register the preprocessor, write the CSS, and write the JS (idempotent line-by-line per-section already, but the surface message says "installed"). A second run detects all three sections already present and prints "already installed" with no writes. |
-| 8 | Default tag derivation (AC 6). When `--tag` is omitted, derive `<basename>-v<next>` by reading existing `[[listing]]` entries for the same source path and bumping the highest `vN` suffix. Surfaces a clean error if any existing tag for the same source doesn't match the `<basename>-vN` shape (the heuristic is opinionated; an author who's invented their own scheme keeps using `--tag` explicitly). |
+| 2 | Preprocessor refreshes assets on every build (AC 2). Today `install` writes `mdbook-listings.css` and `mdbook-listings.js` into the book source tree as a one-time snapshot, then the bytes drift as the binary version moves forward — t2t Pass 3 hit this: bumping the locally-installed binary forward without re-running `install` left the rendered book mixing new HTML emission with stale CSS, producing subtle (and sometimes loud) breakage. The slice moves the asset write from `install` to the preprocessor's run hook so the bytes refresh on every build (no-op when bytes already match). `install` keeps the `book.toml` registration job and now also adds the two asset paths to `.gitignore` so downstream books treat them as build artifacts. Migration for existing books: re-run `install`, then `git rm --cached` the two old committed copies. |
+| 3 | Open the popover to the right by default (AC 3, fix 1 of 3). CSS-only positioning change on the `<div class="callout-body">` so the natural reading direction (left-to-right) drops the popover into the un-annotated gutter rather than over the line it annotates. |
+| 4 | Per-callout `--align` override (AC 3, fix 2 of 3). Tiny extension to the `// CALLOUT: <label>` grammar — `// CALLOUT: <label> --align=left <body>` flips a single callout when the right-side gutter isn't usable (sidebar, narrow viewport, badge near the page edge). The extension is shaped to scale to other per-callout options later (width, theme). |
+| 5 | Transparent / `backdrop-filter: blur` fallback (AC 3, fix 3 of 3). Pure CSS. When the popover must cover the listing (narrow viewport, author override, very long body), a translucent background + backdrop blur keeps the underlying code legible behind it. |
+| 6 | `freeze` output closes the loop (AC 4). Augments the `created: <tag>` line with the frozen path and the exact `\{{#include listings/<tag>.<ext>}}` directive to copy-paste into the chapter. |
+| 7 | `mdbook-listings list` subcommand (AC 5). Prints one row per `[[listing]]` in `listings.toml`: tag, frozen path, source path. No filtering options yet — just the basic catalogue view. |
+| 8 | `install` idempotency (AC 6). After slice 2 the only things `install` writes are `book.toml` registrations and the `.gitignore` entries. The first run continues to register the preprocessor + `additional-css`/`additional-js` and to add the asset paths to `.gitignore`. A second run detects everything already present and prints "already installed" with no writes. |
+| 9 | Default tag derivation (AC 7). When `--tag` is omitted, derive `<basename>-v<next>` by reading existing `[[listing]]` entries for the same source path and bumping the highest `vN` suffix. Surfaces a clean error if any existing tag for the same source doesn't match the `<basename>-vN` shape (the heuristic is opinionated; an author who's invented their own scheme keeps using `--tag` explicitly). |
 
 ## Outside-in narrative
 
-Sections appear here as slices ship. Slice 1 is the only one shipped
-so far; slices 2–8 are sketched in the table above.
+Sections appear here as slices ship. Slices 1 and 2 have shipped;
+slices 3–9 are sketched in the table above.
 
 ### Slice 1 — inline markdown in callout body text
 
@@ -144,3 +161,70 @@ and `cross_ref_badges_in_prose_render_with_full_opacity_not_subdued`
 tests), so those appear in the diff too.
 
 {{#diff e2e-callouts-v8 e2e-callouts-v9}}
+
+### Slice 2 — preprocessor refreshes assets on every build
+
+The symptom: a downstream book installs `mdbook-listings` once, runs
+`install` to drop the bundled CSS/JS into the book directory, and
+ships fine. Some weeks later the author bumps the binary forward via
+`cargo install --force` to pick up a fix. The next `mdbook build`
+renders the chapter against the *new* HTML emission paired with the
+*old* on-disk CSS/JS — silent visual breakage until the author
+remembers to also re-run `install`. This is exactly what t2t
+Pass 3 hit after we shipped slice 1's hljs-fade CSS fix.
+
+The fix moves the asset write from "one-time at install" to "every
+build, idempotent." Two reusable helpers land in `src/install.rs`:
+
+- `ensure_assets_fresh(book_root)` reads each asset path and compares
+  to the binary's bundled bytes; only writes when they differ. Returns
+  `true` iff anything was written.
+- `ensure_gitignore(book_root)` appends the two asset filenames to
+  `<book>/.gitignore` (creating the file if missing); skips entries
+  that are already present. Returns `true` iff the file was written.
+
+`install()` is refactored to use both helpers — keeping its existing
+idempotency contract while now also seeding `.gitignore`. The
+preprocessor's `preprocess()` calls only `ensure_assets_fresh` (the
+gitignore is one-time setup, not per-build).
+
+{{#diff install-v8 install-v9}}
+
+The new helpers carry a single `// CALLOUT:` marker each — the
+detail that earns the WHY comment is the {{#callout
+assets-on-build}} note, which lives in `main.rs` next to the
+preprocessor call:
+
+{{#diff main-v9 main-v10}}
+
+Tests added in this slice (all in `tests/install.rs`):
+
+- `install_writes_gitignore_entries_for_both_assets` — end-to-end
+  install run produces a `.gitignore` listing both assets.
+- `ensure_assets_fresh_writes_when_missing` — the bundled bytes land
+  on first call.
+- `ensure_assets_fresh_is_noop_when_bytes_match` — preprocessor calls
+  this on every build; mtime churn would force unnecessary rebuilds.
+- `ensure_assets_fresh_overwrites_stale_bytes` — proves the t2t
+  Pass 3 fix: stale on-disk copies are refreshed automatically.
+- `ensure_gitignore_creates_file_when_missing` — bare-tempdir case.
+- `ensure_gitignore_appends_only_missing_entries` — preserves
+  existing author entries; never duplicates.
+- `ensure_gitignore_is_noop_when_complete` — required for AC 6
+  idempotency (the future slice that adds the "already installed"
+  message depends on this).
+
+{{#diff install-tests-v4 install-tests-v5}}
+
+Migration for an existing book (this book did exactly this in the
+slice-2 commit):
+
+1. Re-run `mdbook-listings install --book-root <book>` — writes
+   `.gitignore` and refreshes the asset bytes.
+2. `git rm --cached <book>/mdbook-listings.css <book>/mdbook-listings.js`
+   to untrack the old committed copies.
+3. `mdbook build` regenerates the assets via the preprocessor.
+
+After migration, `cargo install --force ... mdbook-listings` is the
+only step needed to upgrade — the next build picks up the new bytes
+automatically.
