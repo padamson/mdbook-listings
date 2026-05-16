@@ -61,7 +61,7 @@ version = "1.0.102"
 criteria = "safe-to-deploy"
 
 [[exemptions.assert_cmd]]
-version = "2.2.1"
+version = "2.2.2"
 criteria = "safe-to-run"
 
 [[exemptions.async-trait]]
@@ -70,7 +70,7 @@ criteria = "safe-to-deploy"
 
 [[exemptions.autocfg]]
 version = "1.5.0"
-criteria = "safe-to-deploy"
+criteria = "safe-to-run"
 
 [[exemptions.base64]]
 version = "0.22.1"
@@ -103,14 +103,6 @@ criteria = "safe-to-deploy"
 [[exemptions.bytecount]]
 version = "0.6.9"
 criteria = "safe-to-run"
-
-[[exemptions.bytemuck]]
-version = "1.25.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.byteorder-lite]]
-version = "0.1.0"
-criteria = "safe-to-deploy"
 
 [[exemptions.bytes]]
 version = "1.11.1"
@@ -254,10 +246,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.fastrand]]
 version = "2.4.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.fdeflate]]
-version = "0.3.7"
 criteria = "safe-to-deploy"
 
 [[exemptions.find-msvc-tools]]
@@ -408,10 +396,6 @@ criteria = "safe-to-deploy"
 version = "1.2.2"
 criteria = "safe-to-deploy"
 
-[[exemptions.image]]
-version = "0.25.10"
-criteria = "safe-to-deploy"
-
 [[exemptions.indexmap]]
 version = "2.14.0"
 criteria = "safe-to-deploy"
@@ -512,10 +496,6 @@ criteria = "safe-to-deploy"
 version = "1.2.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.moxcms]]
-version = "0.8.1"
-criteria = "safe-to-deploy"
-
 [[exemptions.native-tls]]
 version = "0.2.18"
 criteria = "safe-to-deploy"
@@ -538,7 +518,7 @@ criteria = "safe-to-deploy"
 
 [[exemptions.num-traits]]
 version = "0.2.19"
-criteria = "safe-to-deploy"
+criteria = "safe-to-run"
 
 [[exemptions.once_cell]]
 version = "1.21.4"
@@ -589,11 +569,7 @@ version = "0.3.33"
 criteria = "safe-to-deploy"
 
 [[exemptions.playwright-rs]]
-version = "0.12.3@git:62d79d80064cde231d4d84e942cf847840f47b03"
-criteria = "safe-to-deploy"
-
-[[exemptions.png]]
-version = "0.18.1"
+version = "0.12.3@git:b18c9d042fb6d62c70d9bda2e6788326cd233038"
 criteria = "safe-to-deploy"
 
 [[exemptions.pom]]
@@ -630,10 +606,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.pulldown-cmark-escape]]
 version = "0.11.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.pxfm]]
-version = "0.1.29"
 criteria = "safe-to-deploy"
 
 [[exemptions.quote]]
