@@ -473,3 +473,27 @@ tag = "install-tests-v5"
 source = "../tests/install.rs"
 frozen = "src/listings/install-tests-v5.rs"
 sha256 = "f8238285a240deb00f5614244c5dfb4d92a880e9adff2daf57765a6257c20700"
+
+[[listing]]
+tag = "listings-css-v3"
+source = "../assets/mdbook-listings.css"
+frozen = "src/listings/listings-css-v3.css"
+sha256 = "c015435fa5c78dba9f4e8e28f89dbe5c287d5c2254cb0797319149f401087945"
+
+[[listing]]
+tag = "listings-js-v1"
+source = "../assets/mdbook-listings.js"
+frozen = "src/listings/listings-js-v1.js"
+sha256 = "b154c4a3dc55e562f5c54f4a7b24522e25e4fad7de5e4dd6187deab8b96ec831"
+
+[[listing]]
+tag = "install-v10"
+source = "../src/install.rs"
+frozen = "src/listings/install-v10.rs"
+sha256 = "74bc227401817d57c7790e6ab98c7d869c7f72d24a5f2cc3baf4ce66a7944001"
+
+[[listing]]
+tag = "e2e-callouts-v10"
+source = "../tests/e2e_callouts.rs"
+frozen = "src/listings/e2e-callouts-v10.rs"
+sha256 = "d56415f8282628b20bc0c8d322a9d270ff155699524e610f5d8f7137ebc3cc76"

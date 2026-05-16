@@ -85,8 +85,8 @@ slices — there is no "out of scope" exit door.
 
 ## Outside-in narrative
 
-Sections appear here as slices ship. Slices 1 and 2 have shipped;
-slices 3–9 are sketched in the table above.
+Sections appear here as slices ship. Slices 1–3 have shipped;
+slices 4–9 are sketched in the table above.
 
 ### Slice 1 — inline markdown in callout body text
 
@@ -228,3 +228,136 @@ slice-2 commit):
 After migration, `cargo install --force ... mdbook-listings` is the
 only step needed to upgrade — the next build picks up the new bytes
 automatically.
+
+### Slice 3 — popover opens to the right by default
+
+The symptom: every callout popover opened to the LEFT of its badge,
+landing on top of the code line it annotates. The reader couldn't
+see the line the annotation referred to without dismissing the
+popover first — the inline-callout primitive's whole point is that
+the annotation sits beside the line, not over it.
+
+Slice 3 flips the default. The change is CSS-only, contained in
+`assets/mdbook-listings.css`:
+
+- `.callout-body` switches anchoring from `right: 2em` (right-edge
+  anchored, body extends leftward over the listing) to `left: 100%`
+  (left-edge anchored to the badge's right edge, body extends
+  rightward into the un-annotated gutter).
+- The `::after` / `::before` arrow pseudos move from the body's
+  right edge to its left edge, and the triangle direction flips
+  from right-pointing to left-pointing — so it still points back
+  at the badge it belongs to.
+- The OUT-state `clip-path` flips its left/right insets so the
+  collapsed sliver tucks against the badge on the left rather than
+  the right; the transition then expands rightward.
+
+{{#diff listings-css-v2 listings-css-v3}}
+
+The `CSS_ASSET_SENTINEL` and `JS_ASSET_SENTINEL` constants in
+`src/install.rs` both bump (CSS v3→v5, JS v1→v5; the iteration
+during this slice's debug cycle accounts for the multi-step
+versioning) so the bundled-asset check catches the new shape.
+
+{{#diff install-v9 install-v10}}
+
+#### Viewport-aware widening into the gutter
+
+A naïve "always open right" default has the opposite failure mode
+of the pre-slice behavior: on a narrow viewport (mobile, sidebar
+open, or a callout near the rightmost edge of the chapter column),
+the popover can extend off the right side of the viewport and be
+unreadable. Slice 3 includes a runtime layout adjustment in
+`assets/mdbook-listings.js` that picks the right side at the right
+size:
+
+- **Wide gutter** (≥ 28em ≈ 448px between the listing's right
+  edge and the viewport's right edge): open right, full
+  `max-width: 28em`. Default-comfortable case.
+- **Mid gutter** (between the threshold and the default
+  max-width): open right, but clamp `max-width` to
+  `(availableRight − 2em)` so `body.right` stays inside the
+  viewport. The clamp is applied as a direct inline-style write
+  (`body.style.maxWidth = '278px'`).
+- **Narrow gutter** (< 16em ≈ 230px): flip the popover back to
+  left-opening (over the listing). The JS writes
+  `body.style.left = 'auto'` + `body.style.right = '2em'` directly
+  and adds a `callout-entry--left-popover` class on the entry to
+  drive the arrow pseudo-element overrides (pseudo-elements can't
+  take inline styles, so the arrow direction still needs a class
+  hook). The fallback layout matches the pre-slice behavior.
+
+Four gotchas had to land for the math to match reality:
+
+1. **The scrollbar isn't on the document.** mdbook puts the
+   vertical scrollbar on `.content` (`overflow-y: auto`), not on
+   `<html>`. `documentElement.clientWidth` returns the full
+   viewport width — a popover sized against it gets its right edge
+   tucked under `.content`'s scrollbar. The JS walks up from the
+   entry to find the nearest scrolling ancestor and uses
+   `(container.left + container.clientWidth)` as the right limit.
+
+2. **`em` resolves against the element's own font-size.** The
+   popover has `font-size: 0.9em` and mdbook uses the
+   `html { font-size: 62.5% }` trick — so `28em` on the popover
+   resolves to ~403px (28 × 14.4px popover-em), but
+   `28 × documentElement.fontSize` resolves to 280px (28 × 10px
+   root-em). The JS reads the popover body's font-size via
+   `getComputedStyle(body).fontSize` so the em conversion matches
+   what the CSS rule resolves to.
+
+3. **Direct inline-style writes drive the clamp.** An earlier
+   attempt that toggled `--callout-body-max-width` silently no-op'd
+   in some browser contexts — `setProperty` returned without
+   throwing, but the immediate `getPropertyValue` read back empty,
+   identical to "JS never ran." Direct property writes on `style`
+   (`body.style.maxWidth = '278px'`) are unconditional.
+
+4. **`max-width` is the CONTENT box by default.** mdbook doesn't
+   set a global `box-sizing: border-box`, so the default
+   `max-width: 28em` on `.callout-body` caps the *content* width.
+   The visible popover is content + padding (`0.75em` each side) +
+   border (`1px` each side), so the border-box is ~22px wider than
+   the JS expects. Setting `.callout-body { box-sizing: border-box }`
+   makes `max-width` constrain the visible extent directly.
+
+The JS recalcs on `DOMContentLoaded` and on `requestAnimationFrame`
+after every `resize` event, so dragging the window edge updates
+the side/clamp choice live.
+
+The full JS file (frozen as `listings-js-v1`):
+
+```js
+{{#include listings/listings-js-v1.js}}
+```
+
+#### Tests
+
+Three e2e regressions in `tests/e2e_callouts.rs`, one per gutter
+band, all using `page.set_viewport_size(...)` to drive each branch:
+
+- `callout_body_opens_to_the_right_of_its_badge_on_wide_viewports`
+  — 1800×800, asserts `body.left >= badge.right` (right-opening at
+  full max-width).
+- `callout_body_never_overflows_the_viewport_horizontally` —
+  1024×800, asserts `body.right <= clientWidth` (mid-gutter clamp
+  keeps the popover inside the viewport AND off the scrollbar).
+- `callout_body_falls_back_to_left_opening_when_right_gutter_is_too_narrow`
+  — 900×800, asserts `body.right <= badge.left` (narrow-gutter
+  flip).
+
+A small helper `wait_for_layout_recalc(page)` awaits two
+`requestAnimationFrame` ticks so each test measures after the JS
+has reacted to the viewport change.
+
+{{#diff e2e-callouts-v9 e2e-callouts-v10}}
+
+#### What slice 3 does NOT fix
+
+The narrow-gutter fallback still covers the listing on the left —
+that's the lesser evil compared to letting the popover spill
+off-screen, but it's not invisible. Slice 4 will add a per-callout
+`--align=left` override so an author can pin one side explicitly;
+slice 5 will add a translucent / `backdrop-filter: blur` background
+so even an unavoidable overlap leaves the underlying code legible.
+The three slices together close AC 3.
