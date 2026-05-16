@@ -4,8 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use mdbook_listings::install::{
-    CSS_ASSET, CSS_ASSET_FILENAME, JS_ASSET, JS_ASSET_FILENAME, ensure_assets_fresh,
-    ensure_gitignore,
+    CSS_ASSET, CSS_ASSET_FILENAME, GITIGNORE_FILENAME, InstallOutcome, JS_ASSET, JS_ASSET_FILENAME,
+    ensure_assets_fresh, ensure_gitignore, install,
 };
 use predicates::str::contains;
 use tempfile::TempDir;
@@ -258,4 +258,125 @@ fn ensure_gitignore_is_noop_when_complete() {
     );
     let gitignore = fs::read_to_string(tmp.path().join(".gitignore")).expect(".gitignore");
     assert_eq!(gitignore, existing, ".gitignore must be byte-identical");
+}
+
+// ---------------------------------------------------------------------
+// Targeted regression tests that close out MUTATION_DEBT.md entries
+// from `scripts/mutants.sh 6e07b6a~1`. Each one pins a boolean path
+// the prior tests left ambiguous, so the corresponding mutation in
+// src/install.rs is now CAUGHT.
+// ---------------------------------------------------------------------
+
+/// `ensure_assets_fresh` returns `true` when only ONE asset was stale.
+/// Without this test, the return expression `!css_already_correct ||
+/// !js_already_correct` could be mutated to `&&` and survive — the
+/// existing tests only exercise both-stale or both-correct.
+/// Closes MUTATION_DEBT.md src/install.rs L57:29.
+#[test]
+fn ensure_assets_fresh_reports_write_when_only_one_asset_is_stale() {
+    let tmp = TempDir::new().expect("tempdir");
+    // CSS is correct (matches bundled bytes), JS is stale.
+    fs::write(tmp.path().join(CSS_ASSET_FILENAME), CSS_ASSET).unwrap();
+    fs::write(tmp.path().join(JS_ASSET_FILENAME), b"// stale\n").unwrap();
+
+    let wrote = ensure_assets_fresh(tmp.path()).expect("ensure_assets_fresh");
+
+    assert!(
+        wrote,
+        "should report a write when only one of the two assets was stale"
+    );
+}
+
+/// `ensure_gitignore` inserts a separator newline when the existing
+/// content lacks a trailing one. Without this test, the
+/// `!new_contents.ends_with('\n')` check could be mutated (delete `!`
+/// or swap `&&` for `||`) and the entries would be jammed onto the
+/// previous line. Closes MUTATION_DEBT.md src/install.rs L77:8 and
+/// L77:36 (both `delete !` mutations on the same line).
+#[test]
+fn ensure_gitignore_inserts_separator_when_existing_file_lacks_trailing_newline() {
+    let tmp = TempDir::new().expect("tempdir");
+    // No trailing newline on the existing entry.
+    fs::write(tmp.path().join(GITIGNORE_FILENAME), "target/").unwrap();
+
+    ensure_gitignore(tmp.path()).expect("ensure_gitignore");
+
+    let gitignore = fs::read_to_string(tmp.path().join(GITIGNORE_FILENAME)).expect(".gitignore");
+    let expected = format!("target/\n{CSS_ASSET_FILENAME}\n{JS_ASSET_FILENAME}\n");
+    assert_eq!(
+        gitignore, expected,
+        "existing line without trailing newline must get a separator before the new entries"
+    );
+}
+
+/// `ensure_gitignore` does NOT insert a second newline when the
+/// existing content already ends with one. Without this test, the
+/// `&&` in the separator-insert guard could be mutated to `||` and
+/// produce a stray blank line. Closes MUTATION_DEBT.md src/install.rs
+/// L77:33 (`replace && with ||`).
+#[test]
+fn ensure_gitignore_does_not_double_newline_when_existing_file_ends_with_newline() {
+    let tmp = TempDir::new().expect("tempdir");
+    fs::write(tmp.path().join(GITIGNORE_FILENAME), "target/\n").unwrap();
+
+    ensure_gitignore(tmp.path()).expect("ensure_gitignore");
+
+    let gitignore = fs::read_to_string(tmp.path().join(GITIGNORE_FILENAME)).expect(".gitignore");
+    let expected = format!("target/\n{CSS_ASSET_FILENAME}\n{JS_ASSET_FILENAME}\n");
+    assert_eq!(
+        gitignore, expected,
+        "trailing newline on existing content must NOT trigger a duplicate; got:\n{gitignore:?}"
+    );
+}
+
+/// `install` reports `Installed` when only `book.toml` needed
+/// rewriting (assets already match bundled bytes, `.gitignore`
+/// already complete). Catches the `||` → `&&` mutation on the first
+/// operand in the install-outcome decision. Closes
+/// MUTATION_DEBT.md src/install.rs L119:24.
+#[test]
+fn install_reports_installed_when_only_book_toml_needs_change() {
+    let book = MinimalFixtureBook::new();
+    // Pre-seed assets at the bundled bytes and a complete .gitignore
+    // so ensure_assets_fresh + ensure_gitignore both return false.
+    fs::write(book.root().join(CSS_ASSET_FILENAME), CSS_ASSET).unwrap();
+    fs::write(book.root().join(JS_ASSET_FILENAME), JS_ASSET).unwrap();
+    fs::write(
+        book.root().join(GITIGNORE_FILENAME),
+        format!("{CSS_ASSET_FILENAME}\n{JS_ASSET_FILENAME}\n"),
+    )
+    .unwrap();
+
+    let outcome = install(book.root()).expect("install");
+
+    assert_eq!(
+        outcome,
+        InstallOutcome::Installed,
+        "book.toml-only change should still report Installed"
+    );
+}
+
+/// `install` reports `Installed` when only the asset bytes needed
+/// refreshing (book.toml + `.gitignore` already correct). Catches the
+/// `||` → `&&` mutation on the second-operand pair in the
+/// install-outcome decision. Closes MUTATION_DEBT.md src/install.rs
+/// L119:42.
+#[test]
+fn install_reports_installed_when_only_assets_need_change() {
+    let book = MinimalFixtureBook::new();
+    // First, run a full install so book.toml + .gitignore are
+    // configured and the assets land at the bundled bytes.
+    install(book.root()).expect("seed install");
+    // Now corrupt the on-disk assets so ensure_assets_fresh will
+    // overwrite them, but leave book.toml + .gitignore alone.
+    fs::write(book.root().join(CSS_ASSET_FILENAME), b"/* stale */").unwrap();
+    fs::write(book.root().join(JS_ASSET_FILENAME), b"// stale\n").unwrap();
+
+    let outcome = install(book.root()).expect("second install");
+
+    assert_eq!(
+        outcome,
+        InstallOutcome::Installed,
+        "asset-only refresh should report Installed"
+    );
 }
