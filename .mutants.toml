@@ -1,0 +1,9 @@
+# Scope mutation testing to library code only.
+#
+# The integration tests in tests/ (e2e_callouts, pdf_callouts) require
+# a built mdbook, Playwright, typst-pdf fonts, and a browser — none of
+# which the cargo-mutants CI job sets up. Running them would fail the
+# unmutated baseline (test of the un-mutated tree) before any mutation
+# work happens. cargo-mutants is most useful on logic-dense lib code
+# anyway; the integration tests have their own dedicated CI jobs.
+additional_cargo_test_args = ["--lib"]
