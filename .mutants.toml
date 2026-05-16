@@ -1,9 +1,22 @@
-# Scope mutation testing to library code only.
+# cargo-mutants configuration
+# Docs: https://mutants.rs/
 #
-# The integration tests in tests/ (e2e_callouts, pdf_callouts) require
-# a built mdbook, Playwright, typst-pdf fonts, and a browser — none of
-# which the cargo-mutants CI job sets up. Running them would fail the
-# unmutated baseline (test of the un-mutated tree) before any mutation
-# work happens. cargo-mutants is most useful on logic-dense lib code
-# anyway; the integration tests have their own dedicated CI jobs.
+# Adopted from rust-project-template's .mutants.toml.example. The
+# template ships this file as `.mutants.toml.example` (inert) and
+# expects downstreams to rename and tune.
+
+# Use nextest — much faster than `cargo test`.
+test_tool = "nextest"
+
+# Run library tests only — skip the slow browser-driven (e2e_callouts)
+# and PDF-extraction (pdf_callouts) integration tests. Those require a
+# built mdbook, Playwright, typst-pdf fonts, and a browser — none of
+# which the cargo-mutants CI job sets up. Without this scoping, the
+# unmutated baseline panics and no mutation work happens. Mutation
+# testing is most useful on logic-dense lib code anyway; the
+# integration tests have their own dedicated CI jobs.
 additional_cargo_test_args = ["--lib"]
+
+# Limit which source files are mutated. Single-crate project, so the
+# default glob covers everything we want to mutate.
+examine_globs = ["src/**/*.rs"]
