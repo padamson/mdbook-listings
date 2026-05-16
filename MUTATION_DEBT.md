@@ -67,17 +67,19 @@ Re-verified post-fix with `cargo mutants --file src/install.rs`.
   `install` to seed config, corrupts on-disk assets, asserts second
   `install` returns `InstallOutcome::Installed`.
 
-New finding (re-run of `cargo mutants --file src/install.rs` after
-the fixes above):
+- [x] ~~**L94:19** — `replace match guard e.kind() ==
+  std::io::ErrorKind::NotFound with true in install`.~~ Closed by
+  `install_routes_non_notfound_io_errors_to_the_generic_arm`:
+  pre-writes invalid UTF-8 bytes into the seeded `book.toml`,
+  asserts the error message contains the non-NotFound arm's context
+  (`"reading book config at ..."`) and does NOT contain `"not
+  found"`. `fs::read_to_string` on invalid UTF-8 returns
+  `io::ErrorKind::InvalidData`, which is provably not NotFound and
+  is cross-platform clean.
 
-- [ ] **L94:19** — `replace match guard e.kind() ==
-  std::io::ErrorKind::NotFound with true in install`. The error
-  handler that distinguishes "book.toml missing" from any other IO
-  error has no test for the non-NotFound branch — `permission
-  denied`, etc., would currently take the `bail!("book.toml not
-  found")` path silently. Fabricating a non-NotFound IO error in a
-  unit test requires either a chmod fixture or a custom
-  io::Error::other, both viable but neither yet written.
+**`src/install.rs` now has 0 outstanding mutations** — full file
+swept via `cargo mutants --file src/install.rs`: 35 mutants, 33
+caught, 2 unviable, 0 missed.
 
 ## Status
 

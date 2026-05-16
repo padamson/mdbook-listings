@@ -380,3 +380,30 @@ fn install_reports_installed_when_only_assets_need_change() {
         "asset-only refresh should report Installed"
     );
 }
+
+/// `install` distinguishes a *missing* `book.toml` (NotFound — its own
+/// friendly bail) from any other IO error (must surface the underlying
+/// error so the author isn't told to re-init when the real problem is
+/// e.g. unreadable bytes). Without this test, the `match` guard
+/// `e.kind() == ErrorKind::NotFound` could be mutated to `true` and
+/// every IO error would silently route to the NotFound bail. Closes
+/// MUTATION_DEBT.md src/install.rs L94:19.
+#[test]
+fn install_routes_non_notfound_io_errors_to_the_generic_arm() {
+    let book = MinimalFixtureBook::new();
+    // Overwrite the seeded book.toml with invalid UTF-8 — fs::read_to_string
+    // then returns io::ErrorKind::InvalidData, provably not NotFound.
+    fs::write(book.root().join("book.toml"), [0xff, 0xfe, 0xfd]).unwrap();
+
+    let err = install(book.root()).expect_err("install should error on bad UTF-8");
+    let msg = format!("{err:#}");
+
+    assert!(
+        msg.contains("reading book config"),
+        "expected the non-NotFound IO arm's context (\"reading book config at ...\"); got: {msg}",
+    );
+    assert!(
+        !msg.contains("not found"),
+        "a non-NotFound IO error must not be misreported as a missing file; got: {msg}",
+    );
+}
