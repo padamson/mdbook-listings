@@ -551,3 +551,15 @@ tag = "main-v12"
 source = "../src/main.rs"
 frozen = "src/listings/main-v12.rs"
 sha256 = "cd737ac81c29e474f18f3f4259204e2742d796d058761cb6a08c25fd90b5a180"
+
+[[listing]]
+tag = "main-v13"
+source = "../src/main.rs"
+frozen = "src/listings/main-v13.rs"
+sha256 = "c04f4e2f88edd12327384f3845f40cc11ab4c090b263ece59e17a82e77e3b7ba"
+
+[[listing]]
+tag = "list-tests-v1"
+source = "../tests/list.rs"
+frozen = "src/listings/list-tests-v1.rs"
+sha256 = "ac884d4ae1c9b2c2dab5a26674351f60b8ccd862f0da16357fad3b1bc5deb710"

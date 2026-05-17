@@ -92,8 +92,8 @@ slices — there is no "out of scope" exit door.
 
 ## Outside-in narrative
 
-Sections appear here as slices ship. Slices 1–5 have shipped;
-slices 6–8 are sketched in the table above.
+Sections appear here as slices ship. Slices 1–6 have shipped;
+slices 7–8 are sketched in the table above.
 
 ### Slice 1 — inline markdown in callout body text
 
@@ -546,3 +546,72 @@ Tests added in this slice:
   don't affect them.
 
 {{#diff freeze-tests-v1 freeze-tests-v2}}
+
+### Slice 6 — `mdbook-listings list` subcommand
+
+The symptom: a book accumulates `[[listing]]` entries over time —
+this book has 90+ as of slice 6. The author had to `cat` (or grep)
+`listings.toml` to answer basic questions like "what tags exist
+for this source file?" or "which freeze versions have I created?"
+The manifest is TOML, which is fine for editing but noisy to scan:
+every entry is four lines (`[[listing]]`, `tag`, `source`,
+`frozen`, `sha256`), most of which is repeated boilerplate.
+
+Slice 6 adds a `list` subcommand that prints one tab-separated
+row per listing:
+
+```text
+$ mdbook-listings list
+callout-v6      src/listings/callout-v6.rs      ../src/callout.rs
+callout-v7      src/listings/callout-v7.rs      ../src/callout.rs
+callout-v8      src/listings/callout-v8.rs      ../src/callout.rs
+e2e-callouts-v9 src/listings/e2e-callouts-v9.rs ../tests/e2e_callouts.rs
+...
+```
+
+Three columns: tag, frozen-path (book-root-relative), source-path
+(book-root-relative as recorded by the most recent freeze).
+Order matches manifest insertion order — most recently added at
+the bottom, giving chronological awareness without a separate
+timestamp column. No filtering, sorting, or formatting options
+yet; the basic catalogue view is enough for the workflows that
+surfaced the gap, and `awk` / `grep` / `column -t` handle the
+rest from a tab-separated stream.
+
+Design choices that earn a note:
+
+- **Tab-separated, no header.** Pipe-friendly by default; an author
+  who wants headers can pipe through `column -t -N tag,frozen,
+  source`. Adding a header here would force every script consumer
+  to skip line 1.
+- **Empty manifest prints nothing.** No "no listings recorded"
+  banner. Stays quiet and predictable for scripts that test
+  command exit status + line count.
+- **Insertion order, not alphabetical.** Most-recent-at-bottom
+  matches the visual rhythm of `git log` and `tail -f` — the
+  reader's eye trains on the bottom as "what just happened."
+  Alphabetical sort would scatter `v1`/`v2`/`v3` if the author
+  re-runs freeze months apart for unrelated source files.
+
+The production-code change is in `src/main.rs`: a new
+`Command::List` variant on the enum plus a four-line handler
+that loads the manifest and iterates its `listings` vector:
+
+{{#diff main-v12 main-v13}}
+
+Tests added in this slice (all in `tests/list.rs`, a new file):
+
+- `list_prints_nothing_when_manifest_is_empty` — empty-manifest
+  contract: stdout is empty, exit success.
+- `list_prints_one_tab_separated_row_per_listing_in_insertion_order`
+  — happy path: two freezes, two rows, in the order they were
+  inserted.
+- `list_source_column_matches_manifest_normalised_path` — the
+  source column is the same forward-slash-normalised string the
+  manifest records, not a re-stringified `Path` (which would
+  re-introduce the Windows backslash bug fixed in the slice 5
+  follow-up commit).
+
+```rust
+{{#include listings/list-tests-v1.rs}}
+```
