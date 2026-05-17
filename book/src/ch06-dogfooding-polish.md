@@ -92,8 +92,8 @@ slices — there is no "out of scope" exit door.
 
 ## Outside-in narrative
 
-Sections appear here as slices ship. Slices 1–6 have shipped;
-slices 7–8 are sketched in the table above.
+Sections appear here as slices ship. Slices 1–7 have shipped;
+slice 8 is sketched in the table above.
 
 ### Slice 1 — inline markdown in callout body text
 
@@ -615,3 +615,59 @@ Tests added in this slice (all in `tests/list.rs`, a new file):
 ```rust
 {{#include listings/list-tests-v1.rs}}
 ```
+
+### Slice 7 — `install` idempotency
+
+The symptom: re-running `mdbook-listings install` against an
+already-configured book LOOKED idempotent — the same registrations
+were already in `book.toml`, the same asset bytes were on disk —
+but the contract had never been pinned. An author who'd run
+install once and was about to run it again would reasonably
+wonder: "will this duplicate the `additional-css` entry? will it
+clobber my hand-edited book.toml ordering? is there a flag I'm
+supposed to pass for re-installs?" The CLI gave no signal either
+way.
+
+The slice 2 refactor (preprocessor refreshes assets on every
+build) had already made the IMPLEMENTATION idempotent as a
+precondition for per-build refresh — `ensure_assets_fresh` and
+`ensure_gitignore` both short-circuit when bytes already match,
+and the toml_edit-based `register_listings_*` methods don't
+append duplicates. What slice 7 adds is the contract: a pinned
+test that a second `install` returns `InstallOutcome::Unchanged`
+and writes nothing, and a CLI integration test that the
+"already installed; nothing changed" message lands on stdout.
+
+The CLI output:
+
+```text
+$ mdbook-listings install --book-root book
+installed mdbook-listings into book
+
+$ mdbook-listings install --book-root book
+mdbook-listings already installed in book; nothing changed
+```
+
+Production-code change in this slice: none. The `InstallOutcome`
+enum, the `install()` function's three-way OR over toml/asset/
+gitignore changes, and the main.rs match-arm that selects the
+"already installed" message were all in place after slice 2.
+What was missing was the *contract pin*: tests that lock the
+behaviour in place so a future refactor that accidentally
+re-enables duplicate registration would fail loudly.
+
+Two new tests in `tests/install.rs`:
+
+- `install_on_fully_configured_book_is_noop_and_returns_unchanged`
+  — lib-level: first install returns `Installed`, second returns
+  `Unchanged`, and both `book.toml` and `.gitignore` are byte-
+  identical between calls. The byte-equality check catches a
+  whole class of "almost-idempotent" regressions (e.g. a future
+  TOML re-serialiser that normalises whitespace would change
+  bytes silently; this test would fail and force the contract
+  to be reconsidered).
+- `install_command_prints_already_installed_on_second_run` —
+  CLI-level: the friendly message reaches stdout, both
+  invocations exit success. Pins the downstream signal.
+
+{{#diff install-tests-v5 install-tests-v6}}

@@ -563,3 +563,9 @@ tag = "list-tests-v1"
 source = "../tests/list.rs"
 frozen = "src/listings/list-tests-v1.rs"
 sha256 = "ac884d4ae1c9b2c2dab5a26674351f60b8ccd862f0da16357fad3b1bc5deb710"
+
+[[listing]]
+tag = "install-tests-v6"
+source = "../tests/install.rs"
+frozen = "src/listings/install-tests-v6.rs"
+sha256 = "2bd008b938eb200300a263f5b36e81152ae4746186a1624da1f9ddc3b4829e38"
