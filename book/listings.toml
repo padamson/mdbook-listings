@@ -521,3 +521,21 @@ tag = "install-v11"
 source = "../src/install.rs"
 frozen = "src/listings/install-v11.rs"
 sha256 = "bb718b5aa2f3fe32afaed7dcd5bc8e7df1f4e012e9b03416a8177e6ac2029ba3"
+
+[[listing]]
+tag = "freeze-v2"
+source = "../src/freeze.rs"
+frozen = "src/listings/freeze-v2.rs"
+sha256 = "3a7ffa03adb0d934e8457dc2b9fedec869ed11fbc6d335e108ee4294f1c6ba91"
+
+[[listing]]
+tag = "main-v11"
+source = "../src/main.rs"
+frozen = "src/listings/main-v11.rs"
+sha256 = "f0145273db4a10a40fdf81c34d9c53162d7083e4acbcd58c56abe99a0fb25fa4"
+
+[[listing]]
+tag = "freeze-tests-v2"
+source = "../tests/freeze.rs"
+frozen = "src/listings/freeze-tests-v2.rs"
+sha256 = "a6650ecb2a24aab93b093cd95dcdccb4a9e5f9b501fbf9c607ac43b66c80f426"

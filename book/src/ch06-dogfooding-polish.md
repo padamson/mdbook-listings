@@ -62,6 +62,10 @@ slices — there is no "out of scope" exit door.
    `freeze` prints the frozen path AND the ready-to-paste
    `\{{#include listings/<tag>.<ext>}}` directive — the author
    shouldn't have to grep `listings.toml` to find the include path.
+   When a prior listing exists in the manifest for the same source
+   path, the output also prints the matching
+   `\{{#diff <prev-tag> <new-tag>}}` directive so the author can
+   paste both lines without a second lookup.
 5. **A `list` (or `status`) subcommand prints `tag → frozen path →
    source` rows** so authors can browse the manifest as a book
    accumulates listings.
@@ -81,15 +85,15 @@ slices — there is no "out of scope" exit door.
 | 2 | Preprocessor refreshes assets on every build (AC 2). Today `install` writes `mdbook-listings.css` and `mdbook-listings.js` into the book source tree as a one-time snapshot, then the bytes drift as the binary version moves forward — t2t Pass 3 hit this: bumping the locally-installed binary forward without re-running `install` left the rendered book mixing new HTML emission with stale CSS, producing subtle (and sometimes loud) breakage. The slice moves the asset write from `install` to the preprocessor's run hook so the bytes refresh on every build (no-op when bytes already match). `install` keeps the `book.toml` registration job and now also adds the two asset paths to `.gitignore` so downstream books treat them as build artifacts. Migration for existing books: re-run `install`, then `git rm --cached` the two old committed copies. |
 | 3 | Open the popover to the right by default (AC 3, fix 1 of 2). CSS-only positioning change on the `<div class="callout-body">` so the natural reading direction (left-to-right) drops the popover into the un-annotated gutter rather than over the line it annotates. |
 | 4 | Per-callout `--align` override (AC 3, fix 2 of 2). Tiny extension to the `// CALLOUT: <label>` grammar — `// CALLOUT: <label> --align=left <body>` flips a single callout when the right-side gutter isn't usable (sidebar, narrow viewport, badge near the page edge). The extension is shaped to scale to other per-callout options later (width, theme). |
-| 5 | `freeze` output closes the loop (AC 4). Augments the `created: <tag>` line with the frozen path and the exact `\{{#include listings/<tag>.<ext>}}` directive to copy-paste into the chapter. |
+| 5 | `freeze` output closes the loop (AC 4). Augments the `created: <tag>` line with the frozen path, the exact `\{{#include listings/<tag>.<ext>}}` directive, and — when a prior listing exists in the manifest for the same source — the matching `\{{#diff <prev-tag> <new-tag>}}` directive. The prior-tag lookup is source-based (most-recent manifest entry with the same `source = ...`), not tag-convention-based. |
 | 6 | `mdbook-listings list` subcommand (AC 5). Prints one row per `[[listing]]` in `listings.toml`: tag, frozen path, source path. No filtering options yet — just the basic catalogue view. |
 | 7 | `install` idempotency (AC 6). After slice 2 the only things `install` writes are `book.toml` registrations and the `.gitignore` entries. The first run continues to register the preprocessor + `additional-css`/`additional-js` and to add the asset paths to `.gitignore`. A second run detects everything already present and prints "already installed" with no writes. |
 | 8 | Default tag derivation (AC 7). When `--tag` is omitted, derive `<basename>-v<next>` by reading existing `[[listing]]` entries for the same source path and bumping the highest `vN` suffix. Surfaces a clean error if any existing tag for the same source doesn't match the `<basename>-vN` shape (the heuristic is opinionated; an author who's invented their own scheme keeps using `--tag` explicitly). |
 
 ## Outside-in narrative
 
-Sections appear here as slices ship. Slices 1–4 have shipped;
-slices 5–8 are sketched in the table above.
+Sections appear here as slices ship. Slices 1–5 have shipped;
+slices 6–8 are sketched in the table above.
 
 ### Slice 1 — inline markdown in callout body text
 
@@ -460,3 +464,85 @@ Tests added in this slice:
   beats viewport-aware auto-detection.
 
 {{#diff e2e-callouts-v10 e2e-callouts-v11}}
+
+### Slice 5 — `freeze` output closes the authoring loop
+
+The symptom: every successful `mdbook-listings freeze` printed a
+single line — `created: <tag>` (or `unchanged`, or `replaced`) —
+and then went silent. To actually USE the frozen listing the
+author then had to either remember the include directive's exact
+shape (`\{{#include listings/<tag>.<ext>}}`) or grep
+`listings.toml` for the path. AND, since most freezes in this
+book are *versioned* (`callout-v6`, `callout-v7`, `callout-v8`
+…), almost every freeze in a slice is paired with a
+`\{{#diff <prev> <new>}}` directive that the author had to
+likewise remember or grep for. Per-freeze friction × two;
+surfaced on every chapter slice this book wrote.
+
+Slice 5 makes `freeze` print all three on every successful
+outcome — verb + tag (as before), the frozen path, the
+ready-to-paste `\{{#include …}}` directive, and (when a prior
+listing exists for the same source path) the matching
+`\{{#diff …}}` directive. The new output:
+
+```text
+$ mdbook-listings freeze --tag callout-v8 ../src/callout.rs
+created: callout-v8
+  frozen:  src/listings/callout-v8.rs
+  include: \{{#include listings/callout-v8.rs}}
+  diff:    \{{#diff callout-v7 callout-v8}}
+```
+
+The first freeze of a source path skips the `diff:` line (there
+is no prior). Re-running freeze on an unchanged source prints
+all available lines (`unchanged: <tag>` + path + include + diff
+if a prior exists) — re-runs are a real "give me the directives
+again" workflow, and there's no reason to make the author repeat
+the freeze invocation to see them.
+
+Two implementation details earn a note:
+
+- The include path drops the `src/` prefix that the on-disk path
+  carries: mdbook resolves `\{{#include …}}` relative to the
+  chapter file, which already lives under `src/`. So
+  `src/listings/demo.rs` on disk becomes `listings/demo.rs`
+  inside the directive.
+- The "prior listing" lookup is *source-based*, not tag-based:
+  walk the manifest in reverse insertion order and find the
+  most-recent listing whose `source = ...` matches and whose tag
+  isn't the just-frozen one. No tag-convention parsing, no
+  `<basename>-v<N>` heuristic — that means the suggestion works
+  for any naming scheme an author uses (and stays quiet when the
+  manifest has no candidate). The trade-off: if the author has
+  frozen the same source under unrelated tag names (`first-cut`
+  → `second-attempt` → `final`), the diff target might surprise
+  them. The escape valve is just to ignore the suggestion.
+
+The production-code change is in `src/freeze.rs`
+(`frozen_relative_path` is made `pub` so the CLI can recover the
+disk path; `freeze` now returns a `FreezeReport` struct carrying
+the outcome plus an optional `previous_tag`; new
+`previous_listing_for_source` helper does the reverse-iteration
+manifest lookup) and `src/main.rs` (the three new `println!`
+lines + the strip-`src/` derivation + the conditional diff
+line):
+
+{{#diff freeze-v1 freeze-v2}}
+
+{{#diff main-v10 main-v11}}
+
+Tests added in this slice:
+
+- Five new lib tests in `src/freeze.rs` cover
+  `previous_listing_for_source`: empty manifest, no matching
+  source, only-match-is-current-tag, picking the most-recent
+  prior, and skipping the current tag when multiple matches
+  exist.
+- Five new CLI integration tests in `tests/freeze.rs` cover the
+  end-to-end output shape across all three `FreezeOutcome`
+  variants plus both diff-suggestion cases (prior exists, no
+  prior). The pre-existing `freeze_rejects_*` tests still pass
+  — failures only ever wrote to stderr, so the new stdout lines
+  don't affect them.
+
+{{#diff freeze-tests-v1 freeze-tests-v2}}

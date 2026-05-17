@@ -78,8 +78,8 @@ pub fn freeze(opts: FreezeOptions<'_>) -> Result<FreezeReport> {
     let source_rel_str = path_to_string(&source_rel)?;
     // Compute prior-tag BEFORE upsert so the just-frozen tag can't match
     // itself in the `Replaced` case.
-    let previous_tag =
-        previous_listing_for_source(&manifest, &source_rel_str, opts.tag).map(|l| l.tag.clone());
+    let previous_tag = previous_listing_for_source(&manifest, &source_rel_str, opts.tag)
+        .map(|l| l.tag.clone());
 
     if outcome != FreezeOutcome::Unchanged {
         if let Some(parent) = frozen_abs.parent() {
