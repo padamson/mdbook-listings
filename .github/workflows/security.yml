@@ -175,6 +175,52 @@ jobs:
         with:
           tool: cargo-mutants
 
+      # Mirror the e2e job's Playwright setup so cargo-mutants's
+      # baseline `cargo test` (which honours `.mutants.toml`'s
+      # `additional_cargo_test_args = ["--lib"]` for MUTATED runs but
+      # not for the baseline) can complete. Without Chromium + driver
+      # + a built book, the baseline fails on BrowserNotInstalled and
+      # no mutation work happens. Cache key matches ci.yml so browsers
+      # downloaded by the regular CI test job are restored here for
+      # free (cross-workflow within the same repo).
+      - name: Cache Playwright browsers + driver
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/ms-playwright/
+            drivers/
+          key: ${{ runner.os }}-playwright-${{ hashFiles('Cargo.lock', '.github/workflows/ci.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install mdbook + mdbook-typst-pdf (prebuilt)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook,mdbook-typst-pdf
+
+      - name: Install mdbook-admonish (padamson fork — mdbook-0.5 compat)
+        run: command -v mdbook-admonish || cargo install --git https://github.com/padamson/mdbook-admonish --branch feat/mdbook-0.5-compat
+
+      - name: Refresh mdbook-admonish assets
+        working-directory: book
+        run: mdbook-admonish install
+
+      - name: Install mdbook-listings (this crate)
+        run: cargo install --path . --locked --force
+
+      - name: Build book (so e2e tests find book/build/html/)
+        run: mdbook build book/
+
+      - name: Set up Node (for Playwright driver)
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install Playwright driver + Chromium
+        # Pinned to playwright-rs's bundled PLAYWRIGHT_VERSION; see
+        # ci.yml's matching step for the full rationale.
+        run: npx --yes playwright@1.60.0 install --with-deps chromium
+
       # Compute the right diff base for this trigger.
       # - pull_request: merge base against the PR target branch
       # - push: the `before` SHA of the push (the parent of `after`).
@@ -193,7 +239,16 @@ jobs:
           fi
 
       - name: Run mutation testing on diff
-        run: ./scripts/mutants.sh ${{ steps.base.outputs.ref }}
+        # `--in-place` mutates the workspace source rather than
+        # copying to a tmpdir. The e2e_callouts test binary resolves
+        # `CARGO_MANIFEST_DIR` at compile time; with the default
+        # copy-to-tmpdir mode the binary looks for `book/build/html/`
+        # inside the tmpdir (which cargo-mutants doesn't populate),
+        # so e2e tests panic on file-not-found. In-place mode points
+        # CARGO_MANIFEST_DIR at the workspace where we just built the
+        # book. Safe in CI's ephemeral VM; not used locally (see
+        # scripts/mutants.sh, which keeps the default copy mode).
+        run: ./scripts/mutants.sh ${{ steps.base.outputs.ref }} -- --in-place
 
       - name: Upload mutation report
         if: always()
