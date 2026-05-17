@@ -92,8 +92,8 @@ slices — there is no "out of scope" exit door.
 
 ## Outside-in narrative
 
-Sections appear here as slices ship. Slices 1–7 have shipped;
-slice 8 is sketched in the table above.
+Sections appear here as slices ship. All eight slices have
+shipped.
 
 ### Slice 1 — inline markdown in callout body text
 
@@ -671,3 +671,114 @@ Two new tests in `tests/install.rs`:
   invocations exit success. Pins the downstream signal.
 
 {{#diff install-tests-v5 install-tests-v6}}
+
+### Slice 8 — default `--tag` derivation
+
+The symptom: every `mdbook-listings freeze` invocation required
+the author to invent and type out a `--tag`. For a book that
+freezes the same source file repeatedly across slices
+(`callout-v6`, `callout-v7`, `callout-v8`, …), the v-suffix
+schema is so mechanical that "what's the next tag?" is a
+question with a deterministic answer the tool should just
+compute. Forcing the human to compute it per-freeze is per-
+freeze friction that adds up.
+
+Slice 8 makes `--tag` optional. When omitted, freeze derives a
+default from the source basename + the manifest's existing
+entries for the same source:
+
+```text
+$ mdbook-listings freeze ../src/callout.rs
+created: callout-v8
+  frozen:  src/listings/callout-v8.rs
+  include: \{{#include listings/callout-v8.rs}}
+  diff:    \{{#diff callout-v7 callout-v8}}
+```
+
+The derivation rule is intentionally narrow:
+
+- **First freeze of a source** (no prior listings): default to
+  `<basename>-v1`. `v` is the canonical Rust convention; first
+  author to freeze a given source establishes it without per-
+  source configuration.
+- **Prior listings exist with `<basename>-<prefix><N>` shape**
+  where `<prefix>` is one of `v`, `ver`, `rev`, `version`:
+  default to `<basename>-<prefix>(maxN + 1)`. The prefix is
+  taken from the most-recently-inserted matching listing, so a
+  mid-stream convention switch (started with `v1`, then moved
+  to `rev1`/`rev2`) sticks with the new convention rather than
+  silently flipping back.
+- **Prior listings exist but NONE match the allowlist**
+  (the motivating case: t2t's `<basename>-ch<NN>-phase<N>`):
+  return an actionable error naming the existing scheme and
+  directing the author to pass `--tag` explicitly. The CLI
+  never silently picks a name that might conflict with the
+  author's own scheme.
+
+Two non-obvious design choices:
+
+- **Hyphen-separated allowlist, not "any trailing digits."** The
+  prefix has to be one of `v`/`ver`/`rev`/`version` AND there has
+  to be a hyphen between basename and prefix. A name like
+  `compose3` could be a typo for `compose-v3`, a deliberate name,
+  or "compose for Postgres 3" — autopilot is the wrong call.
+  Restricting to a known allowlist with a separator rules out the
+  ambiguous cases.
+- **Most-recent-prefix wins on mixed conventions.** When the
+  manifest has `foo-v1`, `foo-v2`, `foo-rev3` (the author
+  switched mid-stream), the next default is `foo-rev4`, not
+  `foo-v3`. The author's most recent choice is the better signal
+  of present intent than max-N alone.
+
+Production-code change in `src/freeze.rs`: new
+`derive_default_tag` function, supporting `parse_version_suffix`
+helper, `VERSION_PREFIXES` constant, and `TagDerivationError`
+enum with two variants (`UnusableSourceName`,
+`UnrecognisedConvention`).
+
+{{#diff freeze-v3 freeze-v4}}
+
+CLI wiring in `src/main.rs`: `Command::Freeze::tag` becomes
+`Option<String>`; the handler calls `derive_default_tag` when
+`None`, wraps the `TagDerivationError` in `anyhow::Error` so the
+CLI surfaces the actionable message on stderr with exit 1.
+
+{{#diff main-v13 main-v14}}
+
+Tests added in this slice:
+
+- Eight new lib tests in `src/freeze.rs` covering the derivation
+  logic: empty-manifest first-freeze, single-prior bump, max-N
+  vs count, each allowlist prefix, mixed-prefix
+  most-recent-wins, unrecognised-convention error, and
+  cross-source isolation (other-source listings don't pollute).
+- Three new CLI integration tests in `tests/freeze.rs` covering
+  the end-to-end path: `--tag` omitted on first freeze derives
+  v1, `--tag` omitted bumps an existing v-series, and `--tag`
+  omitted on an unrecognised-convention prior errors with the
+  actionable message.
+
+{{#diff freeze-tests-v2 freeze-tests-v3}}
+
+## Where ch.6 leaves us
+
+All eight slices have shipped. Acceptance criteria status:
+
+- AC 1 (inline markdown in callout body) — closed by slice 1.
+- AC 2 (preprocessor refreshes assets on every build) — closed
+  by slice 2.
+- AC 3 (popover never covers the line it annotates *in the
+  common case*) — closed by slices 3+4. Translucent + blur
+  third-fix prototype was dropped; the in-browser effect was
+  too subtle to read as translucent across mdbook's themes.
+- AC 4 (`freeze` output closes the authoring loop) — closed by
+  slice 5.
+- AC 5 (`mdbook-listings list` subcommand) — closed by slice 6.
+- AC 6 (`install` is idempotent with friendly message) — closed
+  by slice 7.
+- AC 7 (`freeze` derives a default tag when `--tag` is omitted)
+  — closed by slice 8.
+
+The remaining v0.1.0 step is a downstream pass: t2t Ch.3 uses
+mdbook-listings against real chapter content and surfaces any
+final paper-cuts before the version is tagged on crates.io.

@@ -151,15 +151,16 @@ pub fn derive_default_tag(
     source: &Path,
     book_root: &Path,
 ) -> Result<String, TagDerivationError> {
-    let basename = source.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
-        TagDerivationError::UnusableSourceName {
+    let basename = source
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| TagDerivationError::UnusableSourceName {
             source: source.display().to_string(),
-        }
-    })?;
+        })?;
 
     let source_rel = relativize(source, book_root);
-    let source_rel_str =
-        path_to_string(&source_rel).map_err(|_| TagDerivationError::UnusableSourceName {
+    let source_rel_str = path_to_string(&source_rel)
+        .map_err(|_| TagDerivationError::UnusableSourceName {
             source: source.display().to_string(),
         })?;
 
