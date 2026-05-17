@@ -539,3 +539,15 @@ tag = "freeze-tests-v2"
 source = "../tests/freeze.rs"
 frozen = "src/listings/freeze-tests-v2.rs"
 sha256 = "a6650ecb2a24aab93b093cd95dcdccb4a9e5f9b501fbf9c607ac43b66c80f426"
+
+[[listing]]
+tag = "freeze-v3"
+source = "../src/freeze.rs"
+frozen = "src/listings/freeze-v3.rs"
+sha256 = "441cbe0f0a0e7b909069aa1592a49b42ce2107fa247ec78f673de497877d9b7a"
+
+[[listing]]
+tag = "main-v12"
+source = "../src/main.rs"
+frozen = "src/listings/main-v12.rs"
+sha256 = "cd737ac81c29e474f18f3f4259204e2742d796d058761cb6a08c25fd90b5a180"
