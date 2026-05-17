@@ -497,3 +497,27 @@ tag = "e2e-callouts-v10"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v10.rs"
 sha256 = "d56415f8282628b20bc0c8d322a9d270ff155699524e610f5d8f7137ebc3cc76"
+
+[[listing]]
+tag = "callout-v8"
+source = "../src/callout.rs"
+frozen = "src/listings/callout-v8.rs"
+sha256 = "23c69fba88b28884dcd272cb03c175191bc9c0170d585747b72d11c128620256"
+
+[[listing]]
+tag = "e2e-callouts-v11"
+source = "../tests/e2e_callouts.rs"
+frozen = "src/listings/e2e-callouts-v11.rs"
+sha256 = "8458d6b1213ff47c8b37abd0010c7d0eebc2d7ac0ea8850929892a8eb323ef45"
+
+[[listing]]
+tag = "listings-js-v2"
+source = "../assets/mdbook-listings.js"
+frozen = "src/listings/listings-js-v2.js"
+sha256 = "e7473d80db215e6bd42bffccc89805078913de8f2dfc482cae92e120db613b40"
+
+[[listing]]
+tag = "install-v11"
+source = "../src/install.rs"
+frozen = "src/listings/install-v11.rs"
+sha256 = "bb718b5aa2f3fe32afaed7dcd5bc8e7df1f4e012e9b03416a8177e6ac2029ba3"

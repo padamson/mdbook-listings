@@ -85,8 +85,8 @@ slices — there is no "out of scope" exit door.
 
 ## Outside-in narrative
 
-Sections appear here as slices ship. Slices 1–3 have shipped;
-slices 4–9 are sketched in the table above.
+Sections appear here as slices ship. Slices 1–4 have shipped;
+slices 5–9 are sketched in the table above.
 
 ### Slice 1 — inline markdown in callout body text
 
@@ -361,3 +361,98 @@ off-screen, but it's not invisible. Slice 4 will add a per-callout
 slice 5 will add a translucent / `backdrop-filter: blur` background
 so even an unavoidable overlap leaves the underlying code legible.
 The three slices together close AC 3.
+
+### Slice 4 — per-callout `--align` override
+
+The symptom: slice 3's viewport-aware fallback decides the popover
+side by measuring the available right-side gutter at hover time.
+That's the right default for most callouts, but it has no notion
+of intent — an author who *knows* a specific callout sits next
+to a wide right-gutter element they don't want covered (a sidebar,
+an image, a floated note) has no way to say so. Conversely, an
+author on a wide viewport who knows a particular body is short
+enough to read fine over the listing can't pin it left. The
+runtime makes the call; the author can't override it.
+
+Slice 4 extends the `// CALLOUT:` grammar with `--key=value`
+options between the label and the body, and ships the first such
+option: `--align=left|right`. The marker shape becomes:
+
+```text
+// CALLOUT: <label> [--align=left|--align=right] <body>
+```
+
+When `--align=left` is present, the splicer emits
+`data-callout-align="left"` on the entry; the runtime JS sees the
+attribute and pins the popover to the left, short-circuiting the
+viewport-aware path. `--align=right` is symmetric (pins right
+regardless of available gutter). Anything else falls through to
+slice 3's default behaviour.
+
+The option grammar is deliberately a tiny generalisation rather
+than a one-off flag: a future slice that wants per-callout
+`--width=...` or `--theme=...` will not need to re-touch the
+parser. Tokens that don't match `--key=value` end option parsing
+and become the start of the body, so the existing bodyless and
+body-with-no-options forms keep parsing unchanged.
+
+Here's the demo fixture — a snippet with one `--align=left` marker.
+The same file is included into the e2e test as the on-page fixture
+the regression hovers; the rendered badge sits directly below the
+fenced block:
+
+```rust
+{{#include snippets/callout-align-snippet-v1.rs}}
+```
+
+The production-code change is in `src/callout.rs`: the `Callout`
+struct grows a `pub options: HashMap<String, String>` field, a
+new `parse_options` helper pulls `--key=value` tokens off the
+front of the rest-of-line, and `render_callout_overlay_html`
+emits `data-callout-align="<value>"` on the entry when the option
+is set:
+
+{{#diff callout-v7 callout-v8}}
+
+The runtime change is in `assets/mdbook-listings.js`: the
+`adjustPopoverPositioning` loop reads `entry.dataset.calloutAlign`
+at the top of each iteration and short-circuits to the pinned
+side before the gutter math runs. The shipped behaviour for
+`--align=left` matches slice 3's narrow-gutter fallback (`body.left
+= 'auto'`, `body.right = '2em'`, `callout-entry--left-popover`
+class on the entry to drive the arrow-pseudo overrides); for
+`--align=right`, the script clears any prior inline overrides so
+the CSS default takes over. A `data-callout-popover-decision`
+marker (`author-left` / `author-right`) is written on the entry
+for devtools diagnostics, matching the scheme slice 3 introduced
+for the viewport-aware decisions:
+
+{{#diff listings-js-v1 listings-js-v2}}
+
+The `JS_ASSET_SENTINEL` constant in `src/install.rs` bumps
+v5→v6 so the bundled-asset check catches the new shape:
+
+{{#diff install-v10 install-v11}}
+
+Tests added in this slice:
+
+- Six new lib tests in `src/callout.rs` cover the parser:
+  `parse_callout_marker_parses_align_left_option`,
+  `parse_callout_marker_parses_align_right_option`,
+  `parse_callout_marker_no_options_leaves_map_empty`,
+  `parse_callout_marker_unknown_option_is_passed_through`,
+  `parse_callout_marker_token_without_equals_ends_option_parsing`,
+  `parse_callout_marker_option_with_no_body_keeps_body_none`.
+- Two new lib tests cover the HTML emission:
+  `render_callout_overlay_html_emits_data_callout_align_when_align_option_set`
+  and `..._omits_data_callout_align_when_no_option`.
+- One new e2e test in `tests/e2e_callouts.rs`:
+  `callout_with_align_left_option_pins_popover_left_even_on_wide_viewport`
+  drives the end-to-end path. The viewport is set to 1800×800
+  (wide enough that slice 3's default would open right), the
+  badge from the snippet above is hovered, and the assertion
+  checks both `entry.dataset.calloutAlign === 'left'` and
+  `body.right <= badge.left + 1` — proving the author override
+  beats viewport-aware auto-detection.
+
+{{#diff e2e-callouts-v10 e2e-callouts-v11}}
