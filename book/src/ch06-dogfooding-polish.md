@@ -48,12 +48,16 @@ slices — there is no "out of scope" exit door.
    directory and add `additional-css = ["./theirs.css"]` to
    `book.toml`. mdbook cascades the second `additional-css` entry
    after the first, so author rules win.
-3. **Callout popover never covers the line it annotates.** The
-   default opens the popover to the right of the badge (the
-   un-annotated gutter), an author override switches a specific
-   callout to the left for narrow viewports, and a transparent /
-   `backdrop-filter: blur` fallback keeps the underlying code legible
-   when overlap is unavoidable.
+3. **Callout popover never covers the line it annotates** in the
+   common case. The default opens the popover to the right of the
+   badge (the un-annotated gutter), and an author override switches
+   a specific callout to the left when the right-side gutter isn't
+   usable. Some overlap is unavoidable on narrow viewports — the
+   fallback there is to live with it. A planned third fix
+   (translucent background + `backdrop-filter: blur`) was
+   prototyped and dropped: the in-browser effect was too subtle to
+   read as translucent across mdbook's themes, where
+   `--theme-popup-bg` sits very close to the listing's pre bg.
 4. **`freeze` output closes the authoring loop.** Every successful
    `freeze` prints the frozen path AND the ready-to-paste
    `\{{#include listings/<tag>.<ext>}}` directive — the author
@@ -75,18 +79,17 @@ slices — there is no "out of scope" exit door.
 |---|---|
 | 1 | Inline markdown in callout body text (AC 1). Downstream dogfooding noticed that backticks around an identifier in a callout body rendered as literal backtick characters rather than a `<code>` span. The fix routes the body through pulldown-cmark's inline parser before wrapping it in the `<div class="callout-body">`, strips the synthetic `<p>` wrapper, and re-applies the `{` → `&#123;` escape for cross-ref-scanner safety. Raw HTML events are remapped to text events so a body containing `<script>` still renders as `&lt;script&gt;`, not as pass-through HTML. |
 | 2 | Preprocessor refreshes assets on every build (AC 2). Today `install` writes `mdbook-listings.css` and `mdbook-listings.js` into the book source tree as a one-time snapshot, then the bytes drift as the binary version moves forward — t2t Pass 3 hit this: bumping the locally-installed binary forward without re-running `install` left the rendered book mixing new HTML emission with stale CSS, producing subtle (and sometimes loud) breakage. The slice moves the asset write from `install` to the preprocessor's run hook so the bytes refresh on every build (no-op when bytes already match). `install` keeps the `book.toml` registration job and now also adds the two asset paths to `.gitignore` so downstream books treat them as build artifacts. Migration for existing books: re-run `install`, then `git rm --cached` the two old committed copies. |
-| 3 | Open the popover to the right by default (AC 3, fix 1 of 3). CSS-only positioning change on the `<div class="callout-body">` so the natural reading direction (left-to-right) drops the popover into the un-annotated gutter rather than over the line it annotates. |
-| 4 | Per-callout `--align` override (AC 3, fix 2 of 3). Tiny extension to the `// CALLOUT: <label>` grammar — `// CALLOUT: <label> --align=left <body>` flips a single callout when the right-side gutter isn't usable (sidebar, narrow viewport, badge near the page edge). The extension is shaped to scale to other per-callout options later (width, theme). |
-| 5 | Transparent / `backdrop-filter: blur` fallback (AC 3, fix 3 of 3). Pure CSS. When the popover must cover the listing (narrow viewport, author override, very long body), a translucent background + backdrop blur keeps the underlying code legible behind it. |
-| 6 | `freeze` output closes the loop (AC 4). Augments the `created: <tag>` line with the frozen path and the exact `\{{#include listings/<tag>.<ext>}}` directive to copy-paste into the chapter. |
-| 7 | `mdbook-listings list` subcommand (AC 5). Prints one row per `[[listing]]` in `listings.toml`: tag, frozen path, source path. No filtering options yet — just the basic catalogue view. |
-| 8 | `install` idempotency (AC 6). After slice 2 the only things `install` writes are `book.toml` registrations and the `.gitignore` entries. The first run continues to register the preprocessor + `additional-css`/`additional-js` and to add the asset paths to `.gitignore`. A second run detects everything already present and prints "already installed" with no writes. |
-| 9 | Default tag derivation (AC 7). When `--tag` is omitted, derive `<basename>-v<next>` by reading existing `[[listing]]` entries for the same source path and bumping the highest `vN` suffix. Surfaces a clean error if any existing tag for the same source doesn't match the `<basename>-vN` shape (the heuristic is opinionated; an author who's invented their own scheme keeps using `--tag` explicitly). |
+| 3 | Open the popover to the right by default (AC 3, fix 1 of 2). CSS-only positioning change on the `<div class="callout-body">` so the natural reading direction (left-to-right) drops the popover into the un-annotated gutter rather than over the line it annotates. |
+| 4 | Per-callout `--align` override (AC 3, fix 2 of 2). Tiny extension to the `// CALLOUT: <label>` grammar — `// CALLOUT: <label> --align=left <body>` flips a single callout when the right-side gutter isn't usable (sidebar, narrow viewport, badge near the page edge). The extension is shaped to scale to other per-callout options later (width, theme). |
+| 5 | `freeze` output closes the loop (AC 4). Augments the `created: <tag>` line with the frozen path and the exact `\{{#include listings/<tag>.<ext>}}` directive to copy-paste into the chapter. |
+| 6 | `mdbook-listings list` subcommand (AC 5). Prints one row per `[[listing]]` in `listings.toml`: tag, frozen path, source path. No filtering options yet — just the basic catalogue view. |
+| 7 | `install` idempotency (AC 6). After slice 2 the only things `install` writes are `book.toml` registrations and the `.gitignore` entries. The first run continues to register the preprocessor + `additional-css`/`additional-js` and to add the asset paths to `.gitignore`. A second run detects everything already present and prints "already installed" with no writes. |
+| 8 | Default tag derivation (AC 7). When `--tag` is omitted, derive `<basename>-v<next>` by reading existing `[[listing]]` entries for the same source path and bumping the highest `vN` suffix. Surfaces a clean error if any existing tag for the same source doesn't match the `<basename>-vN` shape (the heuristic is opinionated; an author who's invented their own scheme keeps using `--tag` explicitly). |
 
 ## Outside-in narrative
 
 Sections appear here as slices ship. Slices 1–4 have shipped;
-slices 5–9 are sketched in the table above.
+slices 5–8 are sketched in the table above.
 
 ### Slice 1 — inline markdown in callout body text
 
@@ -356,11 +359,12 @@ has reacted to the viewport change.
 
 The narrow-gutter fallback still covers the listing on the left —
 that's the lesser evil compared to letting the popover spill
-off-screen, but it's not invisible. Slice 4 will add a per-callout
-`--align=left` override so an author can pin one side explicitly;
-slice 5 will add a translucent / `backdrop-filter: blur` background
-so even an unavoidable overlap leaves the underlying code legible.
-The three slices together close AC 3.
+off-screen, but it's not invisible. Slice 4 adds a per-callout
+`--align=left|right` override so an author can pin one side
+explicitly; a third planned fix (translucent +
+`backdrop-filter: blur`) was prototyped and dropped because the
+in-browser effect was too subtle to read as translucent across
+mdbook's themes. Slices 3+4 are what closes AC 3 in practice.
 
 ### Slice 4 — per-callout `--align` override
 
