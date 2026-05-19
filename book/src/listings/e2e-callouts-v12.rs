@@ -776,10 +776,7 @@ async fn sidecar_callout_renders_alongside_inline_marker_in_same_listing() {
                 let selector = format!("button[data-callout-badge=\"{}\"]", label);
                 let badge = page.locator(&selector).await;
                 expect(badge).to_have_count(1).await.unwrap_or_else(|_| {
-                    panic!(
-                        "badge with label '{}' must render exactly once in ch.6",
-                        label
-                    )
+                    panic!("badge with label '{}' must render exactly once in ch.6", label)
                 });
             }
         },

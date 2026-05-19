@@ -83,7 +83,7 @@ Anticipated commits:
   * The sanity checks exist largely for human reassurance. The
     drift check (AC 1) is what gives CI a useful signal. Keep the
     diagnostic text clear about which is which.
-  * `{{#include}}` directives may include anchors and line-range
+  * `\{{#include}}` directives may include anchors and line-range
     suffixes (`\{{#include foo.rs:bar}}`,
     `\{{#include foo.rs:1:10}}`). For AC 6 we only care about the
     path component; ignore the rest.

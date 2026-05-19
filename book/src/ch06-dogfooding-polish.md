@@ -5,7 +5,7 @@ Chapters 2–5 shipped the v0.1.0 primitives (install, freeze, diff,
 callouts). The first real downstream project to take a dependency
 on those primitives — the
 [t2t](https://github.com/padamson/t2t) book — surfaced a handful of
-rendering and ergonomic gaps that the in-house book never exercised
+rendering and ergonomic gaps that this book never exercised
 hard enough to notice. This chapter collects the resulting polish
 work, one slice per gap. The verify story (ch.7) is still
 placeholder; it'll close the v0.1.0 loop separately.
@@ -76,6 +76,17 @@ slices — there is no "out of scope" exit door.
    default `<basename>-v<next>` removes the "invent your own scheme"
    tax on every first-time author. Already on the v0.2.0 ROADMAP;
    downstream surfaced it as a real pain point, so it lives here.
+8. **Sidecar TOML callouts.** Some listings can't carry inline
+   `// CALLOUT:` markers — code the author doesn't own (third-party
+   crates, vendored snippets, generated code), or languages without
+   a recognized single-line comment syntax (CSS, plain Markdown).
+   For those cases, callouts can live in a sibling TOML file
+   alongside the frozen listing (`book/src/listings/<tag>.callouts
+   .toml`). The splicer loads the sidecar when present, merges its
+   entries with any inline markers, and emits one combined overlay
+   per fenced block. Inline + sidecar callouts compose cleanly;
+   label collisions across the two sources fail the build with a
+   diagnostic naming the duplicate label and both source locations.
 
 ## The slice — outside-in narrative outline
 
@@ -89,11 +100,11 @@ slices — there is no "out of scope" exit door.
 | 6 | `mdbook-listings list` subcommand (AC 5). Prints one row per `[[listing]]` in `listings.toml`: tag, frozen path, source path. No filtering options yet — just the basic catalogue view. |
 | 7 | `install` idempotency (AC 6). After slice 2 the only things `install` writes are `book.toml` registrations and the `.gitignore` entries. The first run continues to register the preprocessor + `additional-css`/`additional-js` and to add the asset paths to `.gitignore`. A second run detects everything already present and prints "already installed" with no writes. |
 | 8 | Default tag derivation (AC 7). When `--tag` is omitted, derive `<basename>-v<next>` by reading existing `[[listing]]` entries for the same source path and bumping the highest `vN` suffix. Surfaces a clean error if any existing tag for the same source doesn't match the `<basename>-vN` shape (the heuristic is opinionated; an author who's invented their own scheme keeps using `--tag` explicitly). |
+| 9 | Sidecar TOML callouts (AC 8). Listings that can't carry inline markers (generated code, no-comment languages) attach callouts via a sibling `<tag>.callouts.toml` file. Splicer loads it alongside the frozen listing, merges with any inline markers, errors on cross-source label collisions. |
 
 ## Outside-in narrative
 
-Sections appear here as slices ship. All eight slices have
-shipped.
+Sections appear here as slices ship. All nine slices have shipped.
 
 ### Slice 1 — inline markdown in callout body text
 
@@ -178,7 +189,7 @@ ships fine. Some weeks later the author bumps the binary forward via
 renders the chapter against the *new* HTML emission paired with the
 *old* on-disk CSS/JS — silent visual breakage until the author
 remembers to also re-run `install`. This is exactly what t2t
-Pass 3 hit after we shipped slice 1's hljs-fade CSS fix.
+hit after we shipped slice 1's `hljs`-fade CSS fix.
 
 The fix moves the asset write from "one-time at install" to "every
 build, idempotent." Two reusable helpers land in `src/install.rs`:
@@ -212,8 +223,8 @@ Tests added in this slice (all in `tests/install.rs`):
   on first call.
 - `ensure_assets_fresh_is_noop_when_bytes_match` — preprocessor calls
   this on every build; mtime churn would force unnecessary rebuilds.
-- `ensure_assets_fresh_overwrites_stale_bytes` — proves the t2t
-  Pass 3 fix: stale on-disk copies are refreshed automatically.
+- `ensure_assets_fresh_overwrites_stale_bytes` — proves the fix: stale
+  on-disk copies are refreshed automatically.
 - `ensure_gitignore_creates_file_when_missing` — bare-tempdir case.
 - `ensure_gitignore_appends_only_missing_entries` — preserves
   existing author entries; never duplicates.
@@ -760,25 +771,175 @@ Tests added in this slice:
 
 {{#diff freeze-tests-v2 freeze-tests-v3}}
 
-## Where ch.6 leaves us
+### Slice 9 — sidecar TOML callouts
 
-All eight slices have shipped. Acceptance criteria status:
+The symptom: every callout this book has shipped attaches via
+an inline `// CALLOUT:` marker that the splicer parses out of
+the frozen listing's source bytes. That model breaks for code
+the author doesn't own (third-party crates, vendored snippets,
+generated code) and for languages without a recognized
+single-line comment syntax (CSS, plain Markdown, plain text).
+For both cases, no comment-style marker is possible.
 
-- AC 1 (inline markdown in callout body) — closed by slice 1.
-- AC 2 (preprocessor refreshes assets on every build) — closed
-  by slice 2.
-- AC 3 (popover never covers the line it annotates *in the
-  common case*) — closed by slices 3+4. Translucent + blur
-  third-fix prototype was dropped; the in-browser effect was
-  too subtle to read as translucent across mdbook's themes.
-- AC 4 (`freeze` output closes the authoring loop) — closed by
-  slice 5.
-- AC 5 (`mdbook-listings list` subcommand) — closed by slice 6.
-- AC 6 (`install` is idempotent with friendly message) — closed
-  by slice 7.
-- AC 7 (`freeze` derives a default tag when `--tag` is omitted)
-  — closed by slice 8.
+Slice 9 adds a parallel attachment mechanism — a sidecar TOML
+file alongside the frozen listing.
 
-The remaining v0.1.0 step is a downstream pass: t2t Ch.3 uses
-mdbook-listings against real chapter content and surfaces any
-final paper-cuts before the version is tagged on crates.io.
+Here's the shape, dogfooded against this very book —
+`book/src/listings/callout-v9.callouts.toml` sits next to the
+`callout-v9` frozen listing (i.e. `book/src/listings/callout-v9.rs`,
+the post-slice-9 freeze of `src/callout.rs`) and attaches two
+callouts at source lines that don't carry inline markers:
+
+```toml
+{{#include listings/callout-v9.callouts.toml}}
+```
+
+The naming convention is `<tag>.callouts.toml` next to
+`<tag>.<ext>`; the splicer scans the listings directory at the
+start of each chapter pass and keys the parsed entries by tag.
+Per fenced block, it looks up the `<div data-listing-tag>` anchor
+the include splicer already emits (the same anchor that makes
+locator-anchor screenshots work) and merges any sidecar entries
+for that tag with the inline markers parsed from the block. One
+entry per `[[callout]]` table — required `line` (source-file line
+in the frozen listing) + `label`, optional `body`.
+
+The rendered effect, on a small slice of the `callout-v9` listing
+that ALSO carries the inline `// CALLOUT: parse-entry` marker at
+source line 28 — three badges total, one inline, two sidecar:
+
+```rust
+{{#include listings/callout-v9.rs:28:50}}
+```
+
+#### Three correctness details earned their own test
+
+1. **Source-line → post-strip translation.** The sidecar `line`
+   field is the line number in the FROZEN LISTING SOURCE, not a
+   line in the rendered chapter. The splicer translates: for a
+   ranged `\{{#include listings/<tag>.<ext>:A:B}}`, the include
+   splicer prepends 2 header lines (basename + `@@ A,B @@`) to the
+   block, so source line N appears at block-text line
+   `(N − A + 1) + 2`. Inline marker stripping then shifts every
+   subsequent line up by the count of stripped markers before it.
+   The render path applies both translations and asserts on the
+   resulting post-strip position.
+2. **Sidecar pointing at an inline-marker line errors.** If a
+   sidecar entry's `line` happens to be the source line of an
+   inline `// CALLOUT:` marker (which the strip pass removes from
+   the rendered listing), the badge would have nowhere to land.
+   The splicer raises `SpliceError::SidecarLineOnStrippedMarker`
+   naming the label, listing tag, source line, and sidecar path.
+3. **Cross-source label collisions error.** Same label appearing
+   as BOTH an inline marker AND a sidecar entry would silently
+   shadow one of the rendered badges. The splicer raises
+   `SpliceError::LabelCollision` naming the label and both source
+   locations. Same-source duplicates (two sidecar entries with the
+   same label in one TOML) are caught at load time with
+   `SidecarLoadError::DuplicateLabel`.
+
+Production code change in `src/callout.rs`: new `SidecarCallouts`
+type with `load(listings_dir)` constructor, new `SidecarFile` +
+`SidecarEntry` deserialisable shapes, new `ListingAnchor` extracted
+from the `<div data-listing-tag …>` element (including the optional
+`data-listing-tag-range` attribute), new
+`source_line_to_block_line` + `translate_sidecar_line_to_post_strip`
+helpers. The `splice_chapter` signature gains a third parameter
+for the sidecar map; `SpliceError` gains two new variants;
+`SidecarLoadError` is a separate enum surfaced at load time.
+
+`strip_marker_lines` and `strip_marker_lines_diff` refactored from
+returning a 3-tuple to returning a `StripResult` struct with a
+new `stripped_source_lines: Vec<usize>` field — the per-block
+source-line numbers of stripped inline markers, which the
+sidecar translation step needs.
+
+{{#diff callout-v8 callout-v9}}
+
+CLI wiring in `src/main.rs`: load the sidecar map once per
+preprocessor invocation and pass `&sidecars` to every
+`splice_callouts(...)` call.
+
+{{#diff main-v14 main-v15}}
+
+#### Quieting chronic build noise: escape `{{` in substituted content
+
+While verifying the slice 9 PDF render, a chronic source of
+include-directive resolution errors surfaced in the build log.
+Root cause: the include and diff splicers substitute frozen
+source-code bytes into the chapter buffer; some of those frozen
+files contain literal `\{{#include …}}` strings as test fixtures
+(test code asserting on splicer behaviour) or doc-comment
+examples. Once substituted, mdbook's built-in `links`
+preprocessor scans the chapter buffer and tries to resolve those
+literals as real directives, failing because the referenced
+files don't exist. Build keeps going (errors are non-fatal),
+but every build prints a screenful of confused noise.
+
+The fix: both splicers escape `{{` → `\{{` as they substitute.
+mdbook's resolver sees the escape and leaves the literal alone;
+the rendered HTML still shows `{{...}}` visually (the `\` is
+consumed as the escape sigil). Safe because every file
+mdbook-listings freezes is source code (Rust, YAML, TOML, JS,
+CSS) — never Markdown — so `{{...}}` in the body is always
+literal text, never an authored directive.
+
+{{#diff include-v2 include-v3}}
+
+{{#diff diff-v9 diff-v10}}
+
+Tests added in this slice:
+
+- 18 new lib tests in `src/callout.rs`:
+  - 4 cover `SidecarCallouts::load` (missing dir, well-formed
+    file, invalid-label rejection, ignored-extension files,
+    same-source duplicate-label rejection).
+  - 2 cover `listing_anchor_after_fence` (with + without range
+    attribute).
+  - 2 cover `source_line_to_block_line` (identity for full-file,
+    offset for ranged).
+  - 3 cover `translate_sidecar_line_to_post_strip` (no-strip
+    identity, shift by stripped count, error on stripped-line
+    collision).
+  - 4 cover `splice_chapter` end-to-end (sidecar-only merge,
+    inline+sidecar compose in line order, label-collision error,
+    sidecar-line-on-stripped-marker error).
+- The 30 pre-existing `splice_chapter` tests all updated to pass
+  `&SidecarCallouts::empty()` as the new third parameter; their
+  behavior is unchanged.
+- 1 new e2e test in `tests/e2e_callouts.rs`:
+  `sidecar_callout_renders_alongside_inline_marker_in_same_listing`
+  asserts that all three badges (`parse-entry` inline,
+  `parse-line-entry` + `label-validity-check` sidecar) render
+  exactly once each in the rendered ch.6 HTML.
+- 1 new lib test in `src/include.rs`:
+  `splice_chapter_escapes_double_braces_in_included_body` pins
+  the `{{` → `\{{` substitution contract above.
+
+{{#diff e2e-callouts-v11 e2e-callouts-v12}}
+
+Alongside the splicer escapes, a sweep of earlier chapters
+fixed unescaped illustrative `{{#…}}` references inside inline
+backticks (mdbook's built-in `links` preprocessor doesn't
+respect inline-backtick context as a directive-skip zone, so
+those mentions raised the same noise). One multi-line example
+in ch.5 was rewritten as plain prose because no backslash
+position avoided the line-wrap parsing issue cleanly.
+
+## What this story does not solve
+
+- **`verify`** still bails with `not yet implemented`. The
+  chapter that wires it up (ch.7) is placeholder.
+- **Sidecar `line` for ranged includes with inline markers**
+  works correctly, but the translation is purely positional —
+  there's no "anchor by label" mechanism that decouples a
+  sidecar entry from its source-line position. A refactor that
+  moved code around would silently shift the sidecar's badge.
+- **Sidecar entries don't support `--align`-style options.**
+  The inline `// CALLOUT:` grammar accepts `--key=value` tokens
+  (slice 4); the sidecar TOML schema doesn't. Adding it is
+  straightforward but no downstream has asked for it yet.
+- **PDF-side sidecar rendering** works (the PDF splicer's
+  blockquote emit gets the merged callouts) but isn't exercised
+  by an e2e test the way HTML is. PDF coverage on sidecar is
+  whatever the HTML coverage proves transitively.

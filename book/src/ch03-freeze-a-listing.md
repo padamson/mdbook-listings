@@ -89,7 +89,7 @@ everything.
 ### Frozen directory layout: `<book-root>/src/listings/<tag>.<ext>`
 
 Frozen files live under `src/listings/` inside the book so the
-built-in `{{#include}}` resolver finds them without any path
+built-in `\{{#include}}` resolver finds them without any path
 gymnastics. The extension is inherited from the source so syntax
 highlighting works automatically.
 

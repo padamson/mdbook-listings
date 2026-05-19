@@ -587,3 +587,39 @@ tag = "freeze-tests-v3"
 source = "../tests/freeze.rs"
 frozen = "src/listings/freeze-tests-v3.rs"
 sha256 = "90dbac89d8c8e7b778c020ce20a8ba9801b6cb98c4b1536369574e25b4d02f1d"
+
+[[listing]]
+tag = "callout-v9"
+source = "../src/callout.rs"
+frozen = "src/listings/callout-v9.rs"
+sha256 = "5528e3dbea2c531ff6ce331a644126b91810cd41b07622e18b0922df88501e65"
+
+[[listing]]
+tag = "main-v15"
+source = "../src/main.rs"
+frozen = "src/listings/main-v15.rs"
+sha256 = "9d14abd83ac4fd77fb4d290af681fcaa95eaf6ab1cdf1c2db80a47afd3599b30"
+
+[[listing]]
+tag = "e2e-callouts-v12"
+source = "../tests/e2e_callouts.rs"
+frozen = "src/listings/e2e-callouts-v12.rs"
+sha256 = "e9e4c0fbb58d98855174bd4da3815a9890ac5b44f39d341d5b658050e790da8f"
+
+[[listing]]
+tag = "include-v3"
+source = "../src/include.rs"
+frozen = "src/listings/include-v3.rs"
+sha256 = "aac173e5d01c9bc822e8df843588e9af3a7f345c792e9a88b3ea9377c1d9eb35"
+
+[[listing]]
+tag = "diff-v10"
+source = "../src/diff.rs"
+frozen = "src/listings/diff-v10.rs"
+sha256 = "cdb8d2dc95a4cd0f1f4e713aac0fff9684d3b872fed77fe103196591be1c10d6"
+
+[[listing]]
+tag = "freeze-v5"
+source = "../src/freeze.rs"
+frozen = "src/listings/freeze-v5.rs"
+sha256 = "815322b9b182524bbd123b89e90fe4be42a47422509cc32d269ae54193267516"

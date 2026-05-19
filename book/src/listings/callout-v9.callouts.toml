@@ -1,0 +1,14 @@
+# Sidecar callouts attached to listing `callout-v9` (src/callout.rs at
+# the ch.6 slice 9 freeze). These annotate lines that don't carry an
+# inline `// CALLOUT:` marker — the dogfood pattern for callouts on
+# code the author can't or won't decorate inline.
+
+[[callout]]
+line = 39
+label = "parse-line-entry"
+body = "Per-line entry point: `parse_callouts` calls `parse_line` for each line of the listing source."
+
+[[callout]]
+line = 47
+label = "label-validity-check"
+body = "Early reject for malformed labels — keeps callout IDs safe as HTML `id` attributes and URL fragments."

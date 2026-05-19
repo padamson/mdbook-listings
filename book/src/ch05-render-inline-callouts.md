@@ -22,8 +22,8 @@ Inline form (callout markers in the source itself):
 
 1. A frozen listing whose language has a recognised inline-marker
    syntax can carry callout markers. When the chapter renders that
-   listing to HTML — whether via `{{#include}}` or as the new side
-   of a `{{#diff}}` (added or context lines, but not removed lines
+   listing to HTML — whether via `\{{#include}}` or as the new side
+   of a `\{{#diff}}` (added or context lines, but not removed lines
    — a deleted marker shouldn't carry a current badge) — each
    marker produces a numbered badge at the marker's position and
    an expandable annotation reachable from the badge.
@@ -72,9 +72,9 @@ Authoring ergonomics (added in slice 9 in response to the long-diff
 visual issue surfaced by the test-infra refactor):
 
 11. Authors can render a fragment of a frozen listing via
-    `START:END` line-range syntax in `{{#diff}}` and
-    `{{#include}}` directives. `{{#diff a b 1:30 1:30}}` renders
-    only lines 1-30 of each operand; `{{#include listings/foo.rs:1:30}}`
+    `START:END` line-range syntax in `\{{#diff}}` and
+    `\{{#include}}` directives. `\{{#diff a b 1:30 1:30}}` renders
+    only lines 1-30 of each operand; `\{{#include listings/foo.rs:1:30}}`
     inlines only lines 1-30 of the file. Endpoints are inclusive
     and 1-based; empty endpoints (`200:`, `:100`, `:`) mean "to
     end" / "to start" / "whole file". Out-of-range endpoints clamp
@@ -91,9 +91,9 @@ to satisfy it.
 |---|---|
 | 1 | playwright-rs harness. A failing `#[tokio::test] #[ignore]` in `tests/e2e_callouts.rs` launches Chromium against the rendered ch. 5 HTML and asserts a `[data-callout-badge]` element exists. The test fails (no callouts in ch. 5 yet, no parser, no HTML emitter); ignore keeps the green-build chain passing while later slices grow the rest. |
 | 2 | Comment-syntax table + generic `parse_callouts` parser parameterised on prefix. Pure unit tests for every prefix in the initial table; verifies body and no-body forms; ignores malformed. |
-| 3 | HTML emitter — badge at line, `<details>` nearby — wires parser into preprocessor. Handles both `{{#include}}` (the source language's comment prefix) and `{{#diff}}` (the splicer strips diff `+`/space indicators and tries every comment prefix; removed `-` lines are skipped). Slice 1's `#[ignore]` comes off and the test goes green for AC 1. `SupportedRenderer` enum extracted here. |
+| 3 | HTML emitter — badge at line, `<details>` nearby — wires parser into preprocessor. Handles both `\{{#include}}` (the source language's comment prefix) and `\{{#diff}}` (the splicer strips diff `+`/space indicators and tries every comment prefix; removed `-` lines are skipped). Slice 1's `#[ignore]` comes off and the test goes green for AC 1. `SupportedRenderer` enum extracted here. |
 | 4 | Label-only inline form (AC 3). Small addition to emitter; new playwright-rs test asserting the bare-anchor case. |
-| 5 | Cross-reference directive `{{#callout <label>}}` (ACs 4, 8). New playwright-rs test asserting the prose-rendered badge is hyperlinked to the listing-rendered badge anchor. |
+| 5 | Cross-reference directive `\{{#callout <label>}}` (ACs 4, 8). New playwright-rs test asserting the prose-rendered badge is hyperlinked to the listing-rendered badge anchor. |
 | 6 | typst-pdf emitter — admonish-note block after the code block (AC 2). Non-browser; assertion is visual or assert_cmd-on-PDF-bytes — decided in the slice. |
 | 7 | HTML rendered-shape pivot (ACs 9, 10). The slice-3 placeholder shape (CALLOUT comment line visible + trailing `<dl>` of bodies) is replaced with the final shape: marker comment is **stripped** from the rendered listing, and an inline interactive `<span class="callout-badge">` is overlaid on the line that previously held it. Hovering the badge reveals the body in a popover (CSS-only or `<details>`-driven). The trailing `<dl>` is removed for HTML. Cross-refs from slice 5 still resolve to the new badge anchor. New playwright-rs test asserting the comment is gone, the inline badge exists, and the body becomes visible on hover. |
 | 8 | Screenshot-tool subcommands and include-block locator anchors. The preprocessor intercepts `\{{#include listings/TAG.ext}}` directives before mdbook's built-in `links` preprocessor runs and emits a `<div data-listing-tag="TAG">` anchor after the rendered fenced block — mirroring what `\{{#diff}}` already does. The capture-screenshots tool is split into two subcommands matching the two listing-rendering shapes (`include LISTING` and `diff LEFT RIGHT`). No new acceptance criterion (this is tooling, not user-visible book behavior). |
@@ -219,7 +219,7 @@ slice 3 shipped:
 
 ![Slice 3 rendered dl from the diff path: three badges 1–3 with bodies for the parse-entry, label-grammar, and splice-entry markers added in callout-v2.](images/ch05-slice3-diff-callouts.png)
 
-To exercise the splicer's `{{#include}}` path on a different
+To exercise the splicer's `\{{#include}}` path on a different
 input shape, here is the source of the screenshot tool — a small
 `playwright-rs` script with one CALLOUT marker:
 
@@ -251,7 +251,7 @@ crate (own `Cargo.toml` with `publish = false`). Run with
 match in a particular chapter.
 
 `src/main.rs`'s `preprocess` now chains the diff splicer's output
-into `callout::splice_chapter`, so `{{#diff}}` resolution and
+into `callout::splice_chapter`, so `\{{#diff}}` resolution and
 callout rendering both apply to every chapter.
 
 {{#diff main-v5 main-v6}}
@@ -277,7 +277,7 @@ regress it.
 
 The new marker is on the `cli` parse line in the screenshot
 tool's source — a label-only callout, ready for slice 5's
-`{{#callout cli-parse}}` directive to point at:
+`\{{#callout cli-parse}}` directive to point at:
 
 {{#diff capture-screenshots-v1 capture-screenshots-v2}}
 
@@ -300,7 +300,7 @@ build after a later slice, the live render above will show
 whatever shape that slice produced; the image stays as the slice-4
 record.
 
-### Slice 5 — cross-reference directive `{{#callout <label>}}`
+### Slice 5 — cross-reference directive `\{{#callout <label>}}`
 
 Slice 5 closes ACs 4 and 8: chapter prose can reference a callout
 by label and the reference renders as the same numbered badge,
@@ -314,7 +314,7 @@ walks every fenced block in the chapter and collects a
 `label → ordinal` map (the ordinal is the badge number that label
 got at its first occurrence). The second pass scans chapter prose
 — i.e. the bytes outside any fenced block — for
-`{{#callout <label>}}` directives and replaces each with an inline
+`\{{#callout <label>}}` directives and replaces each with an inline
 anchor. A reference to a label that's not in the map raises
 `SpliceError::UnknownLabel` and the preprocessor exits non-zero.
 
@@ -348,7 +348,7 @@ the rendered DOM:
 {{#diff e2e-callouts-v3 e2e-callouts-v4}}
 
 To dogfood the directive in this very chapter: the next sentence's
-badge is a `{{#callout cross-ref-emit}}` directive that this
+badge is a `\{{#callout cross-ref-emit}}` directive that this
 slice's splicer resolves to point at the `cross-ref-emit` marker
 introduced by the callout-v2→v3 diff above. Clicking it should
 jump the page to that marker's dt anchor.
@@ -471,7 +471,7 @@ plus a trailing `<dl class="callouts">` of bodies) is replaced
 with the final shape:
 
 - The marker comment is **stripped** from the rendered listing
-  for `{{#include}}` blocks (every recognised language with an
+  for `\{{#include}}` blocks (every recognised language with an
   inline-marker syntax). Diff blocks pass through unchanged so
   the diff format stays valid; the canonical badge anchor lives
   on the include, not on the diff history.
@@ -496,7 +496,7 @@ Slice 7 mints a new version of the slice-6 snippet,
 with the two cross-ref-related functions (`replace_callout_refs`
 and `render_callout_ref`) so the callout markers attached to them
 (`cross-ref-replace`, `cross-ref-emit`) now have rendered
-`<button>` anchors. Slice 5's `{{#callout cross-ref-emit}}`
+`<button>` anchors. Slice 5's `\{{#callout cross-ref-emit}}`
 cross-reference resolves to that anchor:
 
 ```rust
@@ -545,7 +545,7 @@ The screenshot above was produced by the workspace tool
 takes a positional listing tag (`capture-screenshots
 e2e-callouts-v5`) and finds the listing in the rendered HTML via the
 `<div data-listing-tag>` anchor that the diff splicer just learned to
-emit, with a callout-badge fallback for `{{#include}}` blocks whose
+emit, with a callout-badge fallback for `\{{#include}}` blocks whose
 source has at least one `CALLOUT:` marker. That fallback has a blind
 spot — listings without callouts and not on the right side of any
 diff aren't addressable. Slice 8 closes that gap by re-engineering
@@ -631,9 +631,9 @@ missing-file error path:
 **Tool — subcommand redesign.** `tools/capture-screenshots/` becomes
 a clap `Subcommand` with `include LISTING` and `diff LEFT RIGHT`
 arms. Each subcommand discovers the chapter by scanning chapter
-`.md` files for the directive substring (`\{{#include
-listings/LISTING.` or `\{{#diff LEFT RIGHT`), navigates Chromium to
-the chapter HTML via
+`.md` files for the directive substring of interest — either an
+include of the listing or a diff against it — navigates Chromium
+to the chapter HTML via
 [playwright-rs](https://crates.io/crates/playwright-rs), and
 locates the rendered `<pre>` via a single CSS selector
 (`[data-listing-tag="LISTING"]` or
@@ -696,7 +696,7 @@ multiple matches):
 The migration surfaced a real slice-8 splicer bug. playwright-rs's
 strict-mode locator refused to resolve `#callout-body-cross-ref-emit`
 because the rendered chapter contained TWO `<div>` elements with
-that id — one from the snippet `{{#include}}` of
+that id — one from the snippet `\{{#include}}` of
 `callout-pdf-emit-snippet-v2.rs`, one from the diff `+`-line marker
 addition slice 8 wired badge emission for. The button id was
 already dedup'd via the existing `emitted_anchor: HashSet<String>`,
@@ -833,7 +833,7 @@ v8) shows the new test:
 
 {{#diff e2e-callouts-v7 e2e-callouts-v8}}
 
-### Slice 9 — line-range support for `{{#diff}}` and `{{#include}}`
+### Slice 9 — line-range support for `\{{#diff}}` and `\{{#include}}`
 
 The previous refactor's badge-positioning fix put every callout back
 on the line that previously held its `CALLOUT:` marker. But the
@@ -851,7 +851,7 @@ that's a lot of boilerplate per fragment, plus a maintenance tax
 every time the parent listing evolves.
 
 This slice adds line-range support to the two directives that
-render frozen-listing bytes: `{{#diff}}` and `{{#include}}`. Both
+render frozen-listing bytes: `\{{#diff}}` and `\{{#include}}`. Both
 accept optional `START:END` arguments to render only the
 corresponding fragment of the source files. Endpoints are
 inclusive and 1-based; empty endpoints (`200:`, `:100`, `:`) mean
@@ -859,7 +859,7 @@ inclusive and 1-based; empty endpoints (`200:`, `:100`, `:`) mean
 silently — authors using `200:` to mean "from line 200 to whatever
 the end happens to be" don't have to know the file's exact length.
 
-The `{{#diff}}` form takes two ranges (one per operand) since line
+The `\{{#diff}}` form takes two ranges (one per operand) since line
 numbers shift between versions:
 
 ```text
@@ -869,7 +869,7 @@ numbers shift between versions:
 \{{#diff a b :100 :100}}          # from start to line 100
 ```
 
-The `{{#include}}` form re-uses mdBook's existing `:start:end`
+The `\{{#include}}` form re-uses mdBook's existing `:start:end`
 suffix syntax — same shape readers already learn for the built-in
 include directive:
 
@@ -946,7 +946,7 @@ numbers. A reader looking at a `+` line in the rendered diff would
 have no way to map it back to its position in the parent listing.
 The splicer post-processes `similar`'s output to shift every hunk
 header's start lines by `(range.start - 1)` per side, so
-`{{#diff a b 56:75 146:175}}` renders `@@ -58,18 +148,28 @@`
+`\{{#diff a b 56:75 146:175}}` renders `@@ -58,18 +148,28 @@`
 rather than the raw `@@ -3,18 +3,28 @@` `similar` emits. The
 include splicer mirrors the diff splicer's two-line header shape:
 where a unified diff opens with `--- left-tag\n+++ right-tag\n@@ -A,B +C,D @@`,
@@ -961,8 +961,9 @@ Both behaviours are covered by integration tests in
 `tests/diff_line_ranges.rs` and `tests/include_line_ranges.rs`.
 The include test file is itself a useful demo: it's about 165
 lines of Rust split across five tests + a small harness, and
-slice 9 shows the whole thing in chunks via the very `{{#include
-listings/foo.rs:start:end}}` syntax it tests. Each chunk gets a
+slice 9 shows the whole thing in chunks via the very
+`\{{#include listings/foo.rs:start:end}}` syntax it tests. Each
+chunk gets a
 brief intro paragraph; the `// basename\n// @@ start,end @@`
 header prepended by the splicer makes each fragment
 self-locating against the unsliced file.
@@ -1021,7 +1022,7 @@ whole-file includes do (callout
 
 The cross-reference test pins the half of the contract you've
 been clicking through this slice — chapter prose can
-`{{#callout LABEL}}` to a marker that lives inside a sliced
+`\{{#callout LABEL}}` to a marker that lives inside a sliced
 include, and the directive resolves to the same
 `id="callout-LABEL"` anchor the badge gets (callout
 {{#callout include-range-cross-ref-resolves}}):
@@ -1037,7 +1038,7 @@ And the harness, completing the file:
 ```
 
 A future refactor could extract the test-infra refactor's
-`{{#diff e2e-callouts-v6 e2e-callouts-v7}}` into three smaller
+`\{{#diff e2e-callouts-v6 e2e-callouts-v7}}` into three smaller
 ranged diffs interleaved with prose — one for the imports + first
 test, one for the click-through test fragment, and one tying
 back to the cross-refs. We're leaving the existing diff intact
@@ -1050,7 +1051,7 @@ materialization.
 
 This chapter handles inline callouts (markers embedded in source
 code as `// CALLOUT: <label> <body>` lines) plus prose-side
-`{{#callout LABEL}}` cross-references and the line-range support
+`\{{#callout LABEL}}` cross-references and the line-range support
 that breaks long diffs and includes into reader-friendly
 fragments. Two related features sit outside the chapter's scope
 and are sketched in [ch.9 (Future Work)](ch09-future-work.md):

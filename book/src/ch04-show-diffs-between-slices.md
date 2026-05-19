@@ -36,11 +36,11 @@ latest version of each file is in the slice that touched it last
    directive without grep.
 4. A diff between byte-identical listings renders a clear "no
    changes" notice rather than an empty diff block.
-5. Adding a `{{#diff}}` directive to a chapter does not change any
+5. Adding a `\{{#diff}}` directive to a chapter does not change any
    other content in the chapter (the preprocessor is a precise
    in-place splice).
 6. The chapter that *documents* the directive can show its own
-   syntax verbatim by putting the literal `{{#diff …}}` inside an
+   syntax verbatim by putting the literal `\{{#diff …}}` inside an
    inline code span (`` `…` ``) or a fenced code block (` ``` ` /
    `~~~`) — the preprocessor skips any directive whose start byte
    falls inside either. Backslash-escape (`\{{#diff …}}`) is *not*
@@ -51,7 +51,7 @@ latest version of each file is in the slice that touched it last
 7. An author can opt in to a diff against a live source file via
    `live:<path>` in either operand. The path is resolved relative
    to the chapter's source markdown directory — the same convention
-   mdbook uses for `{{#include}}` — so a chapter at `book/src/foo.md`
+   mdbook uses for `\{{#include}}` — so a chapter at `book/src/foo.md`
    can write `live:foo.txt` to reach `book/src/foo.txt`, or
    `live:../../src/lib.rs` to reach the crate's source. Doing so
    defeats the freeze stability guarantee for that diff and is
@@ -69,10 +69,10 @@ primitive) plus a wrap-up chore:
 | 2 | Directive parser as a pure unit. New `src/diff.rs` exposes `parse_directives` returning byte-span-tagged `DiffDirective`s. Unit-tested in isolation; not yet wired into the preprocessor. |
 | 3 | Tag resolution. `diff::resolve` looks each operand up in `Manifest` (re-using `Manifest::find` from ch. 2) and produces a structured error for missing tags carrying enough context for the splicer to format an AC-3 diagnostic. Unit-tested. |
 | 4 | Unified diff computation via the `similar` crate. `diff::render` takes the resolved bytes plus labels and produces unified-diff text; identical bytes produce a "no changes" notice rather than an empty block (AC 4). Unit-tested with synthetic byte pairs. |
-| 5 | Splicer wires slices 2–4 into the no-op preprocessor: every `{{#diff …}}` directive is replaced with a fenced ` ```diff ` block, the parser learns to skip directives inside fenced code blocks (initial AC 6 — so chapters can quote literal directive examples), and `cargo run -- install --book-root book` registers `[preprocessor.listings]` in our own `book/book.toml` so the book exercises the diff primitive on every build. Slice 1's integration test goes green; AC 5 gets its own integration test pinning surrounding-content invariance. |
+| 5 | Splicer wires slices 2–4 into the no-op preprocessor: every `\{{#diff …}}` directive is replaced with a fenced ` ```diff ` block, the parser learns to skip directives inside fenced code blocks (initial AC 6 — so chapters can quote literal directive examples), and `cargo run -- install --book-root book` registers `[preprocessor.listings]` in our own `book/book.toml` so the book exercises the diff primitive on every build. Slice 1's integration test goes green; AC 5 gets its own integration test pinning surrounding-content invariance. |
 | 6 | `live:<path>` operand (initial AC 7). Recognised in either operand position; the resolver reads the live file from disk relative to `book_root`. |
 | 7 (refactor) | Remove `parse_escapes`, the escape branch in `splice_chapter`, and the matching tests — dead code in the real mdbook pipeline. Tidy duplication that emerged across slices 2–6. |
-| 8 | Tighten ACs 6 and 7 in response to dogfooding. Inline code spans (`` `…` ``) join fenced blocks as a directive-skip context (AC 6) — `{{#diff a b}}` in inline backticks no longer crashes the build. `live:<path>` resolution moves from book-root-relative to chapter-source-relative (AC 7), matching mdbook's `{{#include}}` convention. Both come from real friction points hit while writing this very chapter. |
+| 8 | Tighten ACs 6 and 7 in response to dogfooding. Inline code spans (`` `…` ``) join fenced blocks as a directive-skip context (AC 6) — `\{{#diff a b}}` in inline backticks no longer crashes the build. `live:<path>` resolution moves from book-root-relative to chapter-source-relative (AC 7), matching mdbook's `\{{#include}}` convention. Both come from real friction points hit while writing this very chapter. |
 | wrap-up | Update [`ROADMAP.md`](https://github.com/padamson/mdbook-listings/blob/main/ROADMAP.md) to mark the diff primitive shipped. |
 
 ## Outside-in narrative
@@ -153,7 +153,7 @@ helper's surface stable across slices.
 
 Slice 2 stands up the first piece slice 5's splicer will need: the
 parser that turns a chapter's markdown into a list of
-`{{#diff …}}` directives with byte spans. It's a pure
+`\{{#diff …}}` directives with byte spans. It's a pure
 function — no IO, no manifest, no diff library — so its unit tests
 pin its behaviour completely without touching disk.
 
@@ -165,20 +165,20 @@ Vec<DiffDirective>`:
 {{#include listings/diff-v1.rs}}
 ```
 
-The parser walks `content` byte-wise, looking for `{{#diff`. When it
+The parser walks `content` byte-wise, looking for `\{{#diff`. When it
 finds one, it checks the byte before for a backslash (the escape AC
 6 calls out — kept here as a *skip*, not a strip; the splicer in
 slice 5 owns the rewrite that drops the leading `\` so the literal
 directive renders to the reader). It then locates the next `}}`,
 splits the inner text on whitespace, and only yields a directive
 when there are exactly two operands. Wrong-arity directives
-(`{{#diff a}}`, `{{#diff a b c}}`) are silently skipped — surfacing
+(`\{{#diff a}}`, `\{{#diff a b c}}`) are silently skipped — surfacing
 "that's the wrong number of arguments" diagnostics is the resolver's
 job in slice 3, where the chapter source path and line number are
 already in scope.
 
 Six unit tests pin the contract: well-formed directives parse and
-their spans cover the whole `{{#diff …}}` substring; multiple
+their spans cover the whole `\{{#diff …}}` substring; multiple
 directives in one chapter all parse with correct spans; the escaped
 form is skipped; whitespace around operands is tolerated;
 wrong-arity directives are skipped; and arbitrary operand strings
@@ -303,12 +303,12 @@ Slice 5 wires the three pure-unit pieces from slices 2–4 into the
 preprocessor and registers it in our own book so this very chapter
 starts rendering with diffs from this commit forward. The
 sub-section's three listings are the first in the book to be
-embedded as `{{#diff …}}` rather than full file contents.
+embedded as `\{{#diff …}}` rather than full file contents.
 
 `src/diff.rs` grows three things:
 
 * `parse_escapes` — byte positions of `\` characters that
-  immediately precede an unescaped `{{#diff` substring; the
+  immediately precede an unescaped `\{{#diff` substring; the
   splicer drops each one without touching the directive that
   follows.
 * `SpliceError` — pairs the `ResolveError` from slice 3 with the
@@ -324,12 +324,12 @@ embedded as `{{#diff …}}` rather than full file contents.
 The parser also gains code-fence awareness. Without it, registering
 the preprocessor in our own `book.toml` would break the build the
 moment a chapter quoted a frozen test fixture: the included `.rs`
-file's literal `{{#diff …}}` strings (with real-looking tag
+file's literal `\{{#diff …}}` strings (with real-looking tag
 operands) would be parsed as real directives, and the resolver
 would fail to find those tags in our manifest. The parser now tracks
 `` ``` ``/`~~~` fences line-by-line and skips any directive whose
 start byte falls inside an open fence — the same rule that lets
-this very narrative quote `{{#diff …}}` syntax in fenced examples
+this very narrative quote `\{{#diff …}}` syntax in fenced examples
 without the splicer eating them.
 
 {{#diff diff-v3 diff-v4}}
@@ -383,7 +383,7 @@ fact-of-life by their visible presence.
 Slice 6 closes out the initial AC 7. `resolve_operand` now
 recognises the `live:` prefix and reads the named file from disk
 (slice 6 resolved against `book_root`; slice 8 changed this to the
-chapter's source directory, matching `{{#include}}` semantics).
+chapter's source directory, matching `\{{#include}}` semantics).
 The operand's full text (including the `live:` prefix) becomes the
 unified-diff header label, so a reader can tell at a glance which
 side is frozen and which side is live.
@@ -392,7 +392,7 @@ A new `ResolveErrorKind::LiveFileMissing` variant carries the
 absolute path that failed to read so the splicer's chapter-located
 diagnostic stays specific. Two unit tests cover the happy path
 and the missing-file error; one new integration test in
-`tests/diffs.rs` drives a `{{#diff …}}` whose right operand is
+`tests/diffs.rs` drives a `\{{#diff …}}` whose right operand is
 `live:compose-live.yaml` end-to-end through the binary and
 asserts on the `+++ live:…` header and the `+`/`−` lines
 reflecting the live bytes. The `MinimalDiffsBook` fixture grows
@@ -455,7 +455,7 @@ Three changes:
   walks them once and copies through the gaps.
 
 The dogfood payoff lands without any chapter-source edit: the
-live: diff in the slice 6 sub-section above (the `{{#diff …}}`
+live: diff in the slice 6 sub-section above (the `\{{#diff …}}`
 whose right operand is `live:../src/diff.rs`) no longer renders
 as the "no changes" notice — it now shows the real delta between
 the slice-6 freeze of `src/diff.rs` and the post-refactor source.
@@ -478,7 +478,7 @@ the original ACs 6 and 7 didn't capture, so slice 8 is a fresh
 red-green-refactor loop on top of the refactor:
 
 * **AC 6: inline code spans are now a directive-skip context too.**
-  Twice while drafting ch. 3 a literal `{{#diff a b}}` inside
+  Twice while drafting ch. 3 a literal `\{{#diff a b}}` inside
   inline backticks (`` `…` ``) crashed the build — the splicer saw
   it, tried to resolve the operands, and failed. The fix is one
   block in `parse_directives`: count backticks before the
@@ -491,7 +491,7 @@ red-green-refactor loop on top of the refactor:
   `book_root` is awkward: every `live:` reference in this very
   chapter (which lives at `book/src/ch04-…md`) had to spell out
   `live:../src/diff.rs` rather than the more natural
-  `live:../../src/diff.rs` (mdbook's own `{{#include}}` already
+  `live:../../src/diff.rs` (mdbook's own `\{{#include}}` already
   uses chapter-relative paths). The fix threads a `chapter_dir`
   parameter through `splice_chapter` → `resolve` → `resolve_operand`,
   and `preprocess()` in `main.rs` computes it as

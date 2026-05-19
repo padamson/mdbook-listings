@@ -81,6 +81,34 @@ Re-verified post-fix with `cargo mutants --file src/install.rs`.
 swept via `cargo mutants --file src/install.rs`: 35 mutants, 33
 caught, 2 unviable, 0 missed.
 
+### src/callout.rs — truly-equivalent mutants (won't fix)
+
+Surfaced by `scripts/mutants.sh` on slice 9 (sidecar TOML
+callouts). 8 of 10 missed mutations were closed by new lib tests
+in the same slice; the 2 below are observationally equivalent
+under all reachable inputs and can't be pinned without code
+churn that costs more than the coverage gap.
+
+- [ ] **L239:9** — `replace SidecarCallouts::empty -> Self with
+  Default::default()`. `empty()` is literally `Self::default()`
+  on line 239; mutation swaps one for the other and behaviour is
+  identical by definition. Keeping `empty()` as a readability
+  affordance (callers in tests + `load`'s NotFound arm read
+  more clearly with it). Closing this mutation would require
+  either deleting the helper or giving it a distinguishing
+  post-condition; neither is worth the API change.
+- [ ] **L1103:25** — `replace < with <= in
+  translate_sidecar_line_to_post_strip`. The
+  `stripped_source_lines.iter().filter(|&&s| s < block_line)`
+  shift count differs from `<=` only when `block_line` itself
+  appears in `stripped_source_lines` — but that case errors
+  out at the `contains(&block_line)` check earlier in the same
+  function with `SidecarLineOnStrippedMarker`. For every input
+  that reaches the filter, `<` and `<=` produce identical
+  counts. Pinning the mutant would require bypassing the
+  earlier guard via a direct test that contradicts the public
+  contract.
+
 ## Status
 
 | | |

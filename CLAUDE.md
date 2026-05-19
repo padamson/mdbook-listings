@@ -57,7 +57,8 @@ The book at `book/` uses three preprocessors (mdbook itself,
 ```bash
 # One-time setup:
 cargo install mdbook --locked
-cargo install mdbook-typst-pdf --locked
+cargo install --git https://github.com/padamson/mdbook-typst-pdf \
+  --branch fix/dynamic-fence-length --force    # until upstream catches up
 cargo install --git https://github.com/padamson/mdbook-admonish \
   --branch feat/mdbook-0.5-compat --force      # until upstream catches up
 cargo install --path . --locked --force         # our own crate

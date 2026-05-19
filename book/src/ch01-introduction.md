@@ -18,7 +18,7 @@ A book quotes code from the project it documents. Months later the
 code has been refactored — a function is renamed, a config file gains
 keys, an example stops compiling. The book quotes don't change with
 the code. A chapter cites a function that no longer exists; a
-`{{#include}}` directive picks up different bytes than the surrounding
+`\{{#include}}` directive picks up different bytes than the surrounding
 prose describes; a sample fails to compile against the current
 project.
 
@@ -111,7 +111,7 @@ using the tool. A chapter takes the reader through:
    non-obvious choices that a future maintainer would need to
    reconstruct from scratch; omit when nothing about the story
    needed defending.
-5. **Final state** *(optional).* `{{#include}}`s of the frozen
+5. **Final state** *(optional).* `\{{#include}}`s of the frozen
    listings of every file in the slice at their end-of-story state
    — the latest tag per file. Include when the narrative
    sub-sections didn't already show the latest tag for every file

@@ -11,38 +11,6 @@ When one of these features ships, its sketch leaves this chapter
 and reappears as a slice in its parent story chapter or as its
 own new chapter.
 
-## Sidecar TOML callouts
-
-Some listings can't carry inline `// CALLOUT:` markers — code the
-author doesn't own (third-party crates, vendored snippets,
-generated code), or languages without a recognised single-line
-comment syntax (CSS, plain Markdown). For those cases, callouts
-can live in a sibling TOML file alongside the frozen listing:
-
-```toml
-# book/src/listings/<tag>.callouts.toml
-[[callout]]
-line = 47
-label = "upsert-order"
-body = "Preserves insertion order on replacement."
-
-[[callout]]
-line = 62
-label = "empty-manifest"
-# no body field → bare-anchor (label-only) form
-```
-
-The splicer loads the sidecar (when present) at the same time it
-parses inline markers, merges the two sets, and emits one
-combined overlay per fenced block. Label collisions across the
-two sources (the same label inline AND in the sidecar) fail the
-build with a diagnostic naming the duplicate label and both
-source locations.
-
-This adds two acceptance criteria to ch.5's primitive: callouts
-can be attached without modifying the listing's bytes, and inline
-+ sidecar callouts compose cleanly.
-
 ## PDF inline-badge rendering
 
 HTML callouts render as interactive inline badges on the line
