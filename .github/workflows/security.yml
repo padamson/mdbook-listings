@@ -193,10 +193,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-playwright-
 
-      - name: Install mdbook + mdbook-typst-pdf (prebuilt)
+      - name: Install mdbook (prebuilt)
         uses: taiki-e/install-action@v2
         with:
-          tool: mdbook,mdbook-typst-pdf
+          tool: mdbook
+
+      - name: Install mdbook-typst-pdf (padamson fork — dynamic fence-length fix)
+        # See ci.yml for the rationale; pinned until upstream release.
+        run: command -v mdbook-typst-pdf || cargo install --git https://github.com/padamson/mdbook-typst-pdf --branch fix/dynamic-fence-length --force
 
       - name: Install mdbook-admonish (padamson fork — mdbook-0.5 compat)
         run: command -v mdbook-admonish || cargo install --git https://github.com/padamson/mdbook-admonish --branch feat/mdbook-0.5-compat

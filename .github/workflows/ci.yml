@@ -133,10 +133,18 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-playwright-
 
-      - name: Install mdbook + mdbook-typst-pdf (prebuilt)
+      - name: Install mdbook (prebuilt)
         uses: taiki-e/install-action@v2
         with:
-          tool: mdbook,mdbook-typst-pdf
+          tool: mdbook
+
+      - name: Install mdbook-typst-pdf (padamson fork — dynamic fence-length fix)
+        # Stock mdbook-typst-pdf uses a fixed 4-backtick wrapper fence
+        # that breaks on diff content containing 4-backtick string
+        # literals. The fork branch scans body content for the longest
+        # backtick run and uses ≥max+1 backticks for the wrapper.
+        # Pinned here until the upstream PR merges + a new release ships.
+        run: command -v mdbook-typst-pdf || cargo install --git https://github.com/padamson/mdbook-typst-pdf --branch fix/dynamic-fence-length --force
 
       - name: Install mdbook-admonish (padamson fork — mdbook-0.5 compat)
         # Stock mdbook-admonish on crates.io isn't mdbook-0.5 compatible
