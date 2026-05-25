@@ -157,8 +157,11 @@ jobs:
         # Pinned here until the upstream PR merges + a new release ships.
         # --force always overwrites the cached binary (no `command -v`
         # short-circuit, which would let a stock-release binary from a
-        # prior run silently shadow the fork install).
-        run: cargo install --git https://github.com/padamson/mdbook-typst-pdf --rev ${{ steps.typst-pdf-sha.outputs.sha }} --force
+        # prior run silently shadow the fork install). --locked uses
+        # the fork's Cargo.lock so transitive resolution doesn't drift
+        # across runs (otherwise crates.io updates between runs can
+        # pick versions that won't compile on the runner's Rust).
+        run: cargo install --git https://github.com/padamson/mdbook-typst-pdf --rev ${{ steps.typst-pdf-sha.outputs.sha }} --locked --force
 
       - name: Resolve mdbook-admonish fork SHA
         id: admonish-sha
@@ -171,9 +174,8 @@ jobs:
       - name: Install mdbook-admonish (padamson fork — mdbook-0.5 compat)
         # Stock mdbook-admonish on crates.io isn't mdbook-0.5 compatible
         # yet; tracking upstream PR tommilligan/mdbook-admonish#235.
-        # SHA-pinned same as the typst-pdf install above; --force
-        # overwrites cached binaries from prior runs.
-        run: cargo install --git https://github.com/padamson/mdbook-admonish --rev ${{ steps.admonish-sha.outputs.sha }} --force
+        # SHA-pinned + --locked same as the typst-pdf install above.
+        run: cargo install --git https://github.com/padamson/mdbook-admonish --rev ${{ steps.admonish-sha.outputs.sha }} --locked --force
 
       - name: Refresh mdbook-admonish assets
         working-directory: book
