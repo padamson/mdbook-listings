@@ -1,7 +1,25 @@
 
 # cargo-vet audits file
 
-[audits]
+[[audits.mdbook-core]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.5.2 -> 0.5.3"
+
+[[audits.mdbook-preprocessor]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.5.2 -> 0.5.3"
+
+[[audits.pulldown-cmark]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.13.3 -> 0.13.4"
+
+[[audits.pulldown-cmark]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.13.3 -> 0.13.4"
 
 [[trusted.aho-corasick]]
 criteria = "safe-to-deploy"
@@ -147,6 +165,18 @@ user-id = 6825 # Dan Gohman (sunfishcode)
 start = "2021-06-12"
 end = "2027-05-16"
 
+[[trusted.mdbook-core]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:rust-lang/mdBook"
+start = "2025-09-28"
+end = "2027-05-25"
+
+[[trusted.mdbook-preprocessor]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:rust-lang/mdBook"
+start = "2025-09-28"
+end = "2027-05-25"
+
 [[trusted.memchr]]
 criteria = "safe-to-deploy"
 user-id = 189 # Andrew Gallant (BurntSushi)
@@ -158,6 +188,18 @@ criteria = "safe-to-deploy"
 user-id = 6743 # Ed Page (epage)
 start = "2025-05-22"
 end = "2027-05-16"
+
+[[trusted.playwright-rs]]
+criteria = "safe-to-deploy"
+user-id = 366126
+start = "2025-11-14"
+end = "2027-05-25"
+
+[[trusted.playwright-rs-trace]]
+criteria = "safe-to-run"
+user-id = 366126
+start = "2026-05-23"
+end = "2027-05-25"
 
 [[trusted.potential_utf]]
 criteria = "safe-to-deploy"
@@ -176,6 +218,12 @@ criteria = "safe-to-deploy"
 user-id = 3618 # David Tolnay (dtolnay)
 start = "2019-04-23"
 end = "2027-05-16"
+
+[[trusted.pulldown-cmark]]
+criteria = "safe-to-deploy"
+user-id = 27114 # Martín Pozo (Martin1887)
+start = "2023-05-21"
+end = "2027-05-25"
 
 [[trusted.quote]]
 criteria = "safe-to-deploy"
