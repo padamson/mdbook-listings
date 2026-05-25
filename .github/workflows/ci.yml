@@ -138,24 +138,42 @@ jobs:
         with:
           tool: mdbook
 
+      - name: Resolve mdbook-typst-pdf fork SHA
+        # SHA-pin the install so a transient upstream regression on the
+        # fork branch surfaces on the SAME commit it landed on, not
+        # whenever the runner's cargo cache happens to miss.
+        id: typst-pdf-sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA=$(gh api repos/padamson/mdbook-typst-pdf/commits/fix/dynamic-fence-length --jq .sha)
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
       - name: Install mdbook-typst-pdf (padamson fork — dynamic fence-length fix)
         # Stock mdbook-typst-pdf uses a fixed 4-backtick wrapper fence
         # that breaks on diff content containing 4-backtick string
         # literals. The fork branch scans body content for the longest
         # backtick run and uses ≥max+1 backticks for the wrapper.
         # Pinned here until the upstream PR merges + a new release ships.
-        # No `command -v` short-circuit: Swatinem/rust-cache restores
-        # `~/.cargo/bin/`, and a stock-release binary from a prior run
-        # would satisfy `command -v` and silently skip the fork install.
-        run: cargo install --git https://github.com/padamson/mdbook-typst-pdf --branch fix/dynamic-fence-length --force
+        # --force always overwrites the cached binary (no `command -v`
+        # short-circuit, which would let a stock-release binary from a
+        # prior run silently shadow the fork install).
+        run: cargo install --git https://github.com/padamson/mdbook-typst-pdf --rev ${{ steps.typst-pdf-sha.outputs.sha }} --force
+
+      - name: Resolve mdbook-admonish fork SHA
+        id: admonish-sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA=$(gh api repos/padamson/mdbook-admonish/commits/feat/mdbook-0.5-compat --jq .sha)
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
 
       - name: Install mdbook-admonish (padamson fork — mdbook-0.5 compat)
         # Stock mdbook-admonish on crates.io isn't mdbook-0.5 compatible
         # yet; tracking upstream PR tommilligan/mdbook-admonish#235.
-        # Built from git source — Swatinem cache speeds up the deps;
-        # `command -v` short-circuits when the binary is already on PATH
-        # from a cache hit on ~/.cargo/bin/ via the cargo cache.
-        run: command -v mdbook-admonish || cargo install --git https://github.com/padamson/mdbook-admonish --branch feat/mdbook-0.5-compat
+        # SHA-pinned same as the typst-pdf install above; --force
+        # overwrites cached binaries from prior runs.
+        run: cargo install --git https://github.com/padamson/mdbook-admonish --rev ${{ steps.admonish-sha.outputs.sha }} --force
 
       - name: Refresh mdbook-admonish assets
         working-directory: book

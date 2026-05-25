@@ -198,12 +198,29 @@ jobs:
         with:
           tool: mdbook
 
+      - name: Resolve mdbook-typst-pdf fork SHA
+        # SHA-pin the install — see ci.yml for the rationale.
+        id: typst-pdf-sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA=$(gh api repos/padamson/mdbook-typst-pdf/commits/fix/dynamic-fence-length --jq .sha)
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
       - name: Install mdbook-typst-pdf (padamson fork — dynamic fence-length fix)
-        # See ci.yml for the rationale + why no `command -v` guard.
-        run: cargo install --git https://github.com/padamson/mdbook-typst-pdf --branch fix/dynamic-fence-length --force
+        # See ci.yml for the rationale.
+        run: cargo install --git https://github.com/padamson/mdbook-typst-pdf --rev ${{ steps.typst-pdf-sha.outputs.sha }} --force
+
+      - name: Resolve mdbook-admonish fork SHA
+        id: admonish-sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA=$(gh api repos/padamson/mdbook-admonish/commits/feat/mdbook-0.5-compat --jq .sha)
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
 
       - name: Install mdbook-admonish (padamson fork — mdbook-0.5 compat)
-        run: command -v mdbook-admonish || cargo install --git https://github.com/padamson/mdbook-admonish --branch feat/mdbook-0.5-compat
+        run: cargo install --git https://github.com/padamson/mdbook-admonish --rev ${{ steps.admonish-sha.outputs.sha }} --force
 
       - name: Refresh mdbook-admonish assets
         working-directory: book
