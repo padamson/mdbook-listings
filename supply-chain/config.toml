@@ -383,11 +383,11 @@ version = "0.3.33"
 criteria = "safe-to-deploy"
 
 [[exemptions.playwright-rs]]
-version = "0.12.3@git:3e9883930e6f12c9c2ec880f41d6fb85cc8882d6"
+version = "0.13.0@git:d7ea3beeb8f6a23640e7eb6b6dd2d56699fd9fd9"
 criteria = "safe-to-deploy"
 
 [[exemptions.playwright-rs-trace]]
-version = "0.1.0@git:3e9883930e6f12c9c2ec880f41d6fb85cc8882d6"
+version = "0.1.0@git:d7ea3beeb8f6a23640e7eb6b6dd2d56699fd9fd9"
 criteria = "safe-to-run"
 
 [[exemptions.pom]]
@@ -483,7 +483,7 @@ version = "0.3.9"
 criteria = "safe-to-deploy"
 
 [[exemptions.similar]]
-version = "3.1.0"
+version = "3.1.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.slab]]

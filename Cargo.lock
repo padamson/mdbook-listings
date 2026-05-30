@@ -1371,8 +1371,8 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 
 [[package]]
 name = "playwright-rs"
-version = "0.12.3"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#3e9883930e6f12c9c2ec880f41d6fb85cc8882d6"
+version = "0.13.0"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#d7ea3beeb8f6a23640e7eb6b6dd2d56699fd9fd9"
 dependencies = [
  "async-trait",
  "base64",
@@ -1398,7 +1398,7 @@ dependencies = [
 [[package]]
 name = "playwright-rs-macros"
 version = "0.1.0"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#3e9883930e6f12c9c2ec880f41d6fb85cc8882d6"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#d7ea3beeb8f6a23640e7eb6b6dd2d56699fd9fd9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1408,7 +1408,7 @@ dependencies = [
 [[package]]
 name = "playwright-rs-trace"
 version = "0.1.0"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#3e9883930e6f12c9c2ec880f41d6fb85cc8882d6"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#d7ea3beeb8f6a23640e7eb6b6dd2d56699fd9fd9"
 dependencies = [
  "serde",
  "serde_json",
@@ -1871,9 +1871,9 @@ checksum = "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214"
 
 [[package]]
 name = "similar"
-version = "3.1.0"
+version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04d93e861ede2e497b47833469b8ec9d5c07fa4c78ce7a00f6eb7dd8168b4b3f"
+checksum = "e6505efef05804732ed8a3f2d4f279429eb485bd69d5b0cc6b19cc02005cda16"
 dependencies = [
  "bstr",
 ]
@@ -2121,9 +2121,9 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.25.11+spec-1.1.0"
+version = "0.25.12+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b59c4d22ed448339746c59b905d24568fcbb3ab65a500494f7b8c3e97739f2b"
+checksum = "d2153edc6955a6c354fad8f5efd38b6a8769bdccf9fe50f8e1329f81b0baa5d7"
 dependencies = [
  "indexmap",
  "toml_datetime",
