@@ -27,7 +27,7 @@ assert_cmd = "2"
 futures = "0.3"
 pdf-extract = "0.10"
 playwright-rs = { workspace = true }
-playwright-rs-trace = { git = "https://github.com/padamson/playwright-rust", branch = "main" }
+playwright-rs-trace = "0.1"
 predicates = "3"
 tempfile = "3"
 tokio = { workspace = true }
@@ -39,12 +39,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [workspace]
 members = ["tools/capture-screenshots"]
 
-# Centralised cross-workspace deps. `playwright-rs` is dogfooded against the
-# upstream main branch so this project rides ahead of the latest crates.io
-# release (currently 0.12.3) and can adopt unreleased v0.13.0 features
-# (richer tracing instrumentation, ARIA snapshots, screencast surface, etc.)
-# before they ship. Cargo.lock pins the actual revision for reproducibility;
-# bump with `cargo update -p playwright-rs`.
+# Shared by the crate and the capture-screenshots workspace tool.
 [workspace.dependencies]
-playwright-rs = { git = "https://github.com/padamson/playwright-rust", branch = "main" }
+playwright-rs = "0.13"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

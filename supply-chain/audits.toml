@@ -191,13 +191,19 @@ end = "2027-05-16"
 
 [[trusted.playwright-rs]]
 criteria = "safe-to-deploy"
-user-id = 366126
+user-id = 366126 # Paul Adamson (padamson)
 start = "2025-11-14"
 end = "2027-05-25"
 
+[[trusted.playwright-rs-macros]]
+criteria = "safe-to-deploy"
+user-id = 366126 # Paul Adamson (padamson)
+start = "2026-05-23"
+end = "2027-05-31"
+
 [[trusted.playwright-rs-trace]]
 criteria = "safe-to-run"
-user-id = 366126
+user-id = 366126 # Paul Adamson (padamson)
 start = "2026-05-23"
 end = "2027-05-25"
 

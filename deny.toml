@@ -60,8 +60,3 @@ skip-tree = [
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-# Dogfood the unreleased v0.13.0 work in the upstream playwright-rs main
-# branch (tracing instrumentation, ARIA snapshots, the macros and trace
-# crates). Cargo.lock pins the actual revision for reproducibility; bump
-# with `cargo update -p playwright-rs`.
-allow-git = ["https://github.com/padamson/playwright-rust"]

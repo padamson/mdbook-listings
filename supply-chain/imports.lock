@@ -214,6 +214,27 @@ user-id = 6743
 user-login = "epage"
 user-name = "Ed Page"
 
+[[publisher.playwright-rs]]
+version = "0.13.0"
+when = "2026-05-23"
+user-id = 366126
+user-login = "padamson"
+user-name = "Paul Adamson"
+
+[[publisher.playwright-rs-macros]]
+version = "0.1.0"
+when = "2026-05-23"
+user-id = 366126
+user-login = "padamson"
+user-name = "Paul Adamson"
+
+[[publisher.playwright-rs-trace]]
+version = "0.1.0"
+when = "2026-05-23"
+user-id = 366126
+user-login = "padamson"
+user-name = "Paul Adamson"
+
 [[publisher.potential_utf]]
 version = "0.1.5"
 when = "2026-04-01"
