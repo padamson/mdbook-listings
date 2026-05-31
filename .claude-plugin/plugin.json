@@ -1,0 +1,13 @@
+{
+  "name": "mdbook-listings",
+  "version": "0.1.0",
+  "description": "Author and maintain managed code listings in an mdBook book that uses the mdbook-listings preprocessor: freeze source files, embed them, annotate lines, and verify sync.",
+  "author": {
+    "name": "Paul Adamson",
+    "email": "paul@seekingeta.ai"
+  },
+  "homepage": "https://github.com/padamson/mdbook-listings",
+  "repository": "https://github.com/padamson/mdbook-listings",
+  "license": "MIT",
+  "keywords": ["mdbook", "preprocessor", "documentation", "code-listing"]
+}

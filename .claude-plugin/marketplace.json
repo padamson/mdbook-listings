@@ -1,0 +1,17 @@
+{
+  "name": "mdbook-listings",
+  "owner": {
+    "name": "Paul Adamson",
+    "email": "paul@seekingeta.ai"
+  },
+  "description": "Marketplace hosting the mdbook-listings authoring plugin.",
+  "plugins": [
+    {
+      "name": "mdbook-listings",
+      "source": "./",
+      "description": "Author and maintain managed code listings in an mdBook book that uses the mdbook-listings preprocessor.",
+      "homepage": "https://github.com/padamson/mdbook-listings",
+      "license": "MIT"
+    }
+  ]
+}
