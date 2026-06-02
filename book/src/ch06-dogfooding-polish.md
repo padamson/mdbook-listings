@@ -87,6 +87,16 @@ slices — there is no "out of scope" exit door.
    per fenced block. Inline + sidecar callouts compose cleanly;
    label collisions across the two sources fail the build with a
    diagnostic naming the duplicate label and both source locations.
+9. **Diff callouts render on added or changed lines only.** In a `\{{#diff}}` block, a
+   callout badge renders only on an **added** or **changed** line, including the added
+   side of a modification (the `+` line of a `-`/`+` pair). Context
+   (unchanged) and removed lines carry no badge. Because a callout marker
+   is always its own dedicated comment line, a *changed* callout (a new or
+   edited marker) is itself an added marker line, so it still badges and
+   lands on the line it annotates. (Only a genuinely unchanged callout is
+   suppressed.) This refines the diff clause of ch.5 AC 1 (which rendered
+   badges on added *and* context lines). `\{{#include}}` is unchanged and
+   still renders every callout.
 
 ## The slice — outside-in narrative outline
 
@@ -101,10 +111,11 @@ slices — there is no "out of scope" exit door.
 | 7 | `install` idempotency (AC 6). After slice 2 the only things `install` writes are `book.toml` registrations and the `.gitignore` entries. The first run continues to register the preprocessor + `additional-css`/`additional-js` and to add the asset paths to `.gitignore`. A second run detects everything already present and prints "already installed" with no writes. |
 | 8 | Default tag derivation (AC 7). When `--tag` is omitted, derive `<basename>-v<next>` by reading existing `[[listing]]` entries for the same source path and bumping the highest `vN` suffix. Surfaces a clean error if any existing tag for the same source doesn't match the `<basename>-vN` shape (the heuristic is opinionated; an author who's invented their own scheme keeps using `--tag` explicitly). |
 | 9 | Sidecar TOML callouts (AC 8). Listings that can't carry inline markers (generated code, no-comment languages) attach callouts via a sibling `<tag>.callouts.toml` file. Splicer loads it alongside the frozen listing, merges with any inline markers, errors on cross-source label collisions. |
+| 10 | Diff callouts render on added and changed lines only (AC 9). A downstream pass noticed a `\{{#diff}}` rendering a badge on an unchanged context line, which is noise in a view about change and a duplicate of the badge the same callout already gets on its first inclusion in a listing. The splicer now badges only added (`+`) marker lines; context (` `) and removed (`-`) markers are stripped from the rendered diff but earn no badge. A changed or new callout is an added marker line, so it still surfaces. This is a splicer-level change only; there is no asset or grammar change. |
 
 ## Outside-in narrative
 
-Sections appear here as slices ship. All nine slices have shipped.
+Sections appear here as slices ship. All ten slices have shipped.
 
 ### Slice 1 — inline markdown in callout body text
 
@@ -925,6 +936,51 @@ respect inline-backtick context as a directive-skip zone, so
 those mentions raised the same noise). One multi-line example
 in ch.5 was rewritten as plain prose because no backslash
 position avoided the line-wrap parsing issue cleanly.
+
+### Slice 10 — diff callouts render on changed or added lines only
+
+The symptom: a downstream book embedded a `\{{#diff}}` of two versions of
+a listing whose only real change was one added line, and the rendered diff
+showed two callout badges: one on the added line, one on an unchanged
+context line above it. The diff is about what changed, so the second badge
+is just noise. It is also redundant, since that callout already shows up
+wherever the listing appears in full.
+
+Ch.5's AC 1 made this deliberate: it badged "added or context lines, but
+not removed lines." Dogfooding reconsidered the context half. The refined
+rule (AC 9 here) is that a diff badges only the lines it changed, meaning
+`+` lines, including the `+` side of a `-`/`+` pair.
+
+This follows from how a marker is written. A callout marker is always its
+own comment line (`parse_line` wants the comment prefix as the first
+non-whitespace content, and there is no trailing-comment form). So editing
+or adding a callout changes its marker line, which the unified diff emits
+as a `+` line:
+
+- Edit a callout's body on an otherwise-unchanged code line: the marker
+  becomes a `-old`/`+new` pair, the `+` side badges, and the badge lands on
+  the unchanged code line. The changed callout isn't lost.
+- Add a callout above unchanged code: its marker is a `+` line, so it badges.
+- Remove a callout: its marker is a `-` line, so no badge.
+- A marker that is byte-identical on both sides is a pure context line, and
+  gets no badge.
+
+The change stays in the splicer: no asset or grammar change. Two functions
+in `src/callout.rs` already sorted diff lines by their `+`/` `/`-` prefix,
+and this slice narrows both so a context (` `) line is treated like a
+removed one. `callouts_from_diff_block` parses callouts from `+` lines
+only. The HTML emitter, the PDF emitter, and the ordinal pass all reach it
+through the shared `callouts_for_block` dispatch, so the one change covers
+every path, and badge numbers renumber to count only what a diff renders.
+`strip_marker_lines_diff` records a post-strip badge position for `+`
+markers (callout {{#callout strip-diff}}); context and removed markers fall
+through with no badge (callout {{#callout strip-diff-skip}}).
+
+The diff below is this slice's own change. It badges two callouts,
+`strip-diff` and `strip-diff-skip`; both are `+` lines, so the diff is
+itself an instance of the rule it documents.
+
+{{#diff callout-v9 callout-v10}}
 
 ## What this story does not solve
 

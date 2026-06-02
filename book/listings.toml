@@ -623,3 +623,9 @@ tag = "freeze-v5"
 source = "../src/freeze.rs"
 frozen = "src/listings/freeze-v5.rs"
 sha256 = "815322b9b182524bbd123b89e90fe4be42a47422509cc32d269ae54193267516"
+
+[[listing]]
+tag = "callout-v10"
+source = "../src/callout.rs"
+frozen = "src/listings/callout-v10.rs"
+sha256 = "76c1a7b27cdc88fb27f26eb964428d7615aac494c4ded6be1b18e335e9e20419"
