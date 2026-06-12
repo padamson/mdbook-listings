@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::fence::FencedBlocks;
+
 /// Position is a 1-based line number so error diagnostics and the eventual
 /// rendered badge anchor can both refer to it directly.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -436,32 +438,22 @@ fn collect_first_occurrence_ordinals(
     sidecars: &SidecarCallouts,
 ) -> Result<HashMap<String, usize>, SpliceError> {
     let mut map = HashMap::new();
-    let mut error: Option<SpliceError> = None;
-    for_each_fenced_block_with_span(content, |info, block_text, _body_start, close_end| {
-        if error.is_some() {
-            return;
+    for block in FencedBlocks::new(content) {
+        let (inline, sidecar) =
+            split_callouts_for_block(block.info, block.body, content, block.close_end, sidecars)?;
+        // Ordinal pass uses block-encounter order: inline by
+        // source position (already sorted), then sidecar by
+        // source line (sorted). Stable across render + ordinal
+        // because the render path sorts by post-strip line,
+        // which preserves source order when the source-line→
+        // post-strip translation is monotone (which it is —
+        // shift count only ever grows).
+        let mut merged = inline;
+        merged.extend(sidecar);
+        merged.sort_by_key(|c| c.line);
+        for (idx, c) in merged.iter().enumerate() {
+            map.entry(c.label.clone()).or_insert(idx + 1);
         }
-        match split_callouts_for_block(info, block_text, content, close_end, sidecars) {
-            Ok((inline, sidecar)) => {
-                // Ordinal pass uses block-encounter order: inline by
-                // source position (already sorted), then sidecar by
-                // source line (sorted). Stable across render + ordinal
-                // because the render path sorts by post-strip line,
-                // which preserves source order when the source-line→
-                // post-strip translation is monotone (which it is —
-                // shift count only ever grows).
-                let mut merged = inline;
-                merged.extend(sidecar);
-                merged.sort_by_key(|c| c.line);
-                for (idx, c) in merged.iter().enumerate() {
-                    map.entry(c.label.clone()).or_insert(idx + 1);
-                }
-            }
-            Err(e) => error = Some(e),
-        }
-    });
-    if let Some(e) = error {
-        return Err(e);
     }
     Ok(map)
 }
@@ -494,46 +486,36 @@ fn splice_callout_lists_html(
     let mut out = String::with_capacity(content.len());
     let mut cursor = 0;
     let mut emitted_anchor: HashSet<String> = HashSet::new();
-    let mut error: Option<SpliceError> = None;
-    for_each_fenced_block_with_span(content, |info, block_text, body_start, close_end| {
-        if error.is_some() {
-            return;
-        }
+    for block in FencedBlocks::new(content) {
         let (inline, sidecar) =
-            match split_callouts_for_block(info, block_text, content, close_end, sidecars) {
-                Ok(c) => c,
-                Err(e) => {
-                    error = Some(e);
-                    return;
-                }
-            };
-        let is_diff = info == "diff";
+            split_callouts_for_block(block.info, block.body, content, block.close_end, sidecars)?;
+        let is_diff = block.info == "diff";
         // Diff blocks always go through the strip pass even when no `+`/` `
         // callouts exist — `-`-side markers still need to be dropped from
         // the rendered body.
         if inline.is_empty() && sidecar.is_empty() && !is_diff {
-            return;
+            continue;
         }
         let strip = if is_diff {
-            strip_marker_lines_diff(block_text)
+            strip_marker_lines_diff(block.body)
         } else {
-            strip_marker_lines(block_text, info)
+            strip_marker_lines(block.body, block.info)
         };
-        if is_diff && inline.is_empty() && sidecar.is_empty() && strip.body == block_text {
+        if is_diff && inline.is_empty() && sidecar.is_empty() && strip.body == block.body {
             // No-op diff: no markers of any kind to rewrite.
-            return;
+            continue;
         }
         // Pair each inline callout with its already-computed post-strip
         // line, then add each sidecar callout. Sidecar lines are
         // SOURCE-file lines; translate via the anchor's range info
-        // (if any) into block_text lines, then strip-aware translate
+        // (if any) into block-body lines, then strip-aware translate
         // into post-strip lines. Sort by post-strip position so badges
         // emit in visual reading order.
         let mut positioned: Vec<(Callout, usize)> = inline
             .into_iter()
             .zip(strip.post_strip_lines.iter().copied())
             .collect();
-        let anchor = listing_anchor_after_fence(content, close_end);
+        let anchor = listing_anchor_after_fence(content, block.close_end);
         let sidecar_path = anchor.as_ref().and_then(|a| sidecars.path_for_tag(a.tag));
         for entry in sidecar {
             let source_line = entry.line;
@@ -542,25 +524,20 @@ fn splice_callout_lists_html(
                 Some(a) => source_line_to_block_line(source_line, a),
                 None => source_line,
             };
-            match translate_sidecar_line_to_post_strip(
+            let p = translate_sidecar_line_to_post_strip(
                 block_line,
                 &strip.stripped_source_lines,
                 anchor.as_ref().map(|a| a.tag).unwrap_or(""),
                 sidecar_path,
                 &label,
                 source_line,
-            ) {
-                Ok(p) => positioned.push((entry, p)),
-                Err(e) => {
-                    error = Some(e);
-                    return;
-                }
-            }
+            )?;
+            positioned.push((entry, p));
         }
         positioned.sort_by_key(|(_, p)| *p);
         let (callouts, post_strip_lines): (Vec<_>, Vec<_>) = positioned.into_iter().unzip();
-        let pre_fence = &content[cursor..body_start];
-        let close_fence_line = closing_fence_text(content, close_end);
+        let pre_fence = &content[cursor..block.body_start];
+        let close_fence_line = closing_fence_text(content, block.close_end);
         out.push_str(pre_fence);
         out.push_str(&strip.body);
         if !strip.body.is_empty() && !strip.body.ends_with('\n') {
@@ -575,10 +552,7 @@ fn splice_callout_lists_html(
             &mut emitted_anchor,
         ));
         out.push('\n');
-        cursor = close_end;
-    });
-    if let Some(e) = error {
-        return Err(e);
+        cursor = block.close_end;
     }
     out.push_str(&content[cursor..]);
     Ok(out)
@@ -711,19 +685,9 @@ fn splice_callout_lists_pdf(
     let mut out = String::with_capacity(content.len());
     let mut cursor = 0;
     let mut emitted_anchor: HashSet<String> = HashSet::new();
-    let mut error: Option<SpliceError> = None;
-    for_each_fenced_block_with_span(content, |info, block_text, _body_start, close_end| {
-        if error.is_some() {
-            return;
-        }
+    for block in FencedBlocks::new(content) {
         let (inline, sidecar) =
-            match split_callouts_for_block(info, block_text, content, close_end, sidecars) {
-                Ok(c) => c,
-                Err(e) => {
-                    error = Some(e);
-                    return;
-                }
-            };
+            split_callouts_for_block(block.info, block.body, content, block.close_end, sidecars)?;
         // PDF path doesn't strip markers (it keeps them visible in the
         // listing), so sidecar entries' source lines are also their
         // post-strip lines — no translation needed. Just merge and
@@ -732,7 +696,7 @@ fn splice_callout_lists_pdf(
         callouts.extend(sidecar);
         callouts.sort_by_key(|c| c.line);
         if !callouts.is_empty() {
-            out.push_str(&content[cursor..close_end]);
+            out.push_str(&content[cursor..block.close_end]);
             out.push('\n');
             out.push_str(&render_callout_list(
                 &callouts,
@@ -741,57 +705,11 @@ fn splice_callout_lists_pdf(
                 SupportedRenderer::TypstPdf,
             ));
             out.push('\n');
-            cursor = close_end;
+            cursor = block.close_end;
         }
-    });
-    if let Some(e) = error {
-        return Err(e);
     }
     out.push_str(&content[cursor..]);
     Ok(out)
-}
-
-pub(crate) fn for_each_fenced_block_with_span<F>(content: &str, mut visit: F)
-where
-    F: FnMut(&str, &str, usize, usize),
-{
-    let bytes = content.as_bytes();
-    let mut line_start = 0;
-    let mut open: Option<OpenFence> = None;
-    while line_start < bytes.len() {
-        let line_end = match content[line_start..].find('\n') {
-            Some(off) => line_start + off,
-            None => bytes.len(),
-        };
-        let line = &content[line_start..line_end];
-        match &open {
-            None => {
-                if let Some((info, opener)) = fence_open_info(line) {
-                    open = Some(OpenFence {
-                        info,
-                        opener,
-                        body_start: line_end + 1,
-                    });
-                }
-            }
-            Some(o) => {
-                if line_closes_fence(line, o.opener) {
-                    let block_text = &content[o.body_start..line_start];
-                    let close_end = if line_end < bytes.len() {
-                        line_end + 1
-                    } else {
-                        line_end
-                    };
-                    visit(&o.info, block_text, o.body_start, close_end);
-                    open = None;
-                }
-            }
-        }
-        if line_end == bytes.len() {
-            break;
-        }
-        line_start = line_end + 1;
-    }
 }
 
 const CALLOUT_DIRECTIVE_OPEN: &str = "{{#callout ";
@@ -806,10 +724,9 @@ fn replace_callout_refs(
     label_to_ordinal: &HashMap<String, usize>,
     renderer: SupportedRenderer,
 ) -> Result<String, SpliceError> {
-    let mut fence_spans: Vec<(usize, usize)> = Vec::new();
-    for_each_fenced_block_with_span(content, |_info, _text, body_start, close_end| {
-        fence_spans.push((body_start, close_end));
-    });
+    let fence_spans: Vec<(usize, usize)> = FencedBlocks::new(content)
+        .map(|b| (b.body_start, b.close_end))
+        .collect();
 
     let in_fence = |pos: usize| {
         fence_spans
@@ -883,62 +800,6 @@ fn render_callout_ref(label: &str, ordinal: usize, renderer: SupportedRenderer) 
         }
         SupportedRenderer::TypstPdf => format!("**[{ordinal}]**"),
     }
-}
-
-struct OpenFence {
-    info: String,
-    opener: Fence,
-    body_start: usize,
-}
-
-#[derive(Clone, Copy)]
-struct Fence {
-    char: u8,
-    count: usize,
-}
-
-fn fence_open_info(line: &str) -> Option<(String, Fence)> {
-    let trimmed = line.trim_start();
-    let leading_spaces = line.len() - trimmed.len();
-    if leading_spaces > 3 {
-        return None;
-    }
-    let bytes = trimmed.as_bytes();
-    let fence_char = match bytes.first()? {
-        b'`' => b'`',
-        b'~' => b'~',
-        _ => return None,
-    };
-    let count = bytes.iter().take_while(|&&b| b == fence_char).count();
-    if count < 3 {
-        return None;
-    }
-    Some((
-        trimmed[count..].trim().to_string(),
-        Fence {
-            char: fence_char,
-            count,
-        },
-    ))
-}
-
-/// CommonMark closes a fenced block only with a fence of the same character
-/// at least as long as the opener and a blank info string. Same-character
-/// fences shorter than the opener stay inside the block as literal text —
-/// which is what lets included source files contain `\`\`\`yaml` inside
-/// string literals without prematurely terminating the outer fence.
-fn line_closes_fence(line: &str, opener: Fence) -> bool {
-    let trimmed = line.trim_start();
-    let leading_spaces = line.len() - trimmed.len();
-    if leading_spaces > 3 {
-        return false;
-    }
-    let bytes = trimmed.as_bytes();
-    let count = bytes.iter().take_while(|&&b| b == opener.char).count();
-    if count < opener.count {
-        return false;
-    }
-    trimmed[count..].trim().is_empty()
 }
 
 /// Produce the callout list for a fenced block. `info` is the fence's info

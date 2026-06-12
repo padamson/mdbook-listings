@@ -6,8 +6,9 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use crate::callout::{comment_prefix_for_extension, for_each_fenced_block_with_span};
+use crate::callout::comment_prefix_for_extension;
 use crate::diff::{LineRange, parse_line_range};
+use crate::fence::FencedBlocks;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IncludeDirective {
@@ -23,10 +24,9 @@ pub struct IncludeDirective {
 
 // CALLOUT: parse-entry Two-pass scan: first collect fence body spans, then walk lines for `{{#include ...}}` directives. Skips backslash-escaped forms and directives inside inline code spans (chapter prose quotes the syntax verbatim).
 pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
-    let mut fences: Vec<(usize, usize)> = Vec::new();
-    for_each_fenced_block_with_span(content, |_info, _text, body_start, close_end| {
-        fences.push((body_start, close_end));
-    });
+    let fences: Vec<(usize, usize)> = FencedBlocks::new(content)
+        .map(|b| (b.body_start, b.close_end))
+        .collect();
 
     const PREFIX: &[u8] = b"{{#include ";
     let bytes = content.as_bytes();

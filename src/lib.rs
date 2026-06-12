@@ -2,6 +2,7 @@
 
 pub mod callout;
 pub mod diff;
+pub mod fence;
 pub mod freeze;
 pub mod include;
 pub mod install;
