@@ -8,6 +8,6 @@ label = "fence-policy"
 body = "The one knob the three passes disagree on: include wants fenced directives (they're its primary case, tagged with the fence's `close_end` for anchor placement); diff and callout cross-refs skip them, resuming just past the prefix so a fenced opener whose `}}` lies beyond the fence can't swallow a real directive after it."
 
 [[callout]]
-line = 103
+line = 105
 label = "shared-line-number"
 body = "Consolidates the byte-identical `line_number` helpers that the include and diff passes each carried for error diagnostics."

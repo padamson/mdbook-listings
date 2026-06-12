@@ -1035,7 +1035,7 @@ actually differs between them: argument parsing and fence policy
 consolidates here too (callout {{#callout shared-line-number}}):
 
 ```rust
-{{#include listings/directive-v1.rs:1:109}}
+{{#include listings/directive-v1.rs:1:111}}
 ```
 
 Neither new module carries inline `// CALLOUT:` markers; the four badges

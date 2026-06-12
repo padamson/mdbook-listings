@@ -69,8 +69,10 @@ pub(crate) fn scan_directives<'a>(
         // occurrence: an odd count means it sits between `…` markers — a
         // quoted example in prose, not a directive. (Heuristic: double-
         // backtick spans are not modelled.)
-        let line_start = content[..at].rfind('\n').map(|i| i + 1).unwrap_or(0);
-        let backticks_before = bytes[line_start..at].iter().filter(|&&b| b == b'`').count();
+        let line = content[..at]
+            .rsplit_once('\n')
+            .map_or(&content[..at], |(_, t)| t);
+        let backticks_before = line.bytes().filter(|&b| b == b'`').count();
         if backticks_before % 2 == 1 {
             cursor = after_prefix;
             continue;
