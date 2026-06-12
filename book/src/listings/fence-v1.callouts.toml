@@ -1,0 +1,13 @@
+# Sidecar callouts attached to listing `fence-v1` (src/fence.rs at the
+# ch.6 slice 11 freeze). The module ships without inline `// CALLOUT:`
+# markers, so its annotations ride in this sidecar.
+
+[[callout]]
+line = 60
+label = "fence-iterator"
+body = "Iterator shape instead of a visitor closure: callers loop with plain `for` and propagate errors with `?`, instead of smuggling an `Option<Error>` out of an infallible callback."
+
+[[callout]]
+line = 142
+label = "fence-closer-rule"
+body = "The CommonMark closer rule the diff parser used to get wrong: same character, at least the opener's count, blank info string. A shorter same-character fence line stays inside the block as literal text."

@@ -413,13 +413,13 @@ back into the crate's `src/`:
 
 When slice 6 shipped, the diff above rendered as the "no changes"
 notice — the frozen `diff-v5` was byte-identical to the live
-`src/diff.rs`. Readers building this book after slice 7 (the
-refactor) now see the diff above show real drift instead, and the
-drift exactly matches the `diff-v5` → `diff-v6` listing in slice 7
-below. The chapter source didn't change between the two states;
-only the live source on disk did. That's the use case for `live:`
-in a nutshell: notice intended-and-unintended drift, no chapter
-edit required.
+`src/diff.rs`. Slice 7 (the refactor) put the first real drift in
+it, matching the `diff-v5` → `diff-v6` listing below; every later
+slice that touches `src/diff.rs` widens it, so the block above
+shows the live file as of whatever build you're reading. The
+chapter source never changes; only the live source on disk does.
+That's the use case for `live:` in a nutshell: notice
+intended-and-unintended drift, no chapter edit required.
 
 The freeze stability guarantee that AC 7 calls out as
 *defeated* by `live:` is, in this story, just words on a page —

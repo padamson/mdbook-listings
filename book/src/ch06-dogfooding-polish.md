@@ -97,6 +97,15 @@ slices — there is no "out of scope" exit door.
    suppressed.) This refines the diff clause of ch.5 AC 1 (which rendered
    badges on added *and* context lines). `\{{#include}}` is unchanged and
    still renders every callout.
+10. **One directive grammar across the three passes.** The include, diff,
+    and callout cross-ref passes agree on what counts as a directive
+    occurrence: backslash-escaped forms stay literal, occurrences inside
+    inline code spans or fenced code blocks are left alone, and fence
+    tracking follows CommonMark — a shorter same-character fence line
+    inside an outer fence is literal text, not a closer. Two consequences
+    are author-visible: a literal `\{{#diff}}` example inside a 4-backtick
+    fence no longer parses, and `\{{#callout}}` honours the backslash
+    escape the other two directives already did.
 
 ## The slice — outside-in narrative outline
 
@@ -112,10 +121,11 @@ slices — there is no "out of scope" exit door.
 | 8 | Default tag derivation (AC 7). When `--tag` is omitted, derive `<basename>-v<next>` by reading existing `[[listing]]` entries for the same source path and bumping the highest `vN` suffix. Surfaces a clean error if any existing tag for the same source doesn't match the `<basename>-vN` shape (the heuristic is opinionated; an author who's invented their own scheme keeps using `--tag` explicitly). |
 | 9 | Sidecar TOML callouts (AC 8). Listings that can't carry inline markers (generated code, no-comment languages) attach callouts via a sibling `<tag>.callouts.toml` file. Splicer loads it alongside the frozen listing, merges with any inline markers, errors on cross-source label collisions. |
 | 10 | Diff callouts render on added and changed lines only (AC 9). A downstream pass noticed a `\{{#diff}}` rendering a badge on an unchanged context line, which is noise in a view about change and a duplicate of the badge the same callout already gets on its first inclusion in a listing. The splicer now badges only added (`+`) marker lines; context (` `) and removed (`-`) markers are stripped from the rendered diff but earn no badge. A changed or new callout is an added marker line, so it still surfaces. This is a splicer-level change only; there is no asset or grammar change. |
+| 11 | One directive grammar across the three passes (AC 10). A review pass over the splicer pipeline found the include, diff, and callout-ref parsers each hand-rolling the same `\{{#…}}` scan, and the copies had drifted: the diff parser tracked fences with a toggle that a shorter inner fence line could flip, consuming a literal directive example and missing the real one after the fence. Two new modules — `src/fence.rs` (a CommonMark fence iterator) and `src/directive.rs` (a shared occurrence scanner) — now own the grammar; the three passes keep only argument parsing and policy. |
 
 ## Outside-in narrative
 
-Sections appear here as slices ship. All ten slices have shipped.
+Sections appear here as slices ship. All eleven slices have shipped.
 
 ### Slice 1 — inline markdown in callout body text
 
@@ -981,6 +991,87 @@ The diff below is this slice's own change. It badges two callouts,
 itself an instance of the rule it documents.
 
 {{#diff callout-v9 callout-v10}}
+
+### Slice 11 — one directive grammar across the three passes
+
+Three passes parse `\{{#…}}` directives out of chapter markdown: include
+(ch.5 slice 8), diff (ch.4), and callout cross-refs (ch.5 slice 5). Each
+had grown its own scanner, and the copies had drifted. A review pass over
+the pipeline found the visible casualty in the diff parser's fence
+tracking: it flipped a boolean on every ```` ``` ````/`~~~` line without
+recording the opener's character or length. CommonMark says a fence
+closes only on a same-character fence at least as long as the opener, so
+a 3-backtick line inside a 4-backtick fence is literal text. The toggle
+treated it as a closer — a literal `\{{#diff}}` example written inside
+such a fence got consumed as a real directive, and the real directive
+after the fence was missed. The callout pass already tracked fences
+correctly and had the regression test to prove it; the diff parser had
+neither.
+
+The drift ran further than the bug. The backslash-escape check and the
+inline-backtick check existed as three near-identical copies, the
+`line_number` diagnostic helper as two byte-identical ones, and the
+callout cross-ref pass had no escape check at all — `\{{#callout label}}`
+with a known label resolved anyway, stranding the backslash.
+
+The fix lands in two layers. First, fence walking moves out of
+`callout.rs` into its own module as an iterator. The walker logic is
+unchanged; the shape change retires the error-smuggling dance its three
+fallible callers had to do (declare an `Option<SpliceError>` outside an
+infallible closure, assign into it, check it on every later iteration).
+Callers now loop and use `?` (callout {{#callout fence-iterator}}); the
+closer rule the diff parser got wrong is pinned by the walker's first
+direct unit tests (callout {{#callout fence-closer-rule}}):
+
+```rust
+{{#include listings/fence-v1.rs:1:154}}
+```
+
+Second, a shared scanner owns the occurrence grammar — find the prefix,
+skip escaped and inline-code forms, find the closing braces, classify
+fence membership via the iterator above. The three passes keep what
+actually differs between them: argument parsing and fence policy
+(callout {{#callout fence-policy}}). The duplicated diagnostic helper
+consolidates here too (callout {{#callout shared-line-number}}):
+
+```rust
+{{#include listings/directive-v1.rs:1:109}}
+```
+
+Neither new module carries inline `// CALLOUT:` markers; the four badges
+above attach via sidecar TOML files next to the frozen listings — the
+slice 9 mechanism doing the job it was built for.
+
+The three parser rewires, each reduced to a loop over the scanner's
+occurrences. The diff parser's rewrite includes the regression test that
+failed against the old toggle
+(`parse_directives_does_not_close_outer_fence_on_shorter_inner_fence`):
+
+{{#diff diff-v10 diff-v11}}
+
+The include parser keeps its path-prefix interception and range-suffix
+parsing, and drops everything else. Its entry-point marker also gets a
+rename: include.rs and callout.rs both carried a `parse-entry` label —
+one more drift artifact — and the e2e suite caught the duplicate the
+moment this diff first rendered, because ch.6 pins `parse-entry` to
+exactly one badge. The renamed marker is an edited `+` line, so it
+badges here under slice 10's rule:
+
+{{#diff include-v3 include-v4}}
+
+The callout pass loses its local fence and backtick machinery, gains the
+escape check, and picks up a pin test for it
+(`replace_callout_refs_leaves_backslash_escaped_directive_literal`).
+The fence walker's departure to its own module is most of this diff's
+bulk:
+
+{{#diff callout-v10 callout-v11}}
+
+To confirm the refactor changed nothing it shouldn't, this book was
+built twice — once with the pre-slice binary, once with this one — and
+the rendered HTML compared byte-for-byte. Every chapter matched except
+ch.4, whose `live:` diff block re-renders the current `src/diff.rs` by
+design.
 
 ## What this story does not solve
 

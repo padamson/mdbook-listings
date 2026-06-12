@@ -629,3 +629,33 @@ tag = "callout-v10"
 source = "../src/callout.rs"
 frozen = "src/listings/callout-v10.rs"
 sha256 = "76c1a7b27cdc88fb27f26eb964428d7615aac494c4ded6be1b18e335e9e20419"
+
+[[listing]]
+tag = "callout-v11"
+source = "../src/callout.rs"
+frozen = "src/listings/callout-v11.rs"
+sha256 = "cd8c58776ba09f43d7eda7dc56c1eb23d19869ab71cb536ab20b602ee60a1b55"
+
+[[listing]]
+tag = "diff-v11"
+source = "../src/diff.rs"
+frozen = "src/listings/diff-v11.rs"
+sha256 = "6e27098f18dc52ad059fbddcccc6793945fe0ad674f927e7779a6b6305042c80"
+
+[[listing]]
+tag = "include-v4"
+source = "../src/include.rs"
+frozen = "src/listings/include-v4.rs"
+sha256 = "1ab5aba7322231aa81781b7af90f753a1b6c79cbdc1fdb9d92d29a418848a895"
+
+[[listing]]
+tag = "fence-v1"
+source = "../src/fence.rs"
+frozen = "src/listings/fence-v1.rs"
+sha256 = "7a9a094a9e286a8791ce94c365332be8dadbf676bea15fd4c81c3af041f03e7a"
+
+[[listing]]
+tag = "directive-v1"
+source = "../src/directive.rs"
+frozen = "src/listings/directive-v1.rs"
+sha256 = "4da8a97f9b96a38aa74096d04e4a551a5a6c588c8052516bef0d702b51bdf843"
