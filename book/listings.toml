@@ -683,3 +683,15 @@ tag = "freeze-v6"
 source = "../src/freeze.rs"
 frozen = "src/listings/freeze-v6.rs"
 sha256 = "e3b95684e874abcd059e6c4ba96f22ca6d04e17171583848854dcd304b01b982"
+
+[[listing]]
+tag = "verify-v2"
+source = "../src/verify.rs"
+frozen = "src/listings/verify-v2.rs"
+sha256 = "276e0aed54d121b3c8ec28040cc9152973554631853cfceddf6f55e36dc8b11c"
+
+[[listing]]
+tag = "verify-tests-v2"
+source = "../tests/verify.rs"
+frozen = "src/listings/verify-tests-v2.rs"
+sha256 = "e25958873ea90746056ac0cae08f6782c3f6c68da736d9efac6117a6e6ceb88b"

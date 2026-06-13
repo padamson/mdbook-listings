@@ -1,0 +1,18 @@
+# Sidecar callouts for listing `verify-v2` (src/verify.rs at the ch.7
+# slice 2 freeze). The module carries no inline `// CALLOUT:` markers, so
+# its annotations ride here.
+
+[[callout]]
+line = 114
+label = "check-references"
+body = "Walks chapter prose with the ch.6 directive scanner; an include path or diff operand that names no manifest record is an error with chapter:line — the same break the build would hit, surfaced up front."
+
+[[callout]]
+line = 164
+label = "check-sidecars"
+body = "A `<tag>.callouts.toml` whose tag matches no frozen listing attaches its annotations to nothing, and the build never complains — so a dangling sidecar is an error."
+
+[[callout]]
+line = 185
+label = "check-orphans"
+body = "The gentler mirror: a frozen file no manifest record claims is stray, not broken, so it warns rather than fails."

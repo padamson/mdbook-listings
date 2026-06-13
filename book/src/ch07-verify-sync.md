@@ -71,7 +71,7 @@ either choice.
 
 ## Outside-in narrative
 
-Sections appear here as slices ship. Slice 1 has shipped.
+Sections appear here as slices ship. Slices 1 and 2 have shipped.
 
 ### Slice 1 — snapshot integrity
 
@@ -140,4 +140,43 @@ And a clean run:
 ```text
 $ mdbook-listings verify --book-root book
 1 frozen listing checked
+```
+
+### Slice 2 — references and orphans
+
+Slice 1 proved each frozen snapshot is intact. Slice 2 asks the next
+question: does every *reference* to a listing point at something real,
+and is every file in `src/listings/` accounted for? `verify` gains three
+purely additive passes (the integrity check is untouched):
+
+```rust
+{{#include listings/verify-v2.rs:109:203}}
+```
+
+`check_references` (callout {{#callout check-references}}) reuses the
+directive scanner from ch.6 slice 11 to walk chapter prose. The include
+side resolves the `listings/<tag>` path against the manifest; `snippets/`
+paths and `live:` operands are not manifest records, so they're left to
+later checks or skipped. Wrong-arity `{{#diff}}` forms are skipped too,
+matching what the diff splicer leaves literal, so verify reports what
+would actually break and no more.
+
+`check_sidecars` (callout {{#callout check-sidecars}}) answers "what about
+the `.callouts.toml` files?" A sidecar attaches annotations to the listing
+whose stem it shares; if no such listing exists, those annotations
+silently attach to nothing. `check_orphans` (callout
+{{#callout check-orphans}}) is the gentler mirror: a frozen file no
+manifest record claims is a warning, stray rather than broken.
+
+The tests grew the same way, one case per pass:
+
+{{#diff verify-tests-v1 verify-tests-v2}}
+
+A book with a dangling reference now fails fast:
+
+```text
+$ mdbook-listings verify --book-root book
+error: src/ch04.md:88: {{#diff}} operand `compose-v9` names no frozen listing
+1 frozen listing checked
+error: verify found 1 error(s)
 ```
