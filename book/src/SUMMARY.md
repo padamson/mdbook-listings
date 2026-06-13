@@ -6,6 +6,6 @@
 - [Show Diffs Between Slices](ch04-show-diffs-between-slices.md)
 - [Render Inline Callouts](ch05-render-inline-callouts.md)
 - [Dogfooding-Driven Polish](ch06-dogfooding-polish.md)
-- [Verify Sync with Source](ch07-verify-sync.md)
+- [Verify Frozen Listings](ch07-verify-sync.md)
 - [Recipes](ch08-recipes.md)
 - [Future Work](ch09-future-work.md)

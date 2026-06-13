@@ -659,3 +659,27 @@ tag = "directive-v1"
 source = "../src/directive.rs"
 frozen = "src/listings/directive-v1.rs"
 sha256 = "c8028d13a335a596c0c19da062c0c217ac38d39347d318eb8706e7e50d522347"
+
+[[listing]]
+tag = "verify-v1"
+source = "../src/verify.rs"
+frozen = "src/listings/verify-v1.rs"
+sha256 = "9035d6bc4684beb279de6bb0009435be8d4ac719b9dae1c7a17efa1ed9dfc738"
+
+[[listing]]
+tag = "main-v16"
+source = "../src/main.rs"
+frozen = "src/listings/main-v16.rs"
+sha256 = "0922540097ad62a02012b2f1ce274c3a3fa1f1a66ea40ba7f9fa9f118ec8f252"
+
+[[listing]]
+tag = "verify-tests-v1"
+source = "../tests/verify.rs"
+frozen = "src/listings/verify-tests-v1.rs"
+sha256 = "7f746be956d230f7189d1a7fa28c7c5ffae8368ad9120d29181503969d7bb64e"
+
+[[listing]]
+tag = "freeze-v6"
+source = "../src/freeze.rs"
+frozen = "src/listings/freeze-v6.rs"
+sha256 = "e3b95684e874abcd059e6c4ba96f22ca6d04e17171583848854dcd304b01b982"

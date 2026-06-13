@@ -1,0 +1,13 @@
+# Sidecar callouts attached to listing `verify-v1` (src/verify.rs at the
+# ch.7 slice 1 freeze). The module ships without inline `// CALLOUT:`
+# markers, so its annotations ride in this sidecar.
+
+[[callout]]
+line = 16
+label = "severity-split"
+body = "The error/warning split is the CLI contract: an `Error` finding breaks the book's claim to show real code and fails the build; a `Warning` is reported but exits 0."
+
+[[callout]]
+line = 55
+label = "integrity-check"
+body = "The headline pass: re-hash each frozen file and compare against the sha256 that `freeze` recorded. Current source is never read — a frozen tag diverging from a moving codebase is freezing working as designed, not an error."

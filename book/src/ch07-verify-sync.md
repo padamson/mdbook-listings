@@ -1,111 +1,143 @@
-# Verify Sync with Source
+# Verify Frozen Listings
 
-<!--
-Story scaffold — populated by the work that implements the `verify`
-subcommand.
+```admonish note title="How this chapter was built"
+This is the first chapter written with every earlier primitive already
+shipped. Its narrative freezes each slice's code, shows evolution with
+`\{{#diff}}`, and annotates new modules with sidecar callouts. That's the
+methodology the book has been building since ch.2, now self-supporting.
+```
 
-## Story (placeholder — tighten before committing slice 1)
+## Story
 
-> As a book author, I want a single command that warns me when the
-> book's latest frozen listings have fallen out of sync with the
-> current source files they were snapshotted from, so that I can
-> run it in CI and have my build fail when I've refactored code
-> without refreshing the listings that should have tracked the
-> refactor.
+> As a book author, I want a single command that fails my CI when any
+> frozen listing in my book is no longer the intact snapshot it claims
+> to be, so that readers can trust that the code in the book is real.
 
-## Acceptance criteria (placeholder — tighten before implementation)
+## Acceptance criteria
 
-  Primary (the drift check — this is the headline behavior):
+Errors (any one fails the build, non-zero exit):
 
-  1. For each source file that has been frozen at some point, the
-     latest frozen version is compared against the current content
-     of the source file. If they differ, the operation fails with a
-     diagnostic naming the source, the latest tag, and a summary of
-     the difference.
-  2. If every latest frozen listing matches its current source, the
-     operation succeeds.
-  3. A source file that has been removed since it was frozen is
-     reported as drift, not as an unhandled error.
+1. **Every frozen file exists.** A manifest record whose `frozen` path
+   no longer resolves to a file is an error naming the tag and path.
+2. **Every snapshot is intact.** A frozen file whose bytes no longer
+   hash to the `sha256` recorded at freeze time is an error. The snapshot
+   was edited or corrupted after freezing.
+3. **Every reference resolves.** A `\{{#include listings/…}}` path or a
+   `\{{#diff}}` tag operand in chapter prose that names no manifest
+   record is an error naming the chapter and line. A `<tag>.callouts.toml`
+   sidecar whose `<tag>` names no frozen listing is the same kind of
+   broken reference: its annotations would silently attach to nothing and
+   the build never complains, so it too is an error.
 
-  Secondary (sanity checks):
+Warnings (reported, but the build stays green):
 
-  4. The set of recorded freezes is internally consistent: every
-     record corresponds to an actual frozen file.
-  5. The integrity hashes recorded with each freeze match the
-     bytes of the frozen files, catching post-freeze tampering
-     with frozen content.
-  6. Every chapter reference to a frozen listing resolves to an
-     actual record.
-  7. Frozen files that are not recorded (orphans) produce a
-     warning but do not cause the operation to fail.
+4. **Orphans.** A frozen file under `src/listings/` that no manifest
+   record claims is flagged for cleanup. Sidecar `*.callouts.toml` files
+   are not orphan candidates; their consistency is covered by AC 3.
+5. **Stability audit.** Every `live:` operand is listed with its chapter
+   and line. These are the places the book is deliberately coupled to
+   moving source, and an author should be able to see the list at a
+   glance.
 
-  Interaction with stability-defeating chapter references:
+Exit contract:
 
-  8. Chapter references that compare a frozen listing against the
-     current source (rather than against another frozen listing)
-     defeat the stability guarantee that freeze provides, and are
-     flagged with a warning.
+6. Errors produce a non-zero exit (the CI gate). Warnings alone exit 0.
+   Either way the command prints a one-line summary of what it checked.
+
+## What verify deliberately does not check
+
+Verify never compares a frozen listing against the *current* content of
+its source file. The first sketch of this story did exactly that: "fail
+when the latest frozen listing no longer matches the source." It sounds
+right until you hold it against what freezing is for. A frozen tag exists
+to keep prose stable while the code moves. In a book like this one, where
+each chapter freezes versioned snapshots of an evolving codebase, the
+latest freeze differs from live source almost all the time, by design. A
+check that flagged that difference would fail nearly every build.
+
+The need behind that sketch already has a mechanism. A `live:` operand
+shows current source and accepts the instability in trade. So verify
+enforces what freezing promises, that each snapshot is still byte-for-byte
+what was frozen, and audits what `live:` trades away, without judging
+either choice.
 
 ## The slice — outside-in narrative outline
 
-Anticipated commits:
+| Slice | What it adds |
+|---|---|
+| 1 | Snapshot integrity (ACs 1, 2, 6). A failing `tests/verify.rs` integration test drives the first real `verify` behavior: a fixture book whose frozen file was edited after freezing must fail with a diagnostic naming the tag and path. `src/verify.rs` re-hashes every frozen file against the manifest's recorded sha256; the CLI handler replaces the `not yet implemented` bail. |
+| 2 | Reference resolution and orphans (ACs 3, 4). Chapter markdown is scanned with the shared directive scanner from ch.6 slice 11; `\{{#include listings/…}}` paths and `\{{#diff}}` tag operands must resolve to manifest records. Files in `src/listings/` that no record claims warn. |
+| 3 | `live:` stability audit (AC 5) and dogfooding. Every `live:` operand is reported with chapter and line. `verify` is wired into this repo's CI, making this book its first production user; the audit flags ch.4's `live:` diff as the demonstration. |
 
-  slice 1/N: Failing integration test that sets up a fixture book
-             with a frozen listing whose source has drifted (one
-             line added), and asserts `verify` exits non-zero with
-             a useful diagnostic.
-  slice 2/N: Walk the manifest to compute "latest tag per source
-             path". Unit test on synthetic manifests with multiple
-             tags per source.
-  slice 3/N: Byte comparison of latest-tag frozen file vs current
-             source file. Unit test for match, mismatch, source-
-             missing.
-  slice 4/N: Diff summarization — "lines changed: N, added: M,
-             removed: K". Re-use the diff primitive from ch. 2.
-             Unit test.
-  slice 5/N: Wire into the `verify` CLI handler. Integration test
-             for AC 1 passes.
-  slice 6/N: Sanity checks (ACs 4, 5, 6, 7). Added as additional
-             passes; each emits a diagnostic but only AC 1 and AC
-             3 cause a non-zero exit.
-  slice 7/N: `live:` scan (AC 8). Re-uses the chapter walker from
-             slice 6.
-  optional refactor slice.
+## Outside-in narrative
 
-## Notes for implementers
+Sections appear here as slices ship. Slice 1 has shipped.
 
-  * "Latest tag per source" definition matters. Current lean: last
-    `[[listing]]` entry for that source path, in manifest order.
-    Alternatives considered: tag suffix comparison (`-v2 > -v1`)
-    — rejected because it couples semantics to a naming
-    convention. Entry order is explicit; tag naming is a
-    convention the author chooses.
-  * The sanity checks exist largely for human reassurance. The
-    drift check (AC 1) is what gives CI a useful signal. Keep the
-    diagnostic text clear about which is which.
-  * `\{{#include}}` directives may include anchors and line-range
-    suffixes (`\{{#include foo.rs:bar}}`,
-    `\{{#include foo.rs:1:10}}`). For AC 6 we only care about the
-    path component; ignore the rest.
-  * **Composition note (narrative arc).** This is the first
-    chapter built with all three primitives — freeze (ch. 2),
-    diffs (ch. 3), and callouts (ch. 4) — already available. The
-    outside-in narrative should use diffs between slice-tagged
-    listings to show evolution and callouts to annotate the
-    interesting lines as they appear, end-to-end. After this
-    chapter the methodology is fully self-supporting; subsequent
-    stories follow the same pattern with no chicken-and-egg
-    notes to add.
+### Slice 1 — snapshot integrity
 
-## What this slice will not solve (anticipated)
+The failure this slice catches: a frozen listing gets "fixed" in place.
+Someone corrects a typo directly in `src/listings/foo-v1.rs` instead of
+fixing the source and refreezing, and from that point the book renders
+code that was never frozen from anywhere. Nothing in the build notices.
+The manifest has carried a `sha256` per listing since ch.3 for this case;
+until now, nothing read it back.
 
-  * No deep verify (compile check / test run of the frozen
-    listings). That's a separate, much bigger story for a later
-    release.
-  * No auto-remediation. Verify reports; author decides whether to
-    refreeze, make a new tag, or leave drift in place.
-  * No per-chapter verify (scoped to one chapter). Whole-book or
-    nothing.
--->
+Tests first. The fixture freezes a source file through the real `freeze`
+subcommand, so the manifest entry and recorded hash are what production
+wrote:
 
-Placeholder — this chapter's story has not been shipped yet.
+```rust
+{{#include listings/verify-tests-v1.rs:14:45}}
+```
+
+The headline test edits the frozen file after freezing and demands a
+failing exit plus a diagnostic naming the tag, the path, and the hash
+mismatch:
+
+```rust
+{{#include listings/verify-tests-v1.rs:61:81}}
+```
+
+Three more tests pin the rest of the contract: an intact book succeeds
+with a `1 frozen listing checked` summary, a deleted frozen file is an
+error rather than a crash, and a book with two broken listings reports
+both. Verify is a report, not a first-failure bail.
+
+The module is small. `verify` loads the manifest and runs the integrity
+pass; findings carry a severity that the CLI maps to the exit code
+(callout {{#callout severity-split}}). The pass re-hashes each frozen file
+with the same helper `freeze` used to record it (callout
+{{#callout integrity-check}}):
+
+```rust
+{{#include listings/verify-v1.rs:1:83}}
+```
+
+The only change to `freeze.rs` is visibility: `hex_sha256` becomes
+`pub(crate)` so verify hashes bytes the same way freeze recorded them. One
+function, no drift between writer and checker:
+
+{{#diff freeze-v5 freeze-v6}}
+
+The CLI handler replaces the `not yet implemented` bail the subcommand has
+carried since it was first added. Findings print to stderr with
+`error:`/`warning:` prefixes, the summary to stdout, and any error makes
+the exit non-zero for CI to gate on:
+
+{{#diff main-v15 main-v16}}
+
+What a failure looks like:
+
+```text
+$ mdbook-listings verify --book-root book
+error: frozen listing `compose-v1` no longer matches its recorded sha256: src/listings/compose-v1.yaml (edited after freezing? refreeze or restore the snapshot)
+1 frozen listing checked
+error: verify found 1 error(s)
+```
+
+And a clean run:
+
+```text
+$ mdbook-listings verify --book-root book
+1 frozen listing checked
+```
