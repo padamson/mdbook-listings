@@ -30,6 +30,11 @@ repos:
     hooks:
       - id: typos
         name: Check for typos
+        # Frozen listings under book/src/listings/ are byte-exact
+        # snapshots; a linter must never rewrite them (it silently breaks
+        # the recorded sha256, which `mdbook-listings verify` then flags).
+        # They are checked by verify, not typos.
+        exclude: '^book/src/listings/'
 
   - repo: local
     hooks:

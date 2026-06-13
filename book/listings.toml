@@ -244,7 +244,7 @@ sha256 = "22d5212da1b0b0c6b79a50377389863e706f9c829c15476381e9957160b50278"
 tag = "e2e-callouts-v1"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v1.rs"
-sha256 = "30aa3b7d6cef572976b76cd922b61014f1a0761987c9a5594f35e19354568c36"
+sha256 = "890b7d1619cc19d19f00d6a84af50d829f7e9df5d5d80d59f2f2494f2022f7df"
 
 [[listing]]
 tag = "callout-v1"
@@ -274,7 +274,7 @@ sha256 = "f85657e6e2bf3c84a81d71e0f692685155cc86c46cc538ad9cdeeabd8a03e598"
 tag = "e2e-callouts-v2"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v2.rs"
-sha256 = "a2a818d52f97c414425ee6e7240db2953a62f91ef4260eb3ae5761fd04d1b35b"
+sha256 = "8a48c9a95adf79fed5d5ae0da698d5588b41dd510d68caad517b2abc3ac327ab"
 
 [[listing]]
 tag = "capture-screenshots-v1"
@@ -292,7 +292,7 @@ sha256 = "f67669e37c3b5b63536f797112bc8b3c4dfa95779f7b9e8c3e097868f0c82361"
 tag = "e2e-callouts-v3"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v3.rs"
-sha256 = "38418826908a9cc1a93f8756c2d75c167bf16eafdcb1c76c10e45e0db9da5f32"
+sha256 = "4b626d711b7b754e5269fdff2625d159d372818a88508b84fc06d0a1ce9608f8"
 
 [[listing]]
 tag = "callout-v3"
@@ -310,7 +310,7 @@ sha256 = "c0887dd96a733a4b8fd23ed530a3143c0379ce7934324c477a2c4f0988f10a82"
 tag = "e2e-callouts-v4"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v4.rs"
-sha256 = "dc4c8a0e94de8ba08154a9b0943a84b0394e3dd3460d4a3c380379e4833356d8"
+sha256 = "4825df2d74f6b0eb7f4a849063d0f21d3b87921837c5529025a48b160906b694"
 
 [[listing]]
 tag = "callout-v4"
@@ -346,7 +346,7 @@ sha256 = "5a8363118aaea2399a0e126e7c60ab3305e87f46564f48f8fd04ef268fa40fa9"
 tag = "e2e-callouts-v5"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v5.rs"
-sha256 = "6a3cfcc81e7a9cfcd4022498bf96af2ec7b08d5e0c26206778ece7c711eda782"
+sha256 = "bbd38d22574ee4d2a0671449fb12ce0403b4ff43a1f3db775404b700931b9975"
 
 [[listing]]
 tag = "listings-css-v2"
@@ -394,7 +394,7 @@ sha256 = "54048f86b83515858460891aa43286ae8d121649be4891b8ad5b6f2245e377ae"
 tag = "capture-screenshots-v3"
 source = "../tools/capture-screenshots/src/main.rs"
 frozen = "src/listings/capture-screenshots-v3.rs"
-sha256 = "95a4075e52b61df071f20eff1ce4455ab5347bf3872dfb808b8cb015d9873244"
+sha256 = "f4ecfbba635e14fde5fa30d7c769d42e60ea302ae1b7f39395a45acfebbc3d8c"
 
 [[listing]]
 tag = "callout-v6"
@@ -406,19 +406,19 @@ sha256 = "49c8850572aa8faf25f8396fe4dddd5eb0c68cef02dc92032150b4194a31e86c"
 tag = "e2e-callouts-v6"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v6.rs"
-sha256 = "88ec5e9273465447c841e661062abb37cdb5b872807b85a5556c413a3f3a337a"
+sha256 = "5afe9d5388575791aa8ec3e60266c3a28d7c8cb12d959d89a5d3aa9b6d555f8e"
 
 [[listing]]
 tag = "e2e-callouts-v7"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v7.rs"
-sha256 = "e94050068523fa4239171138eeefe0dbc03245a1e88c109c6afaf48d02495040"
+sha256 = "aace4c02e2b53364fcab073148ff9a060345cd45afdb5bee7fb3cea3b21de772"
 
 [[listing]]
 tag = "e2e-callouts-v8"
 source = "../tests/e2e_callouts.rs"
 frozen = "src/listings/e2e-callouts-v8.rs"
-sha256 = "825cef8cdcca342aab42e9f8f4551681d010d44a621c51cf2d3d4b2070359319"
+sha256 = "246988029fb4ea5c3c2a2aed50f8ad48e2d8e5b7f3cd656528830cb12e142476"
 
 [[listing]]
 tag = "diff-v9"
@@ -436,13 +436,13 @@ sha256 = "bdb49f59c6b0f7b2a94a2f7a6808af33a9082b190994066ca56114dddb70d432"
 tag = "diff-line-ranges-v1"
 source = "../tests/diff_line_ranges.rs"
 frozen = "src/listings/diff-line-ranges-v1.rs"
-sha256 = "c0b8e5115b119211ad72c783812b0180175db0e6e04e202583d321447600ad17"
+sha256 = "b23781855f659226b718527efee512e9bb22a16c2682f3c998326584a692a5e1"
 
 [[listing]]
 tag = "include-line-ranges-v1"
 source = "../tests/include_line_ranges.rs"
 frozen = "src/listings/include-line-ranges-v1.rs"
-sha256 = "8c1a9797cc31f1bc49fd7659534b49e85be4ee01edfb87046f7a20a6cf4b0bc2"
+sha256 = "4d3ec3caefc2abc33b8a0ffff498dd2663cf6e886c44bd9302a4e1006e5e0f37"
 
 [[listing]]
 tag = "callout-v7"
