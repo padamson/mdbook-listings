@@ -299,37 +299,27 @@ jobs:
         with:
           tool: parse-changelog
 
+      # Build only the published crate's binary. `--bin mdbook-listings`
+      # excludes the `capture-screenshots` workspace tool (publish = false),
+      # which pulls in playwright-rs and doesn't cross-compile in the
+      # release matrix. No `continue-on-error`: a build failure must fail
+      # the release, not silently produce an empty GitHub Release.
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }} --verbose
-        continue-on-error: true
+        run: cargo build --release --bin mdbook-listings --target ${{ matrix.target }} --verbose
 
       - name: Strip binary (Unix)
         if: runner.os != 'Windows'
-        run: |
-          BINARY_NAME=$(cargo metadata --no-deps --format-version 1 | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; bins=[t['name'] for p in pkgs for t in p['targets'] if 'bin' in t['kind']]; print(bins[0] if bins else '')")
-          if [ -n "$BINARY_NAME" ] && [ -f "target/${{ matrix.target }}/release/$BINARY_NAME" ]; then
-            strip "target/${{ matrix.target }}/release/$BINARY_NAME"
-          fi
-        continue-on-error: true
+        # Best-effort: cross-target strip can no-op on a foreign-arch binary.
+        run: strip "target/${{ matrix.target }}/release/mdbook-listings" || true
 
       - name: Create archive (Unix)
         if: runner.os != 'Windows'
-        run: |
-          BINARY_NAME=$(cargo metadata --no-deps --format-version 1 | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; bins=[t['name'] for p in pkgs for t in p['targets'] if 'bin' in t['kind']]; print(bins[0] if bins else '')")
-          if [ -n "$BINARY_NAME" ] && [ -f "target/${{ matrix.target }}/release/$BINARY_NAME" ]; then
-            tar czf "$BINARY_NAME-v${{ steps.get_version.outputs.version }}-${{ matrix.target }}.tar.gz" -C "target/${{ matrix.target }}/release" "$BINARY_NAME"
-          fi
-        continue-on-error: true
+        run: tar czf "mdbook-listings-v${{ steps.get_version.outputs.version }}-${{ matrix.target }}.tar.gz" -C "target/${{ matrix.target }}/release" mdbook-listings
 
       - name: Create archive (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: |
-          BINARY_NAME=$(cargo metadata --no-deps --format-version 1 | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; bins=[t['name'] for p in pkgs for t in p['targets'] if 'bin' in t['kind']]; print(bins[0] if bins else '')")
-          if [ -n "$BINARY_NAME" ] && [ -f "target/${{ matrix.target }}/release/${BINARY_NAME}.exe" ]; then
-            7z a "${BINARY_NAME}-v${{ steps.get_version.outputs.version }}-${{ matrix.target }}.zip" "target/${{ matrix.target }}/release/${BINARY_NAME}.exe"
-          fi
-        continue-on-error: true
+        run: 7z a "mdbook-listings-v${{ steps.get_version.outputs.version }}-${{ matrix.target }}.zip" "target/${{ matrix.target }}/release/mdbook-listings.exe"
 
       - name: Generate release notes
         shell: bash
