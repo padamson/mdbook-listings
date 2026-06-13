@@ -1,6 +1,26 @@
 # mdbook-listings
 
-Managed code listings for mdbook: inline callouts, freezing, and verification.
+[![crates.io](https://img.shields.io/crates/v/mdbook-listings.svg)](https://crates.io/crates/mdbook-listings)
+[![CI](https://github.com/padamson/mdbook-listings/actions/workflows/ci.yml/badge.svg)](https://github.com/padamson/mdbook-listings/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+Managed code listings for mdbook: freeze real source into your book, diff
+and annotate it, and verify it stays honest.
+
+A book that embeds code drifts: the snapshot in chapter 3 quietly stops
+matching the file it came from. mdbook-listings keeps the embedded code
+real and the prose keyed to it:
+
+- **Freeze** a source file under a tag and embed it with mdbook's
+  `{{#include}}`, so a chapter shows a stable snapshot even as the code
+  evolves.
+- **Diff** two frozen tags inline with `{{#diff a b}}` to show how a
+  listing changed between slices.
+- **Callouts** — `// CALLOUT: <label>` markers turn into numbered badges
+  with hover annotations and prose cross-references, so explanations stay
+  attached to specific lines instead of fragile line numbers.
+- **Verify** in CI — `mdbook-listings verify` fails the build if a frozen
+  snapshot was tampered with or a reference doesn't resolve.
 
 ## Installation
 
