@@ -55,7 +55,8 @@ latest version of each file is in the slice that touched it last
    can write `live:foo.txt` to reach `book/src/foo.txt`, or
    `live:../../src/lib.rs` to reach the crate's source. Doing so
    defeats the freeze stability guarantee for that diff and is
-   flagged later by the *Verify Sync with Source* story (ch. 5).
+   flagged by `mdbook-listings verify` (the *Verify Frozen Listings*
+   story, ch. 7).
 
 ## The slice — outside-in narrative outline
 
@@ -423,9 +424,10 @@ intended-and-unintended drift, no chapter edit required.
 
 The freeze stability guarantee that AC 7 calls out as
 *defeated* by `live:` is, in this story, just words on a page —
-the *Verify Sync with Source* story (ch. 5) is what surfaces a
-warning at build time when a chapter uses `live:` operands. v0.1.0
-ships the directive; ch. 5 ships the warning.
+the *Verify Frozen Listings* story (ch. 7) is what surfaces a
+warning when a chapter uses `live:` operands. v0.1.0 ships the
+directive; ch. 7 ships the warning, as `mdbook-listings verify`'s
+`live:` audit.
 
 ### Slice 7 — refactor
 
@@ -539,9 +541,9 @@ lands.
 * **Three-way diffs or diffs across renames.** No current driver
   in the dogfood book. Would surface on demand.
 * **The verify-side warning when `live:<path>` is used.** Ships
-  with ch. 5 (*Verify Sync with Source*); ch. 3 only ships the
-  directive itself. v0.1.0 binds the two together at the release
-  boundary.
+  with ch. 7 (*Verify Frozen Listings*); this chapter only ships
+  the directive itself. v0.1.0 binds the two together at the
+  release boundary.
 * **Per-chapter tag namespacing**
   (`book/src/listings/<chapter>/...`). On the backlog as a
   separate tiny story; the global flat namespace is fine while

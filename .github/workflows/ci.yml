@@ -184,6 +184,12 @@ jobs:
       - name: Install mdbook-listings (local crate, used as preprocessor)
         run: cargo install --path . --locked --force
 
+      - name: Verify frozen listings
+        # Dogfood: the book is verify's first production user. Fails the
+        # build if a frozen snapshot drifted from its recorded sha256, a
+        # listing reference doesn't resolve, or a sidecar is dangling.
+        run: mdbook-listings verify --book-root book
+
       - name: Build book (HTML + PDF)
         run: mdbook build book/
 

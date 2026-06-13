@@ -695,3 +695,15 @@ tag = "verify-tests-v2"
 source = "../tests/verify.rs"
 frozen = "src/listings/verify-tests-v2.rs"
 sha256 = "e25958873ea90746056ac0cae08f6782c3f6c68da736d9efac6117a6e6ceb88b"
+
+[[listing]]
+tag = "verify-v3"
+source = "../src/verify.rs"
+frozen = "src/listings/verify-v3.rs"
+sha256 = "ba702d9e339a7e2f0a25331acc28d8951fb10074b3764b9e76307bf6515e8d30"
+
+[[listing]]
+tag = "verify-tests-v3"
+source = "../tests/verify.rs"
+frozen = "src/listings/verify-tests-v3.rs"
+sha256 = "e25958873ea90746056ac0cae08f6782c3f6c68da736d9efac6117a6e6ceb88b"

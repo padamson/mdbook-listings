@@ -1,0 +1,7 @@
+# Sidecar callouts for listing `verify-v3` (src/verify.rs at the ch.7
+# slice 3 freeze). The module carries no inline `// CALLOUT:` markers.
+
+[[callout]]
+line = 216
+label = "live-audit"
+body = "AC 5: a `live:` diff operand renders current source, so that spot tracks a moving codebase. It's a deliberate trade, not a break, so verify warns rather than fails — the author just gets to see the list at a glance."

@@ -71,7 +71,7 @@ either choice.
 
 ## Outside-in narrative
 
-Sections appear here as slices ship. Slices 1 and 2 have shipped.
+Sections appear here as slices ship. All three slices have shipped.
 
 ### Slice 1 — snapshot integrity
 
@@ -180,3 +180,73 @@ error: src/ch04.md:88: {{#diff}} operand `compose-v9` names no frozen listing
 1 frozen listing checked
 error: verify found 1 error(s)
 ```
+
+### Slice 3 — the `live:` audit, and verify finds drift in its own book
+
+The last pass closes AC 5. A `live:` diff operand (ch.4) renders current
+source instead of a frozen snapshot — a deliberate trade of stability for
+currency. `check_live_operands` (callout {{#callout live-audit}}) reports
+each one with chapter and line, a warning rather than an error:
+
+```rust
+{{#include listings/verify-v3.rs:211:235}}
+```
+
+With every pass in place, this book becomes verify's first production
+user: `mdbook-listings verify --book-root book` now runs in CI and as a
+pre-commit hook, the same gate any downstream book would wire up.
+
+The first real run is the point of the whole chapter. It failed — and it
+was *right* to:
+
+```text
+$ mdbook-listings verify --book-root book
+error: frozen listing `e2e-callouts-v1` no longer matches its recorded sha256: ...
+... (10 more) ...
+116 frozen listings checked
+error: verify found 11 error(s)
+```
+
+Eleven frozen snapshots had drifted from their recorded hashes. Not
+corruption: each had been edited in place by a legitimate sweep — the
+chapter renumber that turned `ch04-…` into `ch05-…` across the e2e
+listings, and the `locator!` migration from ch.5's refactor — and none
+had been re-frozen, so the integrity records went stale. Confirming that
+(the freeze-commit diff for each showed only the deliberate edit), the fix
+was to re-seal: recompute each hash from the current bytes. The root cause
+got a fix too — the repo's `typos` pre-commit hook was rewriting files
+under `src/listings/`, so it's now scoped to leave frozen snapshots alone.
+
+That is the chapter's thesis demonstrated on itself. The book had quietly
+stopped being able to prove eleven of its listings were the snapshots it
+claimed — and the tool built to catch exactly that caught exactly that.
+
+The slice-3 code delta — the `live:` audit, plus a fix for a false
+positive the dogfood surfaced (a `\{{#include listings/<tag>.callouts.toml}}`
+that displays a sidecar file is not a listing reference):
+
+{{#diff verify-v2 verify-v3}}
+
+{{#diff verify-tests-v2 verify-tests-v3}}
+
+With the book re-sealed, verify is green — one warning remains, the `live:`
+operand ch.4 uses on purpose:
+
+```text
+$ mdbook-listings verify --book-root book
+warning: src/ch04-show-diffs-between-slices.md:413: {{#diff}} uses a live operand `live:../../src/diff.rs` — shows current source, not a frozen snapshot, so freeze stability is traded away here
+116 frozen listings checked
+```
+
+## What this story does not solve
+
+verify is shallow: it confirms a snapshot is byte-for-byte what was
+frozen, not that the code still compiles or passes its tests. A *deep*
+verify — building or running the frozen listings — is a much larger
+story for a later release. So is auto-remediation: verify reports, and
+the author decides whether to re-seal, re-freeze, or leave drift in
+place; it never edits the manifest for you. And it has no notion of a
+listing that's *meant* to track current source — that's what `live:` is
+for, and verify audits rather than enforces it. A future opt-in
+"mirror" mode for reference-style books is sketched in
+[ch. 9](ch09-future-work.md).
