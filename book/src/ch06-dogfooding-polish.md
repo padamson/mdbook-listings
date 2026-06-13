@@ -7,12 +7,15 @@ on those primitives — the
 [t2t](https://github.com/padamson/t2t) book — surfaced a handful of
 rendering and ergonomic gaps that this book never exercised
 hard enough to notice. This chapter collects the resulting polish
-work, one slice per gap. The verify story (ch.7) is still
-placeholder; it'll close the v0.1.0 loop separately.
+work, one slice per gap. The [verify story (ch.7)](ch07-verify-sync.md)
+closes the v0.1.0 loop.
 
-If we identify dogfood, we eat it. New gaps that surface on later
-downstream passes get appended as new acceptance criteria and new
-slices — there is no "out of scope" exit door.
+Through v0.1.0, the rule was: if we identify dogfood, we eat it — gaps
+that surfaced on downstream passes got appended as new acceptance
+criteria and new slices, no "out of scope" exit door. That open-ended
+intake is what this chapter is. With v0.1.0 shipped, the book closes as
+its development record; later gaps and ideas live in `ROADMAP.md` and
+[ch.9 (Future Work)](ch09-future-work.md), not as new chapters here.
 ```
 
 ## Story

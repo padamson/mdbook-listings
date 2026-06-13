@@ -12,7 +12,8 @@ canonical "what's shipped" reference; this file is the canonical
 ## v0.1.0 — the four primitives
 
 The initial release. One user-story chapter per primitive (see the
-self-documenting book for the full story for each).
+self-documenting book for the full story for each). All shipped — the
+theme is complete and ready to tag.
 
 - **Install the Preprocessor** *(shipped)* — one-shot setup of an
   existing book.
@@ -28,13 +29,16 @@ self-documenting book for the full story for each).
   line-range support (`{{#diff a b 1:30 1:30}}`,
   `{{#include foo.rs:1:30}}`) and `data-listing-tag-range` locator
   anchors for the screenshot tool. Sidecar (separate TOML) callouts
-  and PDF inline-badge rendering — features adjacent to this
-  primitive — have design sketches in the book's
-  [ch.7 (Future Work)](https://padamson.github.io/mdbook-listings/ch07-future-work.html);
-  they are not in v0.1.0's scope.
-- **Verify Sync with Source** — drift-detection check that fails CI
-  when the latest frozen listing for a source file no longer matches
-  the source.
+  shipped later in the dogfooding-polish pass (ch.6). PDF inline-badge
+  rendering — still a design sketch — lives in
+  [ch.9 (Future Work)](https://padamson.github.io/mdbook-listings/ch09-future-work.html)
+  and is not in v0.1.0's scope.
+- **Verify Frozen Listings** *(shipped)* — `mdbook-listings verify`
+  fails the build when a frozen snapshot no longer matches its recorded
+  hash, a listing file is missing, or a chapter reference (or sidecar)
+  doesn't resolve; it warns on orphan files and on `live:` operands that
+  trade away freeze stability. Shallow only — it checks snapshot
+  integrity, not that the code still compiles (deep verify is ch.9).
 
 ## v0.2.0 — power-user ergonomics
 

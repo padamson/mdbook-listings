@@ -42,3 +42,27 @@ stays comment-light.
 This depends on the sidecar form above, since modifying the
 already-frozen source listings would defeat the back-catalogue
 concept.
+
+## Deeper verification
+
+[ch.7 (Verify Frozen Listings)](ch07-verify-sync.md) ships a *shallow*
+verify: it proves each snapshot is byte-for-byte what was frozen, and
+that references resolve. Three extensions are sketched but out of scope
+for v0.1.0:
+
+- **Deep verify.** Build or run the frozen listings, so verify catches
+  a snapshot that is intact but no longer compiles (e.g. against a bumped
+  dependency). Much larger — it needs a per-listing toolchain/run
+  harness — and belongs in its own story.
+- **Re-seal / auto-remediation.** Today verify reports drift and the
+  author decides what to do; the one-time cleanup of pre-existing drift
+  was a manual sha recompute. A `verify --reseal` (or a `reseal`
+  subcommand) would recompute hashes from current bytes after the author
+  confirms the edits were deliberate — convenience, never automatic.
+- **Opt-in mirror mode.** Verify deliberately does *not* compare a frozen
+  snapshot against current source, because freezing exists to decouple
+  from a moving codebase. A reference-style book (API docs whose example
+  should always match HEAD) wants the opposite. An explicit per-listing
+  "tracks current source" flag would let such a book ask verify to fail
+  on drift-from-source, without imposing that on the versioning workflow
+  this book uses.
