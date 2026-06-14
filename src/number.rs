@@ -286,6 +286,28 @@ mod tests {
     }
 
     #[test]
+    fn flag_off_is_byte_identical_for_mixed_content_both_renderers() {
+        // The non-breaking guarantee: with numbering off and no captions, the
+        // pass touches nothing across a chapter mixing an include, a diff, a
+        // plain (anchorless) code block, and prose — for both renderers.
+        let content = concat!(
+            "Intro prose.\n\n",
+            "```rust\nfn a() {}\n```\n",
+            "<div data-listing-tag=\"a\" aria-hidden=\"true\"></div>\n\n",
+            "More prose.\n\n",
+            "```diff\n--- a\n+++ b\n-old\n+new\n```\n",
+            "<div data-listing-diff-left=\"a\" data-listing-diff-right=\"b\" aria-hidden=\"true\"></div>\n\n",
+            "```rust\nlet plain = 1;\n```\n\n",
+            "Tail.\n",
+        );
+        assert_eq!(splice_chapter(content, Some(&[5]), false, Html), content);
+        assert_eq!(
+            splice_chapter(content, Some(&[5]), false, TypstPdf),
+            content
+        );
+    }
+
+    #[test]
     fn unnumbered_chapter_renders_caption_only() {
         let content = include_block("a", Some("Caption"));
         let out = splice_chapter(&content, None, true, Html);
