@@ -20,8 +20,18 @@
  * pre-script behaviour for any environment where JS doesn't run.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes are
- * the expected build-time asset: mdbook-listings-css-v5
+ * the expected build-time asset: mdbook-listings-css-v6
  */
+
+/* Listing caption line, emitted by the numbering pass immediately before a
+ * listing's code block when numbering is on and/or the directive carries a
+ * caption. Renders as "Listing N.M — caption" above the <pre>. */
+.listing-caption {
+  margin: 1em 0 -0.5em;
+  font-size: 0.9em;
+  font-weight: 600;
+  color: var(--fg, #333);
+}
 
 .callout-overlay {
   position: relative;

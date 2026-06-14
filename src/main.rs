@@ -13,6 +13,7 @@ use mdbook_listings::freeze::{
 use mdbook_listings::include::splice_chapter as splice_includes;
 use mdbook_listings::install::{InstallOutcome, ensure_assets_fresh, install};
 use mdbook_listings::manifest::Manifest;
+use mdbook_listings::number::splice_chapter as splice_numbers;
 use mdbook_listings::verify::{Severity, verify};
 use mdbook_preprocessor::book::BookItem;
 
@@ -202,6 +203,14 @@ fn preprocess() -> Result<()> {
         .with_context(|| format!("unsupported renderer: {}", ctx.renderer))?;
     let sidecars =
         SidecarCallouts::load(&src_dir.join("listings")).context("loading sidecar callouts")?;
+    // Opt-in: numbering stays off unless `[preprocessor.listings] number-listings`
+    // is set true. A malformed value defaults off rather than failing the build.
+    let number_listings = ctx
+        .config
+        .get::<bool>("preprocessor.listings.number-listings")
+        .ok()
+        .flatten()
+        .unwrap_or(false);
 
     let mut splice_err: Option<anyhow::Error> = None;
     book.for_each_mut(|item| {
@@ -215,7 +224,7 @@ fn preprocess() -> Result<()> {
                 .and_then(|p| p.parent())
                 .map(|d| src_dir.join(d))
                 .unwrap_or_else(|| src_dir.clone());
-            // CALLOUT: preprocessor-chain Three-stage chain per chapter: includes (expand listings/snippets + drop locator anchors) → diffs (render `{{#diff}}` blocks + emit dual-attribute anchors) → callouts (strip CALLOUT comments + emit overlay). The order matters: callouts need the included source bytes inline to find `CALLOUT:` markers.
+            // CALLOUT: preprocessor-chain Four-stage chain per chapter: includes (expand listings/snippets + drop locator anchors) → diffs (render `{{#diff}}` blocks + emit dual-attribute anchors) → numbering (label each anchored listing `Listing N.M` + caption, stamp the number onto its anchor) → callouts (strip CALLOUT comments + emit overlay, scoping badges to the listing number). The order matters: numbering needs both anchor kinds in one stream to count M, and callouts need the included source bytes inline to find `CALLOUT:` markers.
             match splice_includes(&chapter.content, &src_dir, chapter.source_path.as_deref())
                 .map_err(|e| {
                     anyhow::Error::new(e).context("expanding {{#include listings/...}} failed")
@@ -231,6 +240,14 @@ fn preprocess() -> Result<()> {
                     .map_err(|e| {
                         anyhow::Error::new(e).context("rendering {{#diff}} directive failed")
                     })
+                })
+                .map(|new_content| {
+                    splice_numbers(
+                        &new_content,
+                        chapter.number.as_ref().map(|n| n.as_slice()),
+                        number_listings,
+                        renderer,
+                    )
                 })
                 .and_then(|new_content| {
                     splice_callouts(&new_content, renderer, &sidecars)

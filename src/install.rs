@@ -13,7 +13,7 @@ pub const JS_ASSET: &[u8] = include_bytes!("../assets/mdbook-listings.js");
 
 /// Catches builds that stripped or replaced the asset — a missing sentinel
 /// means the bundled bytes are not the expected build-time asset.
-pub const CSS_ASSET_SENTINEL: &str = "mdbook-listings-css-v5";
+pub const CSS_ASSET_SENTINEL: &str = "mdbook-listings-css-v6";
 pub const JS_ASSET_SENTINEL: &str = "mdbook-listings-js-v6";
 
 /// Shared between the writer and the registrar so the two can't drift.

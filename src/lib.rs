@@ -8,4 +8,5 @@ pub mod freeze;
 pub mod include;
 pub mod install;
 pub mod manifest;
+pub mod number;
 pub mod verify;
