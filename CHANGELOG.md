@@ -5,6 +5,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+Non-breaking follow-up toward 0.1.1: opt-in listing numbers, optional
+captions, and listing-scoped callout badges. Existing books are unchanged
+unless they opt in; with numbering off and no captions the preprocessor
+output is byte-identical to 0.1.0.
+
+### Added
+- **Automatic listing numbers.** Each listing renders a `Listing N.M`
+  label — `N` the chapter's section number, `M` the listing's order of
+  appearance across `{{#include}}` and `{{#diff}}`. Opt-in via
+  `[preprocessor.listings] number-listings` (default off).
+- **Listing captions.** `{{#include}}` and `{{#diff}}` accept an optional
+  `caption="..."`, rendered with the number as `Listing N.M — caption`.
+- **Listing-scoped callout badges.** Badges read as `5.3.1` (listing
+  number plus within-listing ordinal) rather than a bare `1`, in the
+  listing and in prose `{{#callout}}` cross-references.
+
+### Changed
+- Callout badges render as pills at any width, so a bare `1` and a scoped
+  `5.3.1` share one shape in prose and in listings.
+
 ## [0.1.0] - 2026-06-13
 
 First release. Managed code listings for mdbook, built around four

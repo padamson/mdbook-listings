@@ -40,6 +40,21 @@ theme is complete and ready to tag.
   trade away freeze stability. Shallow only — it checks snapshot
   integrity, not that the code still compiles (deep verify is ch.9).
 
+## v0.1.1 — listing numbers and captions *(on main, unreleased)*
+
+A non-breaking follow-up surfaced by dogfooding a content-heavy chapter
+elsewhere. Landed on `main` and live in the book; the release awaits
+further downstream validation. Numbering and scoped badges are opt-in via
+`[preprocessor.listings] number-listings`; captions are per-directive.
+
+- **Automatic listing numbers** — `Listing N.M` labels, numbered in
+  document order across includes and diffs.
+- **Listing captions** — optional `caption="..."` on `{{#include}}` and
+  `{{#diff}}`, rendered with the number.
+- **Listing-scoped callout badges** — a badge reads as `5.3.1` rather than
+  a bare `1`, in the listing and in prose cross-references, and renders as
+  a pill at any width.
+
 ## v0.2.0 — power-user ergonomics
 
 - Auto-tag derivation for `freeze` (no `--tag` required;
@@ -51,7 +66,6 @@ theme is complete and ready to tag.
 ## v0.3.0 — richer rendering
 
 - Syntax-highlighted diffs (currently plain unified-diff text).
-- Listing captions ("Listing 3.1: …").
 - Multi-paragraph callout bodies, inline code in callouts.
 - Callouts overlaid on diff output.
 
