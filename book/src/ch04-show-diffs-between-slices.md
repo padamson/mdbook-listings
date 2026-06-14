@@ -505,7 +505,19 @@ pass.
 
 {{#diff diff-v6 diff-v7}}
 
-{{#diff main-v4 main-v5}}
+The `main.rs` change threads `chapter_dir` in two spots a few lines apart.
+At the default three-line context they render as two separate hunks; widening
+to `context=6` merges them into one block that shows the whole top of
+`preprocess` — the function header through the threaded argument — so the diff
+reads on its own.
+
+```admonish note title="Since v0.1.0: context window"
+The `context=N` argument is a v0.1.1 addition, used on the diff just below.
+It sets the unified-diff context radius (default 3). See
+[Changes since v0.1.0](changes-since-0.1.0.md).
+```
+
+{{#diff main-v4 main-v5 context=6}}
 
 {{#diff diffs-tests-v4 diffs-tests-v5}}
 

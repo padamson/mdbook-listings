@@ -54,6 +54,9 @@ further downstream validation. Numbering and scoped badges are opt-in via
 - **Listing-scoped callout badges** — a badge reads as `5.3.1` rather than
   a bare `1`, in the listing and in prose cross-references, and renders as
   a pill at any width.
+- **`{{#diff}}` context window** — an optional `context=N` argument sets the
+  unified-diff context radius (default 3), so a hunk can show enough
+  surrounding lines to place a change.
 
 ## v0.2.0 — power-user ergonomics
 

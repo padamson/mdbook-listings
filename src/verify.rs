@@ -144,7 +144,12 @@ fn check_references(book_root: &Path, manifest: &Manifest, report: &mut VerifyRe
         }
         for occ in scan_directives(&content, "{{#diff", FencePolicy::SkipInside) {
             let (args, _caption) = split_caption(occ.args);
-            let tokens: Vec<&str> = args.split_whitespace().collect();
+            // Drop a `context=N` token so it isn't miscounted as an operand,
+            // matching the diff parser.
+            let tokens: Vec<&str> = args
+                .split_whitespace()
+                .filter(|t| !t.starts_with("context="))
+                .collect();
             // The diff splicer only processes 2-token (whole-file) or
             // 4-token (with ranges) forms; the first two tokens are the
             // operands. Other arities are left literal, so don't validate.
@@ -219,7 +224,10 @@ fn check_live_operands(book_root: &Path, report: &mut VerifyReport) {
     for (rel, content) in chapter_markdown(book_root) {
         for occ in scan_directives(&content, "{{#diff", FencePolicy::SkipInside) {
             let (args, _caption) = split_caption(occ.args);
-            let tokens: Vec<&str> = args.split_whitespace().collect();
+            let tokens: Vec<&str> = args
+                .split_whitespace()
+                .filter(|t| !t.starts_with("context="))
+                .collect();
             if tokens.len() != 2 && tokens.len() != 4 {
                 continue;
             }
@@ -455,6 +463,23 @@ mod tests {
         let mut report = VerifyReport::default();
         check_references(&root, &manifest, &mut report);
         assert_eq!(report.error_count(), 0, "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_references_validates_diff_operands_despite_context_arg() {
+        let (_t, root, manifest) = book_with_demo();
+        // The `context=6` token must not be miscounted as an operand: the
+        // diff is still a valid 2-operand form, so `ghost` is flagged.
+        fs::write(
+            root.join("src/ch.md"),
+            "{{#diff demo-v1 ghost context=6}}\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_references(&root, &manifest, &mut report);
+        assert_eq!(report.error_count(), 1, "got {:?}", report.findings);
+        assert!(report.findings[0].message.contains("ghost"));
     }
 
     #[test]

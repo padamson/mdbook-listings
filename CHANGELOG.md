@@ -20,6 +20,10 @@ output is byte-identical to 0.1.0.
 - **Listing-scoped callout badges.** Badges read as `5.3.1` (listing
   number plus within-listing ordinal) rather than a bare `1`, in the
   listing and in prose `{{#callout}}` cross-references.
+- **`{{#diff}}` context window.** An optional `context=N` argument sets the
+  unified-diff context radius (default 3, matching `diff -U3`), so a hunk
+  can show enough surrounding lines to place a change. A malformed value
+  falls back to the default rather than dropping the directive.
 
 ### Changed
 - Callout badges render as pills at any width, so a bare `1` and a scoped

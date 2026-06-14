@@ -20,6 +20,10 @@ and do not describe what follows.
   which listing it belongs to.
 - **Pill-shaped badges.** Badges render as pills at any width, so a bare
   `1` and a scoped `5.3.1` share one shape.
+- **`{{#diff}}` context window.** An optional `context=N` argument sets the
+  unified-diff context radius (default 3), so a hunk can show enough
+  surrounding lines to place a change. Used in
+  [Show Diffs Between Slices](ch04-show-diffs-between-slices.md).
 
 These features are active in this rendered book, but the prose, the
 listings, and the captured screenshots predate them: the screenshots show

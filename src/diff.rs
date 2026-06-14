@@ -23,8 +23,15 @@ pub struct DiffDirective {
     pub left_range: Option<LineRange>,
     pub right_range: Option<LineRange>,
     pub caption: Option<String>,
+    /// Optional `context=N` argument — the unified-diff context radius, the
+    /// number of unchanged lines shown around each hunk. `None` falls back to
+    /// [`DEFAULT_CONTEXT_RADIUS`].
+    pub context: Option<usize>,
     pub span: Range<usize>,
 }
+
+/// `similar`'s default context radius, matching `diff -U3`.
+pub const DEFAULT_CONTEXT_RADIUS: usize = 3;
 
 /// 1-based inclusive line range. `None` endpoints mean "to start"
 /// (`start`) or "to end" (`end`). Out-of-range endpoints are clamped to
@@ -117,7 +124,18 @@ pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
     let mut out = Vec::new();
     for occ in scan_directives(content, "{{#diff", FencePolicy::SkipInside) {
         let (args, caption) = crate::directive::split_caption(occ.args);
-        let tokens: Vec<&str> = args.split_whitespace().collect();
+        // Lift an optional `context=N` token out of the operands. A malformed
+        // value (`context=x`) is ignored — it falls back to the default
+        // context window rather than skipping the directive, since the window
+        // is optional polish unlike a malformed range.
+        let mut context: Option<usize> = None;
+        let mut tokens: Vec<&str> = Vec::new();
+        for tok in args.split_whitespace() {
+            match tok.strip_prefix("context=") {
+                Some(value) => context = value.parse::<usize>().ok(),
+                None => tokens.push(tok),
+            }
+        }
         let parsed = match tokens.as_slice() {
             [l, r] => Some((l.to_string(), r.to_string(), None, None)),
             [l, r, lr, rr] => match (parse_line_range(lr), parse_line_range(rr)) {
@@ -138,6 +156,7 @@ pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
                 left_range,
                 right_range,
                 caption,
+                context,
                 span: occ.span,
             });
         }
@@ -272,13 +291,19 @@ fn resolve_operand(
 /// Identical inputs return a one-line notice rather than the empty string
 /// `similar` would otherwise produce — a fence body that's just the header
 /// looks broken to a reader.
-pub fn render(left: &str, right: &str, left_label: &str, right_label: &str) -> String {
+pub fn render(
+    left: &str,
+    right: &str,
+    left_label: &str,
+    right_label: &str,
+    context: usize,
+) -> String {
     if left == right {
         return format!("(no changes between {left_label} and {right_label})\n");
     }
     similar::TextDiff::from_lines(left, right)
         .unified_diff()
-        .context_radius(3)
+        .context_radius(context)
         .header(left_label, right_label)
         .to_string()
 }
@@ -411,6 +436,7 @@ pub fn splice_chapter(
             right_sliced,
             &resolved.left_label,
             &resolved.right_label,
+            d.context.unwrap_or(DEFAULT_CONTEXT_RADIUS),
         );
         // When a range is set, similar's hunk headers are relative to the
         // slice (line 1 of the slice = line N of the original). Shift them
@@ -553,6 +579,55 @@ mod tests {
             })
         );
         assert_eq!(got[0].caption.as_deref(), Some("Sliced"));
+    }
+
+    #[test]
+    fn parse_directives_extracts_context_window() {
+        let got = parse_directives("{{#diff a b context=6}}");
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].left, "a");
+        assert_eq!(got[0].right, "b");
+        assert_eq!(got[0].context, Some(6));
+    }
+
+    #[test]
+    fn parse_directives_context_coexists_with_ranges_and_caption() {
+        // Order: operands, ranges, context, then caption last (caption lifts
+        // everything after its closing quote, so it must trail).
+        let got = parse_directives("{{#diff a b 1:50 1:60 context=6 caption=\"Slots\"}}");
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(
+            got[0].left_range,
+            Some(LineRange {
+                start: Some(1),
+                end: Some(50)
+            })
+        );
+        assert_eq!(
+            got[0].right_range,
+            Some(LineRange {
+                start: Some(1),
+                end: Some(60)
+            })
+        );
+        assert_eq!(got[0].context, Some(6));
+        assert_eq!(got[0].caption.as_deref(), Some("Slots"));
+    }
+
+    #[test]
+    fn parse_directives_ignores_malformed_context() {
+        let got = parse_directives("{{#diff a b context=x}}");
+        assert_eq!(
+            got.len(),
+            1,
+            "a malformed context must not skip the directive; got {got:?}"
+        );
+        assert_eq!(got[0].left, "a");
+        assert_eq!(got[0].right, "b");
+        assert_eq!(
+            got[0].context, None,
+            "malformed context falls back to default"
+        );
     }
 
     #[test]
@@ -870,6 +945,7 @@ mod tests {
             left_range: None,
             right_range: None,
             caption: None,
+            context: None,
             span: 0..0,
         };
 
@@ -972,7 +1048,13 @@ mod tests {
 
     #[test]
     fn render_produces_unified_diff_with_headers_for_differing_inputs() {
-        let out = render("line one\nline two\n", "line one\nline TWO\n", "old", "new");
+        let out = render(
+            "line one\nline two\n",
+            "line one\nline TWO\n",
+            "old",
+            "new",
+            DEFAULT_CONTEXT_RADIUS,
+        );
         assert!(out.contains("--- old"), "expected --- header; got:\n{out}");
         assert!(out.contains("+++ new"), "expected +++ header; got:\n{out}");
         assert!(
@@ -987,25 +1069,96 @@ mod tests {
 
     #[test]
     fn render_returns_no_changes_notice_for_identical_inputs() {
-        let out = render("same\nbytes\n", "same\nbytes\n", "old", "new");
+        let out = render(
+            "same\nbytes\n",
+            "same\nbytes\n",
+            "old",
+            "new",
+            DEFAULT_CONTEXT_RADIUS,
+        );
         assert_eq!(out, "(no changes between old and new)\n");
     }
 
     #[test]
     fn render_returns_no_changes_notice_for_two_empty_inputs() {
-        let out = render("", "", "old", "new");
+        let out = render("", "", "old", "new", DEFAULT_CONTEXT_RADIUS);
         assert_eq!(out, "(no changes between old and new)\n");
     }
 
     #[test]
     fn render_marks_pure_additions_with_plus_prefix() {
-        let out = render("a\n", "a\nb\n", "old", "new");
+        let out = render("a\n", "a\nb\n", "old", "new", DEFAULT_CONTEXT_RADIUS);
         assert!(out.contains("+b"), "expected added line `b`; got:\n{out}");
         assert!(
             !out.lines().any(|l| l.starts_with('-')
                 && !l.starts_with("---")
                 && l.trim_start_matches('-').contains("a")),
             "no removal expected on a pure addition; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn render_context_radius_controls_surrounding_lines() {
+        // A single change at line 10 of a 20-line file. A radius-1 hunk shows
+        // lines 9–11; a radius-5 hunk reaches line 5.
+        let mut left = String::new();
+        let mut right = String::new();
+        for i in 1..=20 {
+            left.push_str(&format!("line{i}\n"));
+            if i == 10 {
+                right.push_str("line10-CHANGED\n");
+            } else {
+                right.push_str(&format!("line{i}\n"));
+            }
+        }
+        let narrow = render(&left, &right, "a", "b", 1);
+        let wide = render(&left, &right, "a", "b", 5);
+        assert!(
+            !narrow.contains(" line5\n"),
+            "radius 1 should not reach line 5; got:\n{narrow}"
+        );
+        assert!(
+            wide.contains(" line5\n"),
+            "radius 5 should include line 5; got:\n{wide}"
+        );
+    }
+
+    #[test]
+    fn splice_chapter_honors_context_window_argument() {
+        let mut left = String::new();
+        let mut right = String::new();
+        for i in 1..=20 {
+            left.push_str(&format!("line{i}\n"));
+            if i == 10 {
+                right.push_str("line10-CHANGED\n");
+            } else {
+                right.push_str(&format!("line{i}\n"));
+            }
+        }
+        let (tmp, manifest, _) = fixture(left.as_bytes(), right.as_bytes());
+        let narrow = splice_chapter(
+            "{{#diff left-tag right-tag context=1}}\n",
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+        )
+        .unwrap();
+        let wide = splice_chapter(
+            "{{#diff left-tag right-tag context=5}}\n",
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+        )
+        .unwrap();
+        assert!(
+            !narrow.contains(" line5\n"),
+            "context=1 should not reach line 5; got:\n{narrow}"
+        );
+        assert!(
+            wide.contains(" line5\n"),
+            "context=5 should reach line 5; got:\n{wide}"
         );
     }
 
