@@ -20,7 +20,7 @@
  * pre-script behaviour for any environment where JS doesn't run.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes are
- * the expected build-time asset: mdbook-listings-css-v6
+ * the expected build-time asset: mdbook-listings-css-v7
  */
 
 /* Listing caption line, emitted by the numbering pass immediately before a
@@ -61,11 +61,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* Pill: a stadium border-radius larger than any half-height keeps the
+   * shape consistent whether the badge holds a bare ordinal (`1`) or a
+   * listing-scoped one (`5.3.1`) — wider, but the same rounded shape. The
+   * badge grows horizontally with its text and never wraps. */
   min-width: 1.5em;
   height: 1.5em;
-  padding: 0 0.4em;
+  padding: 0 0.5em;
   border: 1px solid currentColor;
-  border-radius: 0.75em;
+  border-radius: 999px;
+  white-space: nowrap;
   background: var(--bg, #fff);
   color: var(--fg, #333);
   font-family: var(--mono-font, ui-monospace, SFMono-Regular, Menlo, monospace);

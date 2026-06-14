@@ -429,6 +429,24 @@ pub fn splice_chapter(
     replace_callout_refs(&with_lists, &label_to_ordinal, renderer)
 }
 
+/// A label's canonical badge: its within-listing ordinal and the number of
+/// the listing it first appears in (`None` when numbering is off). The prose
+/// cross-ref scopes its displayed token to `listing_number.ordinal`.
+#[derive(Clone)]
+struct CalloutRef {
+    ordinal: usize,
+    listing_number: Option<String>,
+}
+
+/// Render a badge's visible token, scoped to its listing when numbered:
+/// `5.3.1` with a listing number, bare `1` without.
+fn scoped_badge(listing_number: Option<&str>, ordinal: usize) -> String {
+    match listing_number {
+        Some(n) => format!("{n}.{ordinal}"),
+        None => ordinal.to_string(),
+    }
+}
+
 /// Records each label's ordinal at its FIRST occurrence in the chapter.
 /// Subsequent occurrences (e.g. when the same source file is shown via
 /// `{{#diff}}` after being `{{#include}}`'d) are ignored: the first dt
@@ -437,11 +455,12 @@ pub fn splice_chapter(
 fn collect_first_occurrence_ordinals(
     content: &str,
     sidecars: &SidecarCallouts,
-) -> Result<HashMap<String, usize>, SpliceError> {
-    let mut map = HashMap::new();
+) -> Result<HashMap<String, CalloutRef>, SpliceError> {
+    let mut map: HashMap<String, CalloutRef> = HashMap::new();
     for block in FencedBlocks::new(content) {
         let (inline, sidecar) =
             split_callouts_for_block(block.info, block.body, content, block.close_end, sidecars)?;
+        let listing_number = listing_number_after_fence(content, block.close_end);
         // Ordinal pass uses block-encounter order: inline by
         // source position (already sorted), then sidecar by
         // source line (sorted). Stable across render + ordinal
@@ -453,7 +472,10 @@ fn collect_first_occurrence_ordinals(
         merged.extend(sidecar);
         merged.sort_by_key(|c| c.line);
         for (idx, c) in merged.iter().enumerate() {
-            map.entry(c.label.clone()).or_insert(idx + 1);
+            map.entry(c.label.clone()).or_insert_with(|| CalloutRef {
+                ordinal: idx + 1,
+                listing_number: listing_number.clone(),
+            });
         }
     }
     Ok(map)
@@ -461,7 +483,7 @@ fn collect_first_occurrence_ordinals(
 
 fn splice_callout_lists(
     content: &str,
-    label_to_ordinal: &HashMap<String, usize>,
+    label_to_ordinal: &HashMap<String, CalloutRef>,
     renderer: SupportedRenderer,
     sidecars: &SidecarCallouts,
 ) -> Result<String, SpliceError> {
@@ -546,10 +568,12 @@ fn splice_callout_lists_html(
         }
         out.push_str(close_fence_line);
         out.push('\n');
+        let listing_number = listing_number_after_fence(content, block.close_end);
         out.push_str(&render_callout_overlay_html(
             &callouts,
             &post_strip_lines,
             strip.total_lines,
+            listing_number.as_deref(),
             &mut emitted_anchor,
         ));
         out.push('\n');
@@ -680,7 +704,7 @@ fn closing_fence_text(content: &str, close_end: usize) -> &str {
 /// badge marker.
 fn splice_callout_lists_pdf(
     content: &str,
-    label_to_ordinal: &HashMap<String, usize>,
+    label_to_ordinal: &HashMap<String, CalloutRef>,
     sidecars: &SidecarCallouts,
 ) -> Result<String, SpliceError> {
     let mut out = String::with_capacity(content.len());
@@ -697,11 +721,13 @@ fn splice_callout_lists_pdf(
         callouts.extend(sidecar);
         callouts.sort_by_key(|c| c.line);
         if !callouts.is_empty() {
+            let listing_number = listing_number_after_fence(content, block.close_end);
             out.push_str(&content[cursor..block.close_end]);
             out.push('\n');
             out.push_str(&render_callout_list(
                 &callouts,
                 label_to_ordinal,
+                listing_number.as_deref(),
                 &mut emitted_anchor,
                 SupportedRenderer::TypstPdf,
             ));
@@ -720,7 +746,7 @@ fn splice_callout_lists_pdf(
 // CALLOUT: cross-ref-replace Cross-ref entry: the shared scanner skips directives inside fenced blocks; this pass errors on labels not in the chapter's collected map.
 fn replace_callout_refs(
     content: &str,
-    label_to_ordinal: &HashMap<String, usize>,
+    label_to_ordinal: &HashMap<String, CalloutRef>,
     renderer: SupportedRenderer,
 ) -> Result<String, SpliceError> {
     let mut out = String::with_capacity(content.len());
@@ -732,15 +758,13 @@ fn replace_callout_refs(
             // with the surrounding prose on the next push).
             continue;
         }
-        let ordinal =
-            label_to_ordinal
-                .get(label)
-                .copied()
-                .ok_or_else(|| SpliceError::UnknownLabel {
-                    label: label.to_string(),
-                })?;
+        let cref = label_to_ordinal
+            .get(label)
+            .ok_or_else(|| SpliceError::UnknownLabel {
+                label: label.to_string(),
+            })?;
         out.push_str(&content[cursor..occ.span.start]);
-        out.push_str(&render_callout_ref(label, ordinal, renderer));
+        out.push_str(&render_callout_ref(label, cref, renderer));
         cursor = occ.span.end;
     }
     out.push_str(&content[cursor..]);
@@ -748,16 +772,20 @@ fn replace_callout_refs(
 }
 
 // CALLOUT: cross-ref-emit Renders the prose-side anchor for HTML; falls back to a bracketed badge for typst-pdf where raw HTML doesn't carry through.
-fn render_callout_ref(label: &str, ordinal: usize, renderer: SupportedRenderer) -> String {
+fn render_callout_ref(label: &str, cref: &CalloutRef, renderer: SupportedRenderer) -> String {
+    // The visible token scopes to the listing (`5.3.1`); `data-callout-ordinal`
+    // stays the bare within-listing ordinal the JS and matching tests key on.
+    let badge = scoped_badge(cref.listing_number.as_deref(), cref.ordinal);
+    let ordinal = cref.ordinal;
     match renderer {
         SupportedRenderer::Html => {
             let label_esc = html_escape(label);
             format!(
                 "<a class=\"callout-badge callout-ref\" href=\"#callout-{label_esc}\" \
-                 data-callout-ref=\"{label_esc}\" data-callout-ordinal=\"{ordinal}\">{ordinal}</a>",
+                 data-callout-ref=\"{label_esc}\" data-callout-ordinal=\"{ordinal}\">{badge}</a>",
             )
         }
-        SupportedRenderer::TypstPdf => format!("**[{ordinal}]**"),
+        SupportedRenderer::TypstPdf => format!("**[{badge}]**"),
     }
 }
 
@@ -834,6 +862,25 @@ fn listing_anchor_after_fence<'c>(content: &'c str, close_end: usize) -> Option<
 /// Back-compat shim for the ordinal pass + tests that only need the tag.
 fn listing_tag_after_fence(content: &str, close_end: usize) -> Option<&str> {
     listing_anchor_after_fence(content, close_end).map(|a| a.tag)
+}
+
+/// Read the `data-listing-number` the numbering pass stamps onto a listing's
+/// locator anchor — present on both include (`data-listing-tag`) and diff
+/// (`data-listing-diff-left`) anchors. `None` when numbering is off or the
+/// block has no anchor. Tolerates one newline between fence and anchor.
+fn listing_number_after_fence(content: &str, close_end: usize) -> Option<String> {
+    let tail = &content[close_end..];
+    let after_newline = tail.strip_prefix('\n').unwrap_or(tail);
+    let div_open = after_newline.find("<div ")?;
+    if div_open > 64 {
+        return None;
+    }
+    let div_end = after_newline[div_open..].find('>')? + div_open;
+    let div_text = &after_newline[div_open..div_end];
+    let key = "data-listing-number=\"";
+    let start = div_text.find(key)? + key.len();
+    let end = div_text[start..].find('"')?;
+    Some(div_text[start..start + end].to_string())
 }
 
 /// Number of header lines the include splicer prepends to a ranged
@@ -963,13 +1010,14 @@ fn callouts_from_diff_block(block_text: &str) -> Vec<Callout> {
 /// the listing body, not just the trailing block.
 fn render_callout_list(
     callouts: &[Callout],
-    _label_to_ordinal: &HashMap<String, usize>,
+    _label_to_ordinal: &HashMap<String, CalloutRef>,
+    listing_number: Option<&str>,
     _emitted_anchor: &mut HashSet<String>,
     renderer: SupportedRenderer,
 ) -> String {
     match renderer {
         SupportedRenderer::Html => unreachable!("HTML uses render_callout_overlay_html directly"),
-        SupportedRenderer::TypstPdf => render_callout_list_pdf(callouts),
+        SupportedRenderer::TypstPdf => render_callout_list_pdf(callouts, listing_number),
     }
 }
 
@@ -984,12 +1032,14 @@ fn render_callout_overlay_html(
     callouts: &[Callout],
     post_strip_lines: &[usize],
     total_lines: usize,
+    listing_number: Option<&str>,
     emitted_anchor: &mut HashSet<String>,
 ) -> String {
     let mut s = String::new();
     s.push_str("<div class=\"callout-overlay\" data-callout-overlay>\n");
     for (idx, c) in callouts.iter().enumerate() {
         let ordinal = idx + 1;
+        let badge = scoped_badge(listing_number, ordinal);
         let label_esc = html_escape(&c.label);
         let line = post_strip_lines.get(idx).copied().unwrap_or(1);
         // CALLOUT: body-id-dedup The button id, body div id, and the button's `aria-describedby` are all dedup'd in lockstep on the first occurrence per label. Without lockstep dedup, the same label appearing in two blocks (e.g. an include and a diff `+` line, both processed for badges in slice 8) would emit duplicate body div ids — invalid HTML, rejected by playwright-rs's strict-mode locator.
@@ -1033,7 +1083,7 @@ fn render_callout_overlay_html(
         s.push_str(&format!(
             "    <button type=\"button\" class=\"callout-badge\"{id_attr} \
              data-callout-badge=\"{label_esc}\" data-callout-ordinal=\"{ordinal}\"\
-             {aria_describedby_attr}>{ordinal}</button>\n",
+             {aria_describedby_attr}>{badge}</button>\n",
         ));
         if let Some(body) = &c.body {
             s.push_str(&format!(
@@ -1048,19 +1098,19 @@ fn render_callout_overlay_html(
 }
 
 // CALLOUT: pdf-emit Markdown blockquote with bold ordinal + label, one paragraph per callout. typst-pdf renders this as a quoted note block; bodyless markers render as just the label.
-fn render_callout_list_pdf(callouts: &[Callout]) -> String {
+fn render_callout_list_pdf(callouts: &[Callout], listing_number: Option<&str>) -> String {
     let mut s = String::new();
     for (idx, c) in callouts.iter().enumerate() {
-        let ordinal = idx + 1;
+        let badge = scoped_badge(listing_number, idx + 1);
         if idx > 0 {
             s.push_str("> \n");
         }
         match &c.body {
             Some(body) => {
-                s.push_str(&format!("> **[{ordinal}] {}** — {body}\n", c.label));
+                s.push_str(&format!("> **[{badge}] {}** — {body}\n", c.label));
             }
             None => {
-                s.push_str(&format!("> **[{ordinal}] {}**\n", c.label));
+                s.push_str(&format!("> **[{badge}] {}**\n", c.label));
             }
         }
     }
@@ -2106,6 +2156,138 @@ mod tests {
                 options,
             }]
         );
+    }
+
+    /// A listing block whose locator anchor carries `data-listing-number`,
+    /// as the numbering pass leaves it for the callout pass.
+    fn numbered_listing(number: Option<&str>) -> String {
+        let num = number
+            .map(|n| format!(" data-listing-number=\"{n}\""))
+            .unwrap_or_default();
+        format!(
+            "```rust\n// CALLOUT: foo A note.\nfn x() {{}}\n```\n<div data-listing-tag=\"x\"{num} aria-hidden=\"true\"></div>\n"
+        )
+    }
+
+    #[test]
+    fn in_listing_badge_scopes_to_listing_number_when_numbered() {
+        let out = splice_chapter(
+            &numbered_listing(Some("5.3")),
+            SupportedRenderer::Html,
+            &SidecarCallouts::empty(),
+        )
+        .expect("splice");
+        assert!(
+            out.contains(">5.3.1</button>"),
+            "badge text scopes; got:\n{out}"
+        );
+        // The bare ordinal stays on the attribute the JS and tests key on.
+        assert!(
+            out.contains(r#"data-callout-ordinal="1""#),
+            "data-callout-ordinal stays bare; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn in_listing_badge_stays_bare_when_unnumbered() {
+        let out = splice_chapter(
+            &numbered_listing(None),
+            SupportedRenderer::Html,
+            &SidecarCallouts::empty(),
+        )
+        .expect("splice");
+        assert!(out.contains(">1</button>"), "badge stays bare; got:\n{out}");
+        assert!(!out.contains("5.3"), "got:\n{out}");
+    }
+
+    #[test]
+    fn prose_cross_ref_scopes_to_first_occurrence_listing_number() {
+        let content = format!(
+            "See {{{{#callout foo}}}}.\n\n{}",
+            numbered_listing(Some("5.3"))
+        );
+        let out = splice_chapter(&content, SupportedRenderer::Html, &SidecarCallouts::empty())
+            .expect("splice");
+        assert!(
+            out.contains(">5.3.1</a>"),
+            "cross-ref text scopes; got:\n{out}"
+        );
+        assert!(
+            out.contains(r#"data-callout-ordinal="1""#),
+            "cross-ref ordinal stays bare; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn pdf_badges_scope_to_listing_number() {
+        let content = format!(
+            "See {{{{#callout foo}}}}.\n\n{}",
+            numbered_listing(Some("5.3"))
+        );
+        let out = splice_chapter(
+            &content,
+            SupportedRenderer::TypstPdf,
+            &SidecarCallouts::empty(),
+        )
+        .expect("splice");
+        assert!(
+            out.contains("**[5.3.1] foo**"),
+            "in-listing PDF badge scopes; got:\n{out}"
+        );
+        assert!(
+            out.contains("**[5.3.1]**"),
+            "PDF cross-ref scopes; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn scoped_badge_joins_number_and_ordinal() {
+        assert_eq!(scoped_badge(Some("5.3"), 2), "5.3.2");
+        assert_eq!(scoped_badge(None, 2), "2");
+    }
+
+    #[test]
+    fn listing_number_after_fence_reads_number_off_either_anchor() {
+        let inc = "```rust\nx\n```\n<div data-listing-tag=\"a\" data-listing-number=\"5.1\" aria-hidden=\"true\"></div>\n";
+        let close_end = inc.find("```\n<div").map(|i| i + 4).unwrap();
+        assert_eq!(
+            listing_number_after_fence(inc, close_end).as_deref(),
+            Some("5.1")
+        );
+
+        let diff = "```diff\n+x\n```\n<div data-listing-diff-left=\"a\" data-listing-diff-right=\"b\" data-listing-number=\"5.2\" aria-hidden=\"true\"></div>";
+        let close_end = diff.find("```\n<div").map(|i| i + 4).unwrap();
+        assert_eq!(
+            listing_number_after_fence(diff, close_end).as_deref(),
+            Some("5.2")
+        );
+
+        let bare = "```rust\nx\n```\n<div data-listing-tag=\"a\" aria-hidden=\"true\"></div>\n";
+        let close_end = bare.find("```\n<div").map(|i| i + 4).unwrap();
+        assert_eq!(listing_number_after_fence(bare, close_end), None);
+    }
+
+    #[test]
+    fn listing_number_after_fence_accepts_anchor_at_64_byte_offset() {
+        let pad: String = "x".repeat(64);
+        let content = format!(
+            "```rust\nx\n```\n{pad}<div data-listing-tag=\"a\" data-listing-number=\"5.1\" aria-hidden=\"true\"></div>\n",
+        );
+        let close_end = content.rfind("```\n").map(|i| i + 4).unwrap();
+        assert_eq!(
+            listing_number_after_fence(&content, close_end).as_deref(),
+            Some("5.1"),
+        );
+    }
+
+    #[test]
+    fn listing_number_after_fence_rejects_anchor_at_65_byte_offset() {
+        let pad: String = "x".repeat(65);
+        let content = format!(
+            "```rust\nx\n```\n{pad}<div data-listing-tag=\"a\" data-listing-number=\"5.1\" aria-hidden=\"true\"></div>\n",
+        );
+        let close_end = content.rfind("```\n").map(|i| i + 4).unwrap();
+        assert_eq!(listing_number_after_fence(&content, close_end), None);
     }
 
     #[test]
