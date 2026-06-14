@@ -448,6 +448,12 @@ pub fn splice_chapter(
                 r.render()
             ));
         }
+        if let Some(caption) = &d.caption {
+            anchor.push_str(&format!(
+                " data-listing-caption=\"{}\"",
+                crate::callout::html_escape(caption)
+            ));
+        }
         anchor.push_str(" aria-hidden=\"true\"></div>");
         out.push_str(&anchor);
         cursor = d.span.end;
@@ -1203,6 +1209,39 @@ mod tests {
         assert!(
             !out.contains("data-listing-diff-right-range"),
             "no right-range attr expected without ranges; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_emits_caption_attribute_on_anchor_when_present() {
+        let (tmp, manifest, _) = fixture(b"a\nb\n", b"a\nB\n");
+        let content = "{{#diff left-tag right-tag caption=\"Method and act\"}}\n";
+        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        assert!(
+            out.contains(r#"data-listing-caption="Method and act""#),
+            "expected caption attribute on diff anchor; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_omits_caption_attribute_when_absent() {
+        let (tmp, manifest, _) = fixture(b"a\nb\n", b"a\nB\n");
+        let content = "{{#diff left-tag right-tag}}\n";
+        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        assert!(
+            !out.contains("data-listing-caption"),
+            "no caption attr expected without caption=; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_html_escapes_caption_attribute() {
+        let (tmp, manifest, _) = fixture(b"a\nb\n", b"a\nB\n");
+        let content = "{{#diff left-tag right-tag caption=\"A & B <tag>\"}}\n";
+        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        assert!(
+            out.contains(r#"data-listing-caption="A &amp; B &lt;tag&gt;""#),
+            "caption attribute should be HTML-escaped; got:\n{out}",
         );
     }
 

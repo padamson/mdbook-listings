@@ -216,6 +216,12 @@ pub fn splice_chapter(
             if let Some(range) = &d.range {
                 anchor.push_str(&format!(" data-listing-tag-range=\"{}\"", range.render()));
             }
+            if let Some(caption) = &d.caption {
+                anchor.push_str(&format!(
+                    " data-listing-caption=\"{}\"",
+                    crate::callout::html_escape(caption)
+                ));
+            }
             anchor.push_str(" aria-hidden=\"true\"></div>\n");
             out.push_str(&anchor);
         }
@@ -501,6 +507,50 @@ mod tests {
         assert!(
             !out.contains("data-listing-tag-range"),
             "no range attr expected without :start:end suffix; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_emits_caption_attribute_on_anchor_when_present() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path();
+        std::fs::create_dir_all(src.join("listings")).unwrap();
+        std::fs::write(src.join("listings/foo.rs"), "fn body() {}\n").unwrap();
+        let content = "```rust\n{{#include listings/foo.rs caption=\"The claim layer\"}}\n```\n";
+        let out = splice_chapter(content, src, None).expect("splice");
+        assert!(
+            out.contains(r#"data-listing-caption="The claim layer""#),
+            "expected caption attribute on anchor; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_omits_caption_attribute_when_absent() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path();
+        std::fs::create_dir_all(src.join("listings")).unwrap();
+        std::fs::write(src.join("listings/foo.rs"), "fn body() {}\n").unwrap();
+        let content = "```rust\n{{#include listings/foo.rs}}\n```\n";
+        let out = splice_chapter(content, src, None).expect("splice");
+        assert!(
+            !out.contains("data-listing-caption"),
+            "no caption attr expected without caption=; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_html_escapes_caption_attribute() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path();
+        std::fs::create_dir_all(src.join("listings")).unwrap();
+        std::fs::write(src.join("listings/foo.rs"), "fn body() {}\n").unwrap();
+        // `&` and `<` must be entity-escaped so the attribute stays
+        // well-formed HTML.
+        let content = "```rust\n{{#include listings/foo.rs caption=\"A & B <tag>\"}}\n```\n";
+        let out = splice_chapter(content, src, None).expect("splice");
+        assert!(
+            out.contains(r#"data-listing-caption="A &amp; B &lt;tag&gt;""#),
+            "caption attribute should be HTML-escaped; got:\n{out}",
         );
     }
 

@@ -1068,7 +1068,7 @@ fn render_callout_list_pdf(callouts: &[Callout]) -> String {
 }
 
 // CALLOUT: html-escape Standard HTML escapes plus `{` → `&#123;` so a callout body that documents a `{{#callout LABEL}}` or `{{#diff a b}}` directive (rendered into the overlay HTML, which sits OUTSIDE its fenced code block) doesn't get its example syntax mistaken for a real directive by the cross-ref scanner downstream. The browser still renders `&#123;&#123;` as `{{` visually.
-fn html_escape(s: &str) -> String {
+pub(crate) fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
