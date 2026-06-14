@@ -24,6 +24,11 @@ command = "mdbook-listings"
 # mdbook-listings runs, and the include splicer silently no-ops (no
 # directives to find → no `<div data-listing-tag>` anchors emitted).
 before = ["admonish", "links"]
+# Dogfood the v0.1.1 numbering feature: every listing gets a "Listing N.M"
+# label and callout badges scope to it (5.3.1). The prose and the captured
+# screenshots predate this and still describe bare ordinals; see the
+# "Changes since v0.1.0" errata.
+number-listings = true
 
 [output.html]
 additional-css = ["./mdbook-admonish.css", "./mdbook-listings.css"]

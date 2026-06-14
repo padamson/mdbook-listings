@@ -109,7 +109,7 @@ commit, all frozen.
 ### `tests/freeze.rs` — the acceptance criteria as tests
 
 ```rust
-{{#include listings/freeze-tests-v1.rs}}
+{{#include listings/freeze-tests-v1.rs caption="The acceptance criteria as tests"}}
 ```
 
 The `freeze_rejects_conflicting_content_without_force` and

@@ -9,3 +9,4 @@
 - [Verify Frozen Listings](ch07-verify-sync.md)
 - [Recipes](ch08-recipes.md)
 - [Future Work](ch09-future-work.md)
+- [Changes since v0.1.0](changes-since-0.1.0.md)

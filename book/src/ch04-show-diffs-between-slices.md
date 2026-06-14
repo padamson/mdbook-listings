@@ -333,7 +333,7 @@ start byte falls inside an open fence — the same rule that lets
 this very narrative quote `\{{#diff …}}` syntax in fenced examples
 without the splicer eating them.
 
-{{#diff diff-v3 diff-v4}}
+{{#diff diff-v3 diff-v4 caption="Fence-aware directive scanning"}}
 
 `src/main.rs`'s `preprocess` function goes from a no-op
 pass-through to the actual transformation: load the manifest from

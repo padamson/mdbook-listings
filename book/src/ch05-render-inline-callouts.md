@@ -9,6 +9,15 @@ slice shipped as one commit; the **Outside-in narrative**
 sub-section below grew by one sub-section per slice.
 ```
 
+```admonish note title="Screenshots predate listing numbers"
+The screenshots in this chapter were captured at the slice they
+document, before v0.1.1 added listing numbers. On the current build
+every listing carries a `Listing N.M` label and each callout badge is
+scoped to it (`5.3.1`), so the live render above each image shows scoped
+badges while the image still shows bare ordinals. See
+[Changes since v0.1.0](changes-since-0.1.0.md).
+```
+
 ## Story
 
 > As a book author, I want to attach inline annotations and named
