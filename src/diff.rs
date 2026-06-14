@@ -22,6 +22,7 @@ pub struct DiffDirective {
     pub right: String,
     pub left_range: Option<LineRange>,
     pub right_range: Option<LineRange>,
+    pub caption: Option<String>,
     pub span: Range<usize>,
 }
 
@@ -115,7 +116,8 @@ pub fn parse_line_range(tok: &str) -> Option<LineRange> {
 pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
     let mut out = Vec::new();
     for occ in scan_directives(content, "{{#diff", FencePolicy::SkipInside) {
-        let tokens: Vec<&str> = occ.args.split_whitespace().collect();
+        let (args, caption) = crate::directive::split_caption(occ.args);
+        let tokens: Vec<&str> = args.split_whitespace().collect();
         let parsed = match tokens.as_slice() {
             [l, r] => Some((l.to_string(), r.to_string(), None, None)),
             [l, r, lr, rr] => match (parse_line_range(lr), parse_line_range(rr)) {
@@ -135,6 +137,7 @@ pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
                 right,
                 left_range,
                 right_range,
+                caption,
                 span: occ.span,
             });
         }
@@ -521,6 +524,32 @@ mod tests {
     }
 
     #[test]
+    fn parse_directives_extracts_caption_and_keeps_operands() {
+        let s = "{{#diff a b caption=\"Method and act\"}}";
+        let got = parse_directives(s);
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].left, "a");
+        assert_eq!(got[0].right, "b");
+        assert_eq!(got[0].caption.as_deref(), Some("Method and act"));
+    }
+
+    #[test]
+    fn parse_directives_caption_coexists_with_ranges() {
+        let s = "{{#diff a b 1:50 1:60 caption=\"Sliced\"}}";
+        let got = parse_directives(s);
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].left, "a");
+        assert_eq!(
+            got[0].left_range,
+            Some(LineRange {
+                start: Some(1),
+                end: Some(50)
+            })
+        );
+        assert_eq!(got[0].caption.as_deref(), Some("Sliced"));
+    }
+
+    #[test]
     fn parse_directives_accepts_open_endpoints_in_ranges() {
         let cases = [
             (
@@ -834,6 +863,7 @@ mod tests {
             right: "right-tag".into(),
             left_range: None,
             right_range: None,
+            caption: None,
             span: 0..0,
         };
 

@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::directive::{FencePolicy, line_number, scan_directives};
+use crate::directive::{FencePolicy, line_number, scan_directives, split_caption};
 use crate::freeze::hex_sha256;
 use crate::manifest::Manifest;
 
@@ -116,7 +116,8 @@ fn check_references(book_root: &Path, manifest: &Manifest, report: &mut VerifyRe
     let tags: HashSet<&str> = manifest.listings.iter().map(|l| l.tag.as_str()).collect();
     for (rel, content) in chapter_markdown(book_root) {
         for occ in scan_directives(&content, "{{#include ", FencePolicy::Annotate) {
-            let path = occ.args.trim();
+            let (args, _caption) = split_caption(occ.args);
+            let path = args.trim();
             // Only listings/ includes resolve to a frozen tag; snippets/
             // and other paths are not manifest records.
             let Some(rest) = path.strip_prefix("listings/") else {
@@ -142,7 +143,8 @@ fn check_references(book_root: &Path, manifest: &Manifest, report: &mut VerifyRe
             }
         }
         for occ in scan_directives(&content, "{{#diff", FencePolicy::SkipInside) {
-            let tokens: Vec<&str> = occ.args.split_whitespace().collect();
+            let (args, _caption) = split_caption(occ.args);
+            let tokens: Vec<&str> = args.split_whitespace().collect();
             // The diff splicer only processes 2-token (whole-file) or
             // 4-token (with ranges) forms; the first two tokens are the
             // operands. Other arities are left literal, so don't validate.
@@ -216,7 +218,8 @@ fn check_orphans(book_root: &Path, manifest: &Manifest, report: &mut VerifyRepor
 fn check_live_operands(book_root: &Path, report: &mut VerifyReport) {
     for (rel, content) in chapter_markdown(book_root) {
         for occ in scan_directives(&content, "{{#diff", FencePolicy::SkipInside) {
-            let tokens: Vec<&str> = occ.args.split_whitespace().collect();
+            let (args, _caption) = split_caption(occ.args);
+            let tokens: Vec<&str> = args.split_whitespace().collect();
             if tokens.len() != 2 && tokens.len() != 4 {
                 continue;
             }
@@ -476,6 +479,21 @@ mod tests {
         fs::write(
             root.join("src/ch.md"),
             "```rust\n{{#include listings/demo-v1.rs:1:1}}\n```\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_references(&root, &manifest, &mut report);
+        assert_eq!(report.error_count(), 0, "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_references_tolerates_caption_on_include_and_diff() {
+        let (_t, root, manifest) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "```rust\n{{#include listings/demo-v1.rs caption=\"A demo\"}}\n```\n\n\
+             {{#diff demo-v1 demo-v1 caption=\"A diff\"}}\n",
         )
         .unwrap();
 

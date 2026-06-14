@@ -18,6 +18,7 @@ pub struct IncludeDirective {
     /// Optional line range parsed off the trailing `:start:end` suffix,
     /// matching mdBook's built-in `{{#include path:start:end}}` form.
     pub range: Option<LineRange>,
+    pub caption: Option<String>,
     pub span: Range<usize>,
     pub fence_close_end: Option<usize>,
 }
@@ -26,7 +27,8 @@ pub struct IncludeDirective {
 pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
     let mut out = Vec::new();
     for occ in scan_directives(content, "{{#include ", FencePolicy::Annotate) {
-        let raw = occ.args.trim();
+        let (args, caption) = crate::directive::split_caption(occ.args);
+        let raw = args.trim();
         // CALLOUT: snippets-intercept Two prefixes are intercepted: `listings/` (frozen tags — emit anchor) and `snippets/` (no anchor; we expand to give the callout splicer a shot at any CALLOUT markers in the snippet source). Other forms fall through to mdbook's built-in `links` preprocessor.
         let intercepted = raw.starts_with("listings/") || raw.starts_with("snippets/");
         if !intercepted {
@@ -61,6 +63,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
             tag,
             rel_path: path.to_string(),
             range,
+            caption,
             span: occ.span,
             fence_close_end: occ.fence_close_end,
         });
@@ -299,6 +302,32 @@ mod tests {
                 end: Some(20)
             })
         );
+    }
+
+    #[test]
+    fn parse_listing_includes_extracts_caption_and_keeps_path_clean() {
+        let content = "```rust\n{{#include listings/foo.rs caption=\"The claim layer\"}}\n```\n";
+        let got = parse_listing_includes(content);
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].rel_path, "listings/foo.rs");
+        assert_eq!(got[0].tag.as_deref(), Some("foo"));
+        assert_eq!(got[0].caption.as_deref(), Some("The claim layer"));
+    }
+
+    #[test]
+    fn parse_listing_includes_caption_coexists_with_range() {
+        let content = "```rust\n{{#include listings/foo.rs:5:20 caption=\"Slice\"}}\n```\n";
+        let got = parse_listing_includes(content);
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].rel_path, "listings/foo.rs");
+        assert_eq!(
+            got[0].range,
+            Some(LineRange {
+                start: Some(5),
+                end: Some(20)
+            })
+        );
+        assert_eq!(got[0].caption.as_deref(), Some("Slice"));
     }
 
     #[test]

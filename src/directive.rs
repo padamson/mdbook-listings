@@ -110,6 +110,23 @@ pub(crate) fn line_number(content: &str, byte_offset: usize) -> usize {
         + 1
 }
 
+/// Lift a `caption="..."` token off a directive's args, returning the
+/// remaining args and the caption text. Shared so the include and diff
+/// passes parse captions identically. The first `"` ends the value.
+pub(crate) fn split_caption(args: &str) -> (&str, Option<String>) {
+    const KEY: &str = "caption=\"";
+    let Some(start) = args.find(KEY) else {
+        return (args, None);
+    };
+    let value_start = start + KEY.len();
+    let Some(rel_end) = args[value_start..].find('"') else {
+        // Unterminated caption: leave the args untouched rather than guess.
+        return (args, None);
+    };
+    let caption = args[value_start..value_start + rel_end].to_string();
+    (args[..start].trim_end(), Some(caption))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,5 +232,26 @@ mod tests {
         assert_eq!(line_number(s, 0), 1);
         assert_eq!(line_number(s, 4), 2);
         assert_eq!(line_number(s, s.find("three").unwrap()), 3);
+    }
+
+    #[test]
+    fn split_caption_lifts_trailing_quoted_caption_with_spaces() {
+        let (rest, cap) = split_caption("listings/foo.rs caption=\"The claim layer\"");
+        assert_eq!(rest, "listings/foo.rs");
+        assert_eq!(cap.as_deref(), Some("The claim layer"));
+    }
+
+    #[test]
+    fn split_caption_none_when_absent() {
+        let (rest, cap) = split_caption("a b 1:2 1:3");
+        assert_eq!(rest, "a b 1:2 1:3");
+        assert_eq!(cap, None);
+    }
+
+    #[test]
+    fn split_caption_leaves_args_intact_on_unterminated_quote() {
+        let (rest, cap) = split_caption("a b caption=\"oops");
+        assert_eq!(rest, "a b caption=\"oops");
+        assert_eq!(cap, None);
     }
 }
