@@ -828,21 +828,27 @@ struct ListingAnchor<'c> {
 fn listing_anchor_after_fence<'c>(content: &'c str, close_end: usize) -> Option<ListingAnchor<'c>> {
     let tail = &content[close_end..];
     let after_newline = tail.strip_prefix('\n').unwrap_or(tail);
-    let anchor_open = after_newline.find("<div data-listing-tag=\"")?;
+    // Find the anchor element, then its `data-listing-tag` attribute anywhere
+    // inside it — the numbering pass may have stamped `data-listing-number`
+    // ahead of the tag, so the tag is not necessarily the first attribute.
+    let anchor_open = after_newline.find("<div ")?;
     if anchor_open > 64 {
         return None;
     }
-    let value_start = anchor_open + "<div data-listing-tag=\"".len();
-    let value_end = after_newline[value_start..].find('"')?;
-    let tag = &after_newline[value_start..value_start + value_end];
-    // Look for an optional `data-listing-tag-range="A:B"` attribute on the
-    // same anchor element. The full element fits on one line, so cap the
-    // search at the closing `>` of the `<div>`.
+    // The full element fits on one line, so cap the search at the closing `>`.
     let div_end = after_newline[anchor_open..]
         .find('>')
         .map(|i| anchor_open + i)
         .unwrap_or(after_newline.len());
     let div_text = &after_newline[anchor_open..div_end];
+    // Only include anchors carry `data-listing-tag`; a diff anchor has none
+    // and correctly yields `None` (it bears no sidecar callouts).
+    const TAG_KEY: &str = "data-listing-tag=\"";
+    let tag_start = div_text.find(TAG_KEY)? + TAG_KEY.len();
+    let tag_end = div_text[tag_start..].find('"')?;
+    let tag = &div_text[tag_start..tag_start + tag_end];
+    // Look for an optional `data-listing-tag-range="A:B"` attribute on the
+    // same anchor element.
     let range_start_source_line = div_text
         .find("data-listing-tag-range=\"")
         .and_then(|r_open| {

@@ -56,7 +56,7 @@
  *    side/clamp choice live.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes
- * are the expected build-time asset: mdbook-listings-js-v6
+ * are the expected build-time asset: mdbook-listings-js-v7
  */
 (function () {
   var LEFT_FALLBACK_THRESHOLD_EM = 16;
@@ -106,6 +106,21 @@
       var body = entry.querySelector('.callout-body');
       if (!body) return;
 
+      // `em` for non-font properties resolves against the ELEMENT'S OWN
+      // font-size. The popover has `font-size: 0.9em` and mdbook uses
+      // `html { font-size: 62.5% }`, so the popover's resolved font-size
+      // (~14.4px) differs from documentElement's (~10px). Use the popover's
+      // em so the threshold/max-width/offset values match the CSS.
+      var bodyEmPx = parseFloat(getComputedStyle(body).fontSize) || 16;
+      // When the popover opens LEFT it must clear the badge. The badge is
+      // pinned to the entry's right edge, so the body's `right` offset has to
+      // exceed the badge's own width plus a small gap — a fixed inset would
+      // overlap a wide listing-scoped badge (e.g. `5.18.2`) even though it
+      // cleared a bare ordinal. Measured here so it tracks the actual badge.
+      var badgeEl = entry.querySelector('.callout-badge');
+      var badgeWidth = badgeEl ? badgeEl.getBoundingClientRect().width : 0;
+      var leftOpenRightPx = badgeWidth + 0.5 * bodyEmPx;
+
       // Per-callout author override (ch.6 slice 4): a `--align=left`
       // option on the CALLOUT marker surfaces as `data-callout-align`
       // on the entry. Pin the popover to that side regardless of
@@ -115,7 +130,7 @@
       var authorAlign = entry.dataset.calloutAlign;
       if (authorAlign === 'left') {
         body.style.left = 'auto';
-        body.style.right = '2em';
+        body.style.right = leftOpenRightPx + 'px';
         body.style.maxWidth = '';
         entry.classList.add('callout-entry--left-popover');
         entry.dataset.calloutPopoverDecision = 'author-left';
@@ -130,13 +145,6 @@
         return;
       }
 
-      // `em` for non-font properties resolves against the ELEMENT'S
-      // OWN font-size. The popover has `font-size: 0.9em` and mdbook
-      // uses `html { font-size: 62.5% }`, so the popover's resolved
-      // font-size (~14.4px) differs from documentElement's (~10px).
-      // Use the popover's em so the threshold and max-width values
-      // match what the CSS rule resolves to.
-      var bodyEmPx = parseFloat(getComputedStyle(body).fontSize) || 16;
       var thresholdPx = LEFT_FALLBACK_THRESHOLD_EM * bodyEmPx;
       var maxWidthPx = DEFAULT_MAX_WIDTH_EM * bodyEmPx;
       var bufferPx = GUTTER_BUFFER_EM * bodyEmPx;
@@ -162,7 +170,7 @@
         // identical to "JS never ran." Direct property writes on the
         // element's `style` object are unconditional.
         body.style.left = 'auto';
-        body.style.right = '2em';
+        body.style.right = leftOpenRightPx + 'px';
         body.style.maxWidth = '';
         entry.classList.add('callout-entry--left-popover');
       } else {

@@ -104,11 +104,15 @@ fn render_caption(
     if number.is_none() && caption_escaped.is_none() {
         return None;
     }
+    // The element is spliced above the opening fence, external to the
+    // listing. The trailing blank line is load-bearing: without it the markdown
+    // parser glues the `<div>` to the fence and renders it as escaped inline
+    // text instead of a standalone block above the <pre>.
     match renderer {
         SupportedRenderer::Html => {
             let caption = caption_escaped.map(str::to_string);
             let text = label_text(number, caption.as_deref());
-            Some(format!("<div class=\"listing-caption\">{text}</div>\n"))
+            Some(format!("<div class=\"listing-caption\">{text}</div>\n\n"))
         }
         SupportedRenderer::TypstPdf => {
             let caption = caption_escaped.map(html_unescape);
@@ -321,8 +325,8 @@ mod tests {
         let content = format!("intro\n\n{}", include_block("a", None));
         let out = splice_chapter(&content, Some(&[5]), true, Html);
         assert!(
-            out.contains("intro\n\n<div class=\"listing-caption\">Listing 5.1</div>\n```rust"),
-            "caption must sit immediately before its fence, after the preceding text; got:\n{out}",
+            out.contains("intro\n\n<div class=\"listing-caption\">Listing 5.1</div>\n\n```rust"),
+            "caption must sit as a standalone block above its fence, after the preceding text; got:\n{out}",
         );
     }
 
