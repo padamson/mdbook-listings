@@ -25,6 +25,9 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 [imports.zcash]
 url = "https://raw.githubusercontent.com/zcash/rust-ecosystem/main/supply-chain/audits.toml"
 
+[policy.mdbook-listings]
+audit-as-crates-io = false
+
 [[exemptions.adobe-cmap-parser]]
 version = "0.4.1"
 criteria = "safe-to-run"
