@@ -74,12 +74,12 @@ where
 
     let tracing_handle = context.tracing().await.expect("tracing handle");
     tracing_handle
-        .start(Some(TracingStartOptions {
-            name: Some(name.to_string()),
-            screenshots: Some(true),
-            snapshots: Some(true),
-            ..Default::default()
-        }))
+        .start(Some(
+            TracingStartOptions::default()
+                .name(name)
+                .screenshots(true)
+                .snapshots(true),
+        ))
         .await
         .expect("tracing start");
 
@@ -106,9 +106,9 @@ where
         None
     };
 
-    let stop_opts = trace_path.as_ref().map(|p| TracingStopOptions {
-        path: Some(p.to_string_lossy().into_owned()),
-    });
+    let stop_opts = trace_path
+        .as_ref()
+        .map(|p| TracingStopOptions::default().path(p.to_string_lossy()));
 
     let _ = tracing_handle.stop(stop_opts).await;
     let _ = context.close().await;
