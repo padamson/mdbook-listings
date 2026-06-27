@@ -15,6 +15,12 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # pdf-extract 0.12 pulls the patched lopdf (>=0.42) but garbles
+      # typst text extraction, breaking tests/pdf_callouts.rs. Hold at
+      # 0.10 and drop this ignore once the regression is fixed upstream.
+      # Tracked in #31.
+      - dependency-name: "pdf-extract"
 
   - package-ecosystem: "github-actions"
     directory: "/"
