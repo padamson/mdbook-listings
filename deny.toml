@@ -10,7 +10,15 @@ no-default-features = false
 feature-depth = 1
 
 [advisories]
-ignore = []
+# RUSTSEC-2026-0187: stack-overflow DoS in lopdf via deeply nested PDF
+# objects. lopdf is reachable only through pdf-extract, a dev-dependency
+# used by tests/pdf_callouts.rs to extract text from our own typst-generated
+# book PDF -- a trusted, fixed input. The published crate never links lopdf,
+# and we never parse untrusted PDFs, so the advisory has no real exposure.
+# We hold pdf-extract at 0.10 because 0.12 (which pulls the patched lopdf
+# >=0.42) regresses text extraction on typst PDFs and breaks that test.
+# Revisit when pdf-extract ships a release that fixes the regression.
+ignore = ["RUSTSEC-2026-0187"]
 
 [licenses]
 allow = [
