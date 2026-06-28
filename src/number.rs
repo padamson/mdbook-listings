@@ -21,20 +21,33 @@ struct Anchor {
     caption: Option<String>,
 }
 
-/// Splice listing numbers and captions into `content`.
+/// A numbered listing, surfaced for the book-wide List-of-Listings index.
+/// Carries the rendered number (`5.1`), the link-target id stamped onto its
+/// caption div (`listing-5-1`), and the caption still HTML-escaped as stored
+/// on the anchor.
+pub struct ListingRef {
+    pub number: String,
+    pub caption: Option<String>,
+    pub id: String,
+}
+
+/// Splice listing numbers and captions into `content`, returning the rewritten
+/// content and the numbered listings it found, in document order, for the
+/// List-of-Listings index.
 ///
 /// `chapter_number` is the chapter's dotted section number (`[5]` → `5`,
 /// `[5, 2]` → `5.2`); `None` for an unnumbered (draft/prefix) chapter.
 /// `number_listings` is the `[preprocessor.listings] number-listings` opt-in.
 /// A listing's number renders only when the flag is on and the chapter has a
-/// number; its caption renders whenever one is present. When neither piece
-/// applies to any listing, `content` is returned unchanged.
+/// number; its caption renders whenever one is present. A numbered listing's
+/// caption div also gains an `id` so the index can link to it. When neither
+/// piece applies to any listing, `content` is returned unchanged with no refs.
 pub fn splice_chapter(
     content: &str,
     chapter_number: Option<&[u32]>,
     number_listings: bool,
     renderer: SupportedRenderer,
-) -> String {
+) -> (String, Vec<ListingRef>) {
     // (opener_start, anchor) for each block immediately followed by a locator
     // anchor, in document order. Plain code blocks and snippets have no anchor
     // and are not listings.
@@ -45,7 +58,7 @@ pub fn splice_chapter(
         }
     }
     if listings.is_empty() {
-        return content.to_string();
+        return (content.to_string(), Vec::new());
     }
 
     let prefix = chapter_number
@@ -55,27 +68,38 @@ pub fn splice_chapter(
     // Each numbered listing contributes up to two edits: a caption element
     // inserted before its opening fence, and a `data-listing-number` attribute
     // spliced into its anchor. Both are pure insertions; collect them and
-    // apply in ascending position order.
+    // apply in ascending position order. A numbered listing also yields one
+    // `ListingRef` for the index.
     let mut edits: Vec<(usize, String)> = Vec::new();
+    let mut refs: Vec<ListingRef> = Vec::new();
     for (i, (opener_start, anchor)) in listings.iter().enumerate() {
         let number = match (&prefix, number_listings) {
             (Some(p), true) => Some(format!("{p}.{}", i + 1)),
             _ => None,
         };
-        if let Some(element) =
-            render_caption(number.as_deref(), anchor.caption.as_deref(), renderer)
-        {
+        let id = number.as_deref().map(listing_id);
+        if let Some(element) = render_caption(
+            number.as_deref(),
+            id.as_deref(),
+            anchor.caption.as_deref(),
+            renderer,
+        ) {
             edits.push((*opener_start, element));
         }
-        if let Some(n) = &number {
+        if let Some(n) = number {
             edits.push((
                 anchor.div_start + "<div".len(),
                 format!(" data-listing-number=\"{n}\""),
             ));
+            refs.push(ListingRef {
+                number: n,
+                caption: anchor.caption.clone(),
+                id: id.expect("a numbered listing always has an id"),
+            });
         }
     }
     if edits.is_empty() {
-        return content.to_string();
+        return (content.to_string(), refs);
     }
     edits.sort_by_key(|(pos, _)| *pos);
 
@@ -87,7 +111,12 @@ pub fn splice_chapter(
         cursor = pos;
     }
     out.push_str(&content[cursor..]);
-    out
+    (out, refs)
+}
+
+/// The HTML link-target id for a numbered listing: `5.1` → `listing-5-1`.
+fn listing_id(number: &str) -> String {
+    format!("listing-{}", number.replace('.', "-"))
 }
 
 /// The visible caption line for a listing, or `None` when there is neither a
@@ -98,6 +127,7 @@ pub fn splice_chapter(
 /// to source text for the PDF markdown line.
 fn render_caption(
     number: Option<&str>,
+    id: Option<&str>,
     caption_escaped: Option<&str>,
     renderer: SupportedRenderer,
 ) -> Option<String> {
@@ -112,7 +142,12 @@ fn render_caption(
         SupportedRenderer::Html => {
             let caption = caption_escaped.map(str::to_string);
             let text = label_text(number, caption.as_deref());
-            Some(format!("<div class=\"listing-caption\">{text}</div>\n\n"))
+            // A numbered listing carries an id so the List-of-Listings index
+            // can link to it; an unnumbered caption has no link target.
+            let id_attr = id.map(|i| format!(" id=\"{i}\"")).unwrap_or_default();
+            Some(format!(
+                "<div class=\"listing-caption\"{id_attr}>{text}</div>\n\n"
+            ))
         }
         SupportedRenderer::TypstPdf => {
             let caption = caption_escaped.map(html_unescape);
@@ -125,7 +160,7 @@ fn render_caption(
 /// Join the optional `Listing N.M` label and the optional caption with an
 /// em-dash, in whichever combination is present (the caller guarantees at
 /// least one is).
-fn label_text(number: Option<&str>, caption: Option<&str>) -> String {
+pub(crate) fn label_text(number: Option<&str>, caption: Option<&str>) -> String {
     match (number, caption) {
         (Some(n), Some(c)) => format!("Listing {n} — {c}"),
         (Some(n), None) => format!("Listing {n}"),
@@ -211,13 +246,13 @@ mod tests {
             include_block("a", None),
             include_block("b", None)
         );
-        let out = splice_chapter(&content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(&content, Some(&[5]), true, Html);
         assert!(
-            out.contains(r#"<div class="listing-caption">Listing 5.1</div>"#),
+            out.contains(r#"<div class="listing-caption" id="listing-5-1">Listing 5.1</div>"#),
             "{out}"
         );
         assert!(
-            out.contains(r#"<div class="listing-caption">Listing 5.2</div>"#),
+            out.contains(r#"<div class="listing-caption" id="listing-5-2">Listing 5.2</div>"#),
             "{out}"
         );
     }
@@ -225,7 +260,7 @@ mod tests {
     #[test]
     fn interleaves_include_and_diff_anchors_in_one_sequence() {
         let content = format!("{}\n\n{}\n", include_block("a", None), diff_block("a", "b"));
-        let out = splice_chapter(&content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(&content, Some(&[5]), true, Html);
         assert!(out.contains("Listing 5.1"), "include is 5.1; got:\n{out}");
         assert!(out.contains("Listing 5.2"), "diff is 5.2; got:\n{out}");
         // Both anchors carry the machine-readable number for the callout pass,
@@ -243,16 +278,18 @@ mod tests {
     #[test]
     fn subsection_number_prefixes_listing() {
         let content = include_block("a", None);
-        let out = splice_chapter(&content, Some(&[5, 2]), true, Html);
+        let (out, _) = splice_chapter(&content, Some(&[5, 2]), true, Html);
         assert!(out.contains("Listing 5.2.1"), "got:\n{out}");
     }
 
     #[test]
     fn number_and_caption_join_with_em_dash() {
         let content = include_block("a", Some("The claim layer"));
-        let out = splice_chapter(&content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(&content, Some(&[5]), true, Html);
         assert!(
-            out.contains(r#"<div class="listing-caption">Listing 5.1 — The claim layer</div>"#),
+            out.contains(
+                r#"<div class="listing-caption" id="listing-5-1">Listing 5.1 — The claim layer</div>"#
+            ),
             "got:\n{out}",
         );
     }
@@ -260,7 +297,7 @@ mod tests {
     #[test]
     fn flag_off_renders_caption_only_without_number_or_attribute() {
         let content = include_block("a", Some("Just a caption"));
-        let out = splice_chapter(&content, Some(&[5]), false, Html);
+        let (out, _) = splice_chapter(&content, Some(&[5]), false, Html);
         assert!(
             out.contains(r#"<div class="listing-caption">Just a caption</div>"#),
             "caption renders with the flag off; got:\n{out}",
@@ -278,7 +315,7 @@ mod tests {
     #[test]
     fn flag_off_without_caption_is_byte_identical() {
         let content = include_block("a", None);
-        let out = splice_chapter(&content, Some(&[5]), false, Html);
+        let (out, _) = splice_chapter(&content, Some(&[5]), false, Html);
         assert_eq!(
             out, content,
             "flag off + no caption must pass through unchanged"
@@ -300,9 +337,9 @@ mod tests {
             "```rust\nlet plain = 1;\n```\n\n",
             "Tail.\n",
         );
-        assert_eq!(splice_chapter(content, Some(&[5]), false, Html), content);
+        assert_eq!(splice_chapter(content, Some(&[5]), false, Html).0, content);
         assert_eq!(
-            splice_chapter(content, Some(&[5]), false, TypstPdf),
+            splice_chapter(content, Some(&[5]), false, TypstPdf).0,
             content
         );
     }
@@ -310,7 +347,7 @@ mod tests {
     #[test]
     fn unnumbered_chapter_renders_caption_only() {
         let content = include_block("a", Some("Caption"));
-        let out = splice_chapter(&content, None, true, Html);
+        let (out, _) = splice_chapter(&content, None, true, Html);
         assert!(
             out.contains(r#"<div class="listing-caption">Caption</div>"#),
             "got:\n{out}"
@@ -325,14 +362,14 @@ mod tests {
     #[test]
     fn unnumbered_chapter_without_caption_is_byte_identical() {
         let content = include_block("a", None);
-        let out = splice_chapter(&content, None, true, Html);
+        let (out, _) = splice_chapter(&content, None, true, Html);
         assert_eq!(out, content);
     }
 
     #[test]
     fn plain_code_block_without_anchor_is_byte_identical() {
         let content = "```rust\nlet x = 1;\n```\n".to_string();
-        let out = splice_chapter(&content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(&content, Some(&[5]), true, Html);
         assert_eq!(
             out, content,
             "a block with no locator anchor is not a listing"
@@ -345,9 +382,11 @@ mod tests {
         // preceding prose (not jump to the start of the chapter) and sit
         // immediately before the opening fence (not a line early).
         let content = format!("intro\n\n{}", include_block("a", None));
-        let out = splice_chapter(&content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(&content, Some(&[5]), true, Html);
         assert!(
-            out.contains("intro\n\n<div class=\"listing-caption\">Listing 5.1</div>\n\n```rust"),
+            out.contains(
+                "intro\n\n<div class=\"listing-caption\" id=\"listing-5-1\">Listing 5.1</div>\n\n```rust"
+            ),
             "caption must sit as a standalone block above its fence, after the preceding text; got:\n{out}",
         );
     }
@@ -358,7 +397,7 @@ mod tests {
         // and the anchor; a numbered listing must still be recognized.
         let content =
             "```rust\nfn a() {}\n```\n\n<div data-listing-tag=\"a\" aria-hidden=\"true\"></div>\n";
-        let out = splice_chapter(content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(content, Some(&[5]), true, Html);
         assert!(out.contains("Listing 5.1"), "got:\n{out}");
         assert!(
             out.contains(r#"<div data-listing-number="5.1" data-listing-tag="a""#),
@@ -370,7 +409,7 @@ mod tests {
     fn html_keeps_caption_escaped() {
         // Caption arrives HTML-escaped on the anchor; HTML text wants it as-is.
         let content = include_block("a", Some("A &amp; B &lt;t&gt;"));
-        let out = splice_chapter(&content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(&content, Some(&[5]), true, Html);
         assert!(
             out.contains("Listing 5.1 — A &amp; B &lt;t&gt;"),
             "got:\n{out}"
@@ -380,7 +419,7 @@ mod tests {
     #[test]
     fn pdf_renders_bold_markdown_and_unescapes_caption() {
         let content = include_block("a", Some("A &amp; B &lt;t&gt;"));
-        let out = splice_chapter(&content, Some(&[5]), true, TypstPdf);
+        let (out, _) = splice_chapter(&content, Some(&[5]), true, TypstPdf);
         assert!(out.contains("**Listing 5.1 — A & B <t>**"), "got:\n{out}");
         assert!(
             !out.contains(r#"class="listing-caption""#),

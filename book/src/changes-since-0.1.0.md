@@ -5,6 +5,14 @@ kept moving after the book closed, so this page lists the changes that
 postdate the prose. The chapters themselves are left as the v0.1.0 record
 and do not describe what follows.
 
+## Unreleased — List of Listings
+
+- **List of Listings index.** A `{{#list-of-listings}}` marker renders a
+  book-wide index of every numbered listing, grouped by the chapter it
+  appears in and linking to each one. Opt-in through
+  `[preprocessor.listings] list-of-listings`; this book's
+  [List of Listings](listings-index.md) page uses it.
+
 ## v0.1.1 — listing numbers and captions
 
 - **Automatic listing numbers.** Every listing renders a `Listing N.M`

@@ -24,6 +24,12 @@ output is byte-identical to 0.1.0.
   unified-diff context radius (default 3, matching `diff -U3`), so a hunk
   can show enough surrounding lines to place a change. A malformed value
   falls back to the default rather than dropping the directive.
+- **List of Listings index.** A `{{#list-of-listings}}` marker renders a
+  book-wide index of every numbered listing, grouped by the chapter it
+  appears in and linking to each one. Opt-in via
+  `[preprocessor.listings] list-of-listings` (default off). Each numbered
+  listing's caption gains an `id` so the index (and other prose) can link
+  to it.
 
 ### Changed
 - Callout badges render as pills at any width, so a bare `1` and a scoped

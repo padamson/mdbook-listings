@@ -12,6 +12,7 @@ use mdbook_listings::freeze::{
 };
 use mdbook_listings::include::splice_chapter as splice_includes;
 use mdbook_listings::install::{InstallOutcome, ensure_assets_fresh, install};
+use mdbook_listings::list_of_listings::{ChapterListings, render_index, replace_markers};
 use mdbook_listings::manifest::Manifest;
 use mdbook_listings::number::splice_chapter as splice_numbers;
 use mdbook_listings::verify::{Severity, verify};
@@ -211,7 +212,18 @@ fn preprocess() -> Result<()> {
         .ok()
         .flatten()
         .unwrap_or(false);
+    // Opt-in: the {{#list-of-listings}} index renders only when this is set.
+    // A malformed value defaults off rather than failing the build.
+    let list_of_listings = ctx
+        .config
+        .get::<bool>("preprocessor.listings.list-of-listings")
+        .ok()
+        .flatten()
+        .unwrap_or(false);
 
+    // Accumulates each chapter's numbered listings, in document order, for the
+    // book-wide List-of-Listings index emitted after the per-chapter passes.
+    let mut collected: Vec<ChapterListings> = Vec::new();
     let mut splice_err: Option<anyhow::Error> = None;
     book.for_each_mut(|item| {
         if splice_err.is_some() {
@@ -242,12 +254,30 @@ fn preprocess() -> Result<()> {
                     })
                 })
                 .map(|new_content| {
-                    splice_numbers(
+                    let (numbered, refs) = splice_numbers(
                         &new_content,
                         chapter.number.as_ref().map(|n| n.as_slice()),
                         number_listings,
                         renderer,
-                    )
+                    );
+                    // Record this chapter's listings for the book-wide index.
+                    // The link path is the chapter file relative to the book
+                    // src root (Phase 1 assumes the index page is top-level).
+                    // Chapters with no listings are still recorded; render_index
+                    // skips them. The flag is the sole gate — when off, nothing
+                    // is collected, so the index renders empty.
+                    if list_of_listings {
+                        collected.push(ChapterListings {
+                            name: chapter.name.clone(),
+                            path: chapter
+                                .path
+                                .as_ref()
+                                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                                .unwrap_or_default(),
+                            listings: refs,
+                        });
+                    }
+                    numbered
                 })
                 .and_then(|new_content| {
                     splice_callouts(&new_content, renderer, &sidecars)
@@ -261,6 +291,17 @@ fn preprocess() -> Result<()> {
     if let Some(e) = splice_err {
         return Err(e);
     }
+
+    // Final book-wide pass: replace every {{#list-of-listings}} marker with the
+    // index built from the collected listings. When the feature is off nothing
+    // was collected, so the index is empty and the marker is simply stripped —
+    // the raw directive never leaks into the output.
+    let index = render_index(&collected);
+    book.for_each_mut(|item| {
+        if let BookItem::Chapter(chapter) = item {
+            chapter.content = replace_markers(&chapter.content, &index);
+        }
+    });
 
     serde_json::to_writer(std::io::stdout(), &book).context("writing transformed book to stdout")
 }

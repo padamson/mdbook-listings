@@ -29,6 +29,10 @@ before = ["admonish", "links"]
 # screenshots predate this and still describe bare ordinals; see the
 # "Changes since v0.1.0" errata.
 number-listings = true
+# Dogfood the List-of-Listings index: the `{{#list-of-listings}}` marker on
+# the back-matter page collects every numbered listing book-wide into a linked
+# index. Post-v0.1.0; see the "Changes since v0.1.0" errata.
+list-of-listings = true
 
 [output.html]
 additional-css = ["./mdbook-admonish.css", "./mdbook-listings.css"]
