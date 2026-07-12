@@ -18,7 +18,13 @@ feature-depth = 1
 # We hold pdf-extract at 0.10 because 0.12 (which pulls the patched lopdf
 # >=0.42) regresses text extraction on typst PDFs and breaks that test.
 # Revisit when pdf-extract ships a release that fixes the regression.
-ignore = ["RUSTSEC-2026-0187"]
+#
+# RUSTSEC-2026-0192: ttf-parser is unmaintained. It reaches us only through
+# the same dev-only lopdf -> pdf-extract path as RUSTSEC-2026-0187 above, so
+# the published crate never links it and it never touches untrusted input.
+# An "unmaintained" advisory carries no fix to apply; drop this once
+# pdf-extract's dependency tree stops pulling ttf-parser.
+ignore = ["RUSTSEC-2026-0187", "RUSTSEC-2026-0192"]
 
 [licenses]
 allow = [
