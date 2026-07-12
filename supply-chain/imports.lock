@@ -198,13 +198,13 @@ user-login = "sunfishcode"
 user-name = "Dan Gohman"
 
 [[publisher.mdbook-core]]
-version = "0.5.3"
-when = "2026-05-19"
+version = "0.5.4"
+when = "2026-07-06"
 trusted-publisher = "github:rust-lang/mdBook"
 
 [[publisher.mdbook-preprocessor]]
-version = "0.5.3"
-when = "2026-05-19"
+version = "0.5.4"
+when = "2026-07-06"
 trusted-publisher = "github:rust-lang/mdBook"
 
 [[publisher.memchr]]
@@ -278,8 +278,8 @@ user-login = "dtolnay"
 user-name = "David Tolnay"
 
 [[publisher.regex]]
-version = "1.12.3"
-when = "2026-02-03"
+version = "1.13.0"
+when = "2026-07-09"
 user-id = 189
 user-login = "BurntSushi"
 user-name = "Andrew Gallant"
@@ -292,8 +292,8 @@ user-login = "BurntSushi"
 user-name = "Andrew Gallant"
 
 [[publisher.regex-syntax]]
-version = "0.8.10"
-when = "2026-02-24"
+version = "0.8.11"
+when = "2026-06-09"
 user-id = 189
 user-login = "BurntSushi"
 user-name = "Andrew Gallant"
