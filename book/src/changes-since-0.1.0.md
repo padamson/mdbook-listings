@@ -5,6 +5,18 @@ kept moving after the book closed, so this page lists the changes that
 postdate the prose. The chapters themselves are left as the v0.1.0 record
 and do not describe what follows.
 
+## Unreleased — e2e suite tracks playwright-rust main
+
+- **`tests/e2e_callouts.rs` has moved past its frozen listings.** The e2e
+  suite and the screenshot tool now build against
+  [`playwright-rust`](https://github.com/padamson/playwright-rust) main
+  rather than the released `playwright-rs` 0.14, dogfooding unreleased
+  changes there the way this book dogfoods `mdbook-listings`. On main,
+  `Page::locator()` returns a `Locator` directly instead of a future, so
+  the live test file drops the `.await` that the chapter 5 and 6 listings
+  show after every `locator()` call. The frozen `e2e-callouts-v*` and
+  `capture-screenshots-v*` listings stay as the v0.1.0 record.
+
 ## Unreleased — List of Listings
 
 - **List of Listings index.** A `{{#list-of-listings}}` marker renders a
