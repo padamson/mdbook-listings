@@ -28,6 +28,15 @@ url = "https://raw.githubusercontent.com/zcash/rust-ecosystem/main/supply-chain/
 [policy.mdbook-listings]
 audit-as-crates-io = false
 
+[policy.playwright-rs]
+audit-as-crates-io = false
+
+[policy.playwright-rs-macros]
+audit-as-crates-io = false
+
+[policy.playwright-rs-trace]
+audit-as-crates-io = false
+
 [[exemptions.adobe-cmap-parser]]
 version = "0.4.1"
 criteria = "safe-to-run"
@@ -64,6 +73,10 @@ criteria = "safe-to-deploy"
 version = "0.1.0"
 criteria = "safe-to-run"
 
+[[exemptions.chacha20]]
+version = "0.10.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.const-oid]]
 version = "0.10.2"
 criteria = "safe-to-deploy"
@@ -82,7 +95,7 @@ criteria = "safe-to-deploy"
 
 [[exemptions.crypto-common]]
 version = "0.1.7"
-criteria = "safe-to-deploy"
+criteria = "safe-to-run"
 
 [[exemptions.crypto-common]]
 version = "0.2.1"
@@ -94,7 +107,7 @@ criteria = "safe-to-deploy"
 
 [[exemptions.digest]]
 version = "0.10.7"
-criteria = "safe-to-deploy"
+criteria = "safe-to-run"
 
 [[exemptions.digest]]
 version = "0.11.2"
@@ -162,10 +175,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.futures-util]]
 version = "0.3.32"
-criteria = "safe-to-deploy"
-
-[[exemptions.generic-array]]
-version = "0.14.7"
 criteria = "safe-to-deploy"
 
 [[exemptions.getrandom]]
@@ -304,20 +313,24 @@ criteria = "safe-to-run"
 version = "0.14.1"
 criteria = "safe-to-run"
 
-[[exemptions.ppv-lite86]]
-version = "0.2.21"
-criteria = "safe-to-deploy"
-
 [[exemptions.pulldown-cmark-escape]]
 version = "0.11.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.r-efi]]
 version = "5.3.0"
-criteria = "safe-to-deploy"
+criteria = "safe-to-run"
 
 [[exemptions.r-efi]]
 version = "6.0.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.rand]]
+version = "0.10.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.rand_core]]
+version = "0.10.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.rangemap]]
@@ -364,6 +377,10 @@ criteria = "safe-to-deploy"
 version = "1.0.28"
 criteria = "safe-to-deploy"
 
+[[exemptions.sha1]]
+version = "0.11.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.sha2]]
 version = "0.11.0"
 criteria = "safe-to-deploy"
@@ -404,16 +421,12 @@ criteria = "safe-to-deploy"
 version = "1.11.0"
 criteria = "safe-to-run"
 
-[[exemptions.tokio]]
-version = "1.52.3"
-criteria = "safe-to-deploy"
-
 [[exemptions.tokio-macros]]
 version = "2.7.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tokio-tungstenite]]
-version = "0.29.0"
+version = "0.30.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tracing]]
@@ -437,7 +450,7 @@ version = "0.25.1"
 criteria = "safe-to-run"
 
 [[exemptions.tungstenite]]
-version = "0.29.0"
+version = "0.30.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.type1-encoding-parser]]
@@ -474,7 +487,7 @@ criteria = "safe-to-deploy"
 
 [[exemptions.version_check]]
 version = "0.9.5"
-criteria = "safe-to-deploy"
+criteria = "safe-to-run"
 
 [[exemptions.wasi]]
 version = "0.11.1+wasi-snapshot-preview1"
@@ -502,11 +515,11 @@ criteria = "safe-to-deploy"
 
 [[exemptions.zerocopy]]
 version = "0.8.48"
-criteria = "safe-to-deploy"
+criteria = "safe-to-run"
 
 [[exemptions.zerocopy-derive]]
 version = "0.8.48"
-criteria = "safe-to-deploy"
+criteria = "safe-to-run"
 
 [[exemptions.zerofrom]]
 version = "0.1.7"

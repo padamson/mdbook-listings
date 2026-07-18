@@ -74,3 +74,5 @@ skip-tree = [
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# Our own repo: playwright-rs tracks playwright-rust main for dogfooding.
+allow-git = ["https://github.com/padamson/playwright-rust"]

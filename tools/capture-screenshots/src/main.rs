@@ -140,7 +140,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let png = page
         .locator(locator!("#__capture_target__"))
-        .await
         .screenshot(None)
         .await?;
     std::fs::write(&job.out, png)?;

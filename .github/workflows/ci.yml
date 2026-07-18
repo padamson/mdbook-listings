@@ -200,7 +200,8 @@ jobs:
 
       - name: Install Playwright driver + Chromium
         # Pinned to playwright-rs's bundled PLAYWRIGHT_VERSION (see
-        # crates/playwright/build.rs in the playwright-rust fork). Without
+        # crates/playwright/build.rs in padamson/playwright-rust, which
+        # Cargo.toml tracks at branch main). Without
         # the pin, npx resolves the latest playwright on npm, which bumps
         # the chromium browser revision faster than playwright-rs's driver
         # tracks it — `npx playwright install` removes the cached older
@@ -209,7 +210,7 @@ jobs:
         # .../chromium_headless_shell-<old-rev>/...` because it expects
         # the rev it was built against. Bump this version in lockstep
         # with playwright-rs's PLAYWRIGHT_VERSION constant.
-        run: npx --yes playwright@1.60.0 install --with-deps chromium
+        run: npx --yes playwright@1.61.1 install --with-deps chromium
 
       - name: Run browser-based E2E tests
         run: cargo test --test e2e_callouts

@@ -33,12 +33,12 @@ async fn label_only_callout_renders_badge_without_following_body() {
         "label_only_callout_renders_badge_without_following_body",
         CH05,
         |page| async move {
-            let badge = page.locator(locator!("button#callout-cli-parse")).await;
+            let badge = page.locator(locator!("button#callout-cli-parse"));
             expect(badge)
                 .to_have_count(1)
                 .await
                 .expect("label-only badge button must exist");
-            let body = page.locator(locator!("#callout-body-cli-parse")).await;
+            let body = page.locator(locator!("#callout-body-cli-parse"));
             expect(body)
                 .to_have_count(0)
                 .await
@@ -54,7 +54,7 @@ async fn callout_badge_renders_with_data_attribute_in_ch04() {
         "callout_badge_renders_with_data_attribute_in_ch04",
         CH05,
         |page| async move {
-            let badges = page.locator(locator!("[data-callout-badge]")).await;
+            let badges = page.locator(locator!("[data-callout-badge]"));
             let count = badges.count().await.expect("count badges");
             assert!(
                 count > 0,
@@ -76,16 +76,12 @@ async fn callout_cross_ref_renders_as_anchor_to_listing_badge() {
         "callout_cross_ref_renders_as_anchor_to_listing_badge",
         CH05,
         |page| async move {
-            let cross_ref = page
-                .locator(locator!(r#"a[data-callout-ref="cross-ref-emit"]"#))
-                .await;
+            let cross_ref = page.locator(locator!(r#"a[data-callout-ref="cross-ref-emit"]"#));
             expect(cross_ref)
                 .to_have_attribute("href", "#callout-cross-ref-emit")
                 .await
                 .expect("cross-ref href must point at listing badge anchor");
-            let target = page
-                .locator(locator!("button#callout-cross-ref-emit"))
-                .await;
+            let target = page.locator(locator!("button#callout-cross-ref-emit"));
             expect(target)
                 .to_have_count(1)
                 .await
@@ -105,11 +101,9 @@ async fn callout_marker_comment_is_stripped_and_body_reveals_on_hover() {
             // badge (xpath does the sibling traversal that CSS can't). The
             // splicer should have stripped the literal marker comment from
             // that pre's text.
-            let pre = page
-                .locator(locator!(
-                    r#"xpath=//pre[following-sibling::div[1][.//button[@id="callout-cross-ref-emit"]]]"#
-                ))
-                .await;
+            let pre = page.locator(locator!(
+                r#"xpath=//pre[following-sibling::div[1][.//button[@id="callout-cross-ref-emit"]]]"#
+            ));
             expect(pre.clone())
                 .not()
                 .to_contain_text("CALLOUT: cross-ref-emit")
@@ -118,11 +112,9 @@ async fn callout_marker_comment_is_stripped_and_body_reveals_on_hover() {
 
             // Body popover starts hidden and becomes visible after hovering its
             // triggering badge.
-            let badge = page
-                .locator(locator!("button#callout-cross-ref-emit"))
-                .await;
+            let badge = page.locator(locator!("button#callout-cross-ref-emit"));
             badge.hover(None).await.expect("hover badge");
-            let body = page.locator(locator!("#callout-body-cross-ref-emit")).await;
+            let body = page.locator(locator!("#callout-body-cross-ref-emit"));
             expect(body)
                 .to_be_visible()
                 .await
@@ -147,7 +139,7 @@ async fn every_callout_cross_ref_resolves_to_a_badge_with_matching_ordinal_and_t
         "every_callout_cross_ref_resolves_to_a_badge_with_matching_ordinal_and_text",
         CH05,
         |page| async move {
-            let refs = page.locator(locator!("a[data-callout-ref]")).await;
+            let refs = page.locator(locator!("a[data-callout-ref]"));
             let count = refs.count().await.expect("count refs");
             assert!(
                 count > 0,
@@ -169,9 +161,7 @@ async fn every_callout_cross_ref_resolves_to_a_badge_with_matching_ordinal_and_t
                     .await
                     .unwrap_or_else(|e| panic!("ref `{label}`: href mismatch: {e:?}"));
 
-                let target = page
-                    .locator(&format!(r#"button[id="callout-{label}"]"#))
-                    .await;
+                let target = page.locator(format!(r#"button[id="callout-{label}"]"#));
                 expect(target.clone())
                     .to_have_count(1)
                     .await
@@ -217,7 +207,7 @@ async fn every_cross_refed_label_has_a_visible_badge_in_the_chapter() {
         "every_cross_refed_label_has_a_visible_badge_in_the_chapter",
         CH05,
         |page| async move {
-            let refs = page.locator(locator!("a[data-callout-ref]")).await;
+            let refs = page.locator(locator!("a[data-callout-ref]"));
             let count = refs.count().await.expect("count refs");
 
             let mut missing: Vec<String> = Vec::new();
@@ -231,9 +221,7 @@ async fn every_cross_refed_label_has_a_visible_badge_in_the_chapter() {
                 if label.is_empty() {
                     continue;
                 }
-                let target = page
-                    .locator(&format!(r#"button[id="callout-{label}"]"#))
-                    .await;
+                let target = page.locator(format!(r#"button[id="callout-{label}"]"#));
                 if target.count().await.expect("count target") == 0 {
                     missing.push(label);
                 }
@@ -261,7 +249,7 @@ async fn clicking_each_cross_ref_scrolls_target_badge_into_viewport() {
         "clicking_each_cross_ref_scrolls_target_badge_into_viewport",
         CH05,
         |page| async move {
-            let refs = page.locator(locator!("a[data-callout-ref]")).await;
+            let refs = page.locator(locator!("a[data-callout-ref]"));
             let count = refs.count().await.expect("count refs");
             assert!(
                 count > 0,
@@ -287,8 +275,7 @@ async fn clicking_each_cross_ref_scrolls_target_badge_into_viewport() {
                 page.clear_url_fragment().await.expect("reset hash");
 
                 let r = page
-                    .locator(&format!(r#"a[data-callout-ref="{label}"]"#))
-                    .await
+                    .locator(format!(r#"a[data-callout-ref="{label}"]"#))
                     .first();
                 if let Err(e) = r.click(None).await {
                     failures.push(format!("label `{label}`: click failed: {e:?}"));
@@ -296,8 +283,7 @@ async fn clicking_each_cross_ref_scrolls_target_badge_into_viewport() {
                 }
 
                 let target = page
-                    .locator(&format!(r#"button[id="callout-{label}"]"#))
-                    .await
+                    .locator(format!(r#"button[id="callout-{label}"]"#))
                     .first();
                 if let Err(e) = target.scroll_into_view_if_needed().await {
                     failures.push(format!("label `{label}`: scroll failed: {e:?}"));
@@ -378,18 +364,14 @@ async fn callout_inside_a_sliced_include_renders_with_resolvable_cross_ref() {
         "callout_inside_a_sliced_include_renders_with_resolvable_cross_ref",
         CH05,
         |page| async move {
-            let badge = page
-                .locator(locator!("button#callout-include-range-cross-ref-resolves"))
-                .await;
+            let badge = page.locator(locator!("button#callout-include-range-cross-ref-resolves"));
             expect(badge)
                 .to_have_count(1)
                 .await
                 .expect("badge for callout inside sliced include must exist");
-            let cross_ref = page
-                .locator(locator!(
-                    r#"a[data-callout-ref="include-range-cross-ref-resolves"]"#
-                ))
-                .await;
+            let cross_ref = page.locator(locator!(
+                r#"a[data-callout-ref="include-range-cross-ref-resolves"]"#
+            ));
             expect(cross_ref)
                 .to_have_attribute("href", "#callout-include-range-cross-ref-resolves")
                 .await
@@ -467,13 +449,9 @@ async fn callout_body_renders_inline_backticks_as_code_spans() {
         "callout_body_renders_inline_backticks_as_code_spans",
         CH05,
         |page| async move {
-            let badge = page
-                .locator(locator!("button#callout-snippets-intercept"))
-                .await;
+            let badge = page.locator(locator!("button#callout-snippets-intercept"));
             badge.hover(None).await.expect("hover badge to reveal body");
-            let body = page
-                .locator(locator!("#callout-body-snippets-intercept"))
-                .await;
+            let body = page.locator(locator!("#callout-body-snippets-intercept"));
             expect(body.clone())
                 .to_be_visible()
                 .await
@@ -513,14 +491,12 @@ async fn callout_body_opens_to_the_right_of_its_badge_on_wide_viewports() {
             .expect("set wide viewport");
             wait_for_layout_recalc(&page).await;
             let badge = page
-                .locator(locator!("button#callout-snippets-intercept"))
-                .await;
+                .locator(locator!("button#callout-snippets-intercept"));
             badge.hover(None).await.expect("hover badge to reveal body");
             // Confirm the body is laid out before measuring (clip-path
             // animation has finished and the box has its target width).
             let body = page
-                .locator(locator!("#callout-body-snippets-intercept"))
-                .await;
+                .locator(locator!("#callout-body-snippets-intercept"));
             expect(body)
                 .to_be_visible()
                 .await
@@ -573,16 +549,14 @@ async fn callout_body_falls_back_to_left_opening_when_right_gutter_is_too_narrow
             .expect("set narrow viewport");
             wait_for_layout_recalc(&page).await;
             let badge = page
-                .locator(locator!("button#callout-snippets-intercept"))
-                .await;
+                .locator(locator!("button#callout-snippets-intercept"));
             badge
                 .scroll_into_view_if_needed()
                 .await
                 .expect("scroll badge into view");
             badge.hover(None).await.expect("hover badge");
             let body = page
-                .locator(locator!("#callout-body-snippets-intercept"))
-                .await;
+                .locator(locator!("#callout-body-snippets-intercept"));
             expect(body)
                 .to_be_visible()
                 .await
@@ -634,12 +608,10 @@ async fn callout_body_never_overflows_the_viewport_horizontally() {
             .expect("set mid viewport");
             wait_for_layout_recalc(&page).await;
             let badge = page
-                .locator(locator!("button#callout-snippets-intercept"))
-                .await;
+                .locator(locator!("button#callout-snippets-intercept"));
             badge.hover(None).await.expect("hover badge");
             let body = page
-                .locator(locator!("#callout-body-snippets-intercept"))
-                .await;
+                .locator(locator!("#callout-body-snippets-intercept"));
             expect(body)
                 .to_be_visible()
                 .await
@@ -711,16 +683,14 @@ async fn callout_with_align_left_option_pins_popover_left_even_on_wide_viewport(
             wait_for_layout_recalc(&page).await;
 
             let badge = page
-                .locator(locator!("button#callout-align-left-demo"))
-                .await;
+                .locator(locator!("button#callout-align-left-demo"));
             badge
                 .scroll_into_view_if_needed()
                 .await
                 .expect("scroll badge into view");
             badge.hover(None).await.expect("hover badge");
             let body = page
-                .locator(locator!("#callout-body-align-left-demo"))
-                .await;
+                .locator(locator!("#callout-body-align-left-demo"));
             expect(body)
                 .to_be_visible()
                 .await
@@ -774,7 +744,7 @@ async fn sidecar_callout_renders_alongside_inline_marker_in_same_listing() {
             let labels = ["parse-entry", "parse-line-entry", "label-validity-check"];
             for label in labels {
                 let selector = format!("button[data-callout-badge=\"{}\"]", label);
-                let badge = page.locator(&selector).await;
+                let badge = page.locator(&selector);
                 expect(badge).to_have_count(1).await.unwrap_or_else(|_| {
                     panic!(
                         "badge with label '{}' must render exactly once in ch.6",

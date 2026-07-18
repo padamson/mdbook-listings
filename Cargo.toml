@@ -27,7 +27,7 @@ assert_cmd = "2"
 futures = "0.3"
 pdf-extract = "0.10"
 playwright-rs = { workspace = true }
-playwright-rs-trace = "0.1"
+playwright-rs-trace = { git = "https://github.com/padamson/playwright-rust", branch = "main" }
 predicates = "3"
 tempfile = "3"
 tokio = { workspace = true }
@@ -40,6 +40,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 members = ["tools/capture-screenshots"]
 
 # Shared by the crate and the capture-screenshots workspace tool.
+# playwright-rs tracks our own playwright-rust main to dogfood unreleased
+# changes; pin back to a crates.io version if that ever gets in the way.
 [workspace.dependencies]
-playwright-rs = "0.14"
+playwright-rs = { git = "https://github.com/padamson/playwright-rust", branch = "main" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
