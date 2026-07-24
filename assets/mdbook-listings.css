@@ -20,7 +20,7 @@
  * pre-script behaviour for any environment where JS doesn't run.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes are
- * the expected build-time asset: mdbook-listings-css-v8
+ * the expected build-time asset: mdbook-listings-css-v9
  */
 
 /* Listing caption line, emitted by the numbering pass immediately before a
@@ -284,4 +284,31 @@
 .mdbook-listings-sidebar-list a:hover {
   background: var(--sidebar-active, #1f2226);
   color: var(--sidebar-active, #fff);
+}
+
+/* "nested" rung: listing entries injected by mdbook-listings.js into
+ * mdbook's own nav tree, as an <ol class="mdbook-listings-nav"> appended to
+ * the chapter's <li>. Indented a step past the chapter link and rendered a
+ * touch smaller so listings read as children of their chapter. */
+.mdbook-listings-nav {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mdbook-listings-nav-item {
+  margin: 0;
+  padding: 0;
+  font-size: 0.9em;
+}
+.mdbook-listings-nav-item a {
+  display: block;
+  padding: 0.15em 1.5rem 0.15em 3rem;
+  color: var(--sidebar-fg, #c8c9db);
+  text-decoration: none;
+  opacity: 0.85;
+}
+.mdbook-listings-nav-item a:hover {
+  background: var(--sidebar-active, #1f2226);
+  color: var(--sidebar-active, #fff);
+  opacity: 1;
 }

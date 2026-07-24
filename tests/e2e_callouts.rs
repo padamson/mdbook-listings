@@ -757,54 +757,37 @@ async fn sidecar_callout_renders_alongside_inline_marker_in_same_listing() {
     .await;
 }
 
-// List of Listings — sidebar (Phase 2: append). The book dogfoods
-// `list-of-listings-sidebar = "append"`, so mdbook-listings.js reads the
-// inline manifest and adds a self-contained "Listings" section to the
-// sidebar nav on every page. Driven against the built book like every
+// List of Listings — sidebar (Phase 3: nested). The book dogfoods
+// `list-of-listings-sidebar = "nested"`, so mdbook-listings.js reads the
+// inline manifest and injects each listing into mdbook's own nav tree,
+// under the chapter it belongs to. Driven against the built book like every
 // callout test above.
 #[tokio::test]
-async fn list_of_listings_sidebar_appends_a_listings_section() {
+async fn list_of_listings_sidebar_nests_entries_under_chapters() {
     with_traced_chapter(
-        "list_of_listings_sidebar_appends_a_listings_section",
+        "list_of_listings_sidebar_nests_entries_under_chapters",
         CH05,
         |page| async move {
-            // Built on DOMContentLoaded from the inline manifest; navigation
-            // waits for `load`, so the section is already in the DOM.
-            let section = page.locator(locator!("#mdbook-listings-sidebar"));
-            expect(section)
-                .to_have_count(1)
+            // mdbook's toc.js populates the scrollbox at runtime and our
+            // observer nests once it appears; `to_be_visible` auto-waits for
+            // both. The nested list must sit inside a chapter item of the
+            // real nav tree, not in a separate block.
+            let nested_entry = page
+                .locator(locator!(
+                    r##".chapter-item .mdbook-listings-nav-item a[href*="#listing-"]"##
+                ))
+                .first();
+            expect(nested_entry)
+                .to_be_visible()
                 .await
-                .expect("sidebar Listings section must be present in append mode");
+                .expect("a listing entry must be nested under a chapter in the nav tree");
 
-            // Read textContent (not innerText) so the assertion tests the
-            // content, not the CSS `text-transform: uppercase` styling.
-            let heading_text: String = page
-                .evaluate_value(
-                    "document.querySelector('#mdbook-listings-sidebar .mdbook-listings-sidebar-heading').textContent",
-                )
-                .await
-                .expect("read section heading text");
-            assert_eq!(heading_text, "Listings", "section heading reads 'Listings'");
-
-            // Entries link to listing caption anchors (path#listing-N-M).
-            let entries = page.locator(locator!(
-                r##"#mdbook-listings-sidebar a[href*="#listing-"]"##
-            ));
-            let count = entries.count().await.expect("count sidebar entries");
-            assert!(
-                count > 0,
-                "expected linked listing entries in the sidebar, got {count}"
-            );
-
-            // The section survives mdbook's own toc.js populating the scrollbox:
-            // it sits as a sibling of the scrollbox, not inside it.
-            let scrollbox_children = page.locator(locator!(
-                "#mdbook-sidebar-scrollbox #mdbook-listings-sidebar"
-            ));
-            expect(scrollbox_children)
+            // "nested" mode does not build the standalone append block.
+            let append_block = page.locator(locator!("#mdbook-listings-sidebar"));
+            expect(append_block)
                 .to_have_count(0)
                 .await
-                .expect("section is a sibling of the scrollbox, not nested inside it");
+                .expect("nested mode must not also render the append section");
         },
     )
     .await;

@@ -56,7 +56,7 @@
  *    side/clamp choice live.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes
- * are the expected build-time asset: mdbook-listings-js-v8
+ * are the expected build-time asset: mdbook-listings-js-v9
  */
 (function () {
   var LEFT_FALLBACK_THRESHOLD_EM = 16;
@@ -222,27 +222,39 @@
   });
 })();
 
-/* mdbook-listings — sidebar "List of Listings" (Phase 2: append).
+/* mdbook-listings — sidebar "List of Listings".
  *
  * Reads the inline JSON manifest the preprocessor emits on every page
- * (`<script id="mdbook-listings-manifest" data-sidebar="…">`) and, in
- * "append" mode, adds a self-contained "Listings" section to the sidebar
- * nav below mdbook's own table of contents. Each entry links to a listing's
- * caption anchor (`path#id`).
+ * (`<script id="mdbook-listings-manifest" data-sidebar="…">`) and renders a
+ * sidebar view of the book's numbered listings. Two rungs, chosen by the
+ * `data-sidebar` mode:
  *
- * The section is inserted as a sibling of `<mdbook-sidebar-scrollbox>`, NOT
- * inside it: mdbook's `toc.js` populates the scrollbox by assigning its
- * `innerHTML` in a custom-element `connectedCallback`, which would wipe
- * anything appended inside it depending on script order. A sibling under
- * `<nav id="mdbook-sidebar">` (before the resize handle) survives that and
- * needs no knowledge of the nav tree — that independence is the whole point
- * of the "append" rung. The richer "nested" mode (Phase 3) is a separate
- * path that does match the nav tree.
+ *   "append"  — a self-contained "Listings" section added below mdbook's
+ *               table of contents. Inserted as a sibling of
+ *               `<mdbook-sidebar-scrollbox>` (before the resize handle),
+ *               NOT inside it: mdbook's `toc.js` fills the scrollbox by
+ *               assigning its `innerHTML` in a custom-element
+ *               `connectedCallback`, which would wipe anything appended
+ *               inside it depending on script order. Staying a sibling
+ *               survives that and needs no knowledge of the nav tree —
+ *               that independence is the whole point of this rung.
  *
- * Sentinel (paired with the -js-v8 bump above): mdbook-listings-sidebar-v8
+ *   "nested"  — each listing is injected into mdbook's own nav tree, under
+ *               the chapter it belongs to. That tree is populated at runtime
+ *               (the scrollbox's `connectedCallback`), so if it isn't there
+ *               yet we observe the scrollbox and nest once it appears. This
+ *               rung matches the default theme's DOM.
+ *
+ * Chapter link paths in the manifest are already `.html` (the JS runs past
+ * mdbook's markdown-link rewriting). Captions arrive HTML-escaped, so
+ * `innerHTML` restores their intended text and a caption can't smuggle a
+ * closing tag.
+ *
+ * Sentinel (paired with the -js-v9 bump above): mdbook-listings-sidebar-v9
  */
 (function () {
   var SECTION_ID = 'mdbook-listings-sidebar';
+  var NESTED_CLASS = 'mdbook-listings-nav';
 
   function readManifest() {
     var el = document.getElementById('mdbook-listings-manifest');
@@ -259,6 +271,19 @@
     return { mode: mode, chapters: data };
   }
 
+  // One listing's link. The number is plain digits/dots; the caption is
+  // already HTML-escaped upstream, so innerHTML restores its intended text.
+  function listingAnchor(ch, l) {
+    var a = document.createElement('a');
+    a.href = ch.path + '#' + l.id;
+    var label = 'Listing ' + l.number;
+    if (l.caption) label += ' — ' + l.caption;
+    a.innerHTML = label;
+    return a;
+  }
+
+  // --- "append" rung -----------------------------------------------------
+
   function buildSection(chapters) {
     var section = document.createElement('section');
     section.id = SECTION_ID;
@@ -272,15 +297,7 @@
     chapters.forEach(function (ch) {
       (ch.listings || []).forEach(function (l) {
         var li = document.createElement('li');
-        var a = document.createElement('a');
-        a.href = ch.path + '#' + l.id;
-        // The number is plain digits/dots; the caption is already
-        // HTML-escaped upstream, so innerHTML restores its intended text
-        // (e.g. `&amp;` -> `&`) rather than showing the entities.
-        var label = 'Listing ' + l.number;
-        if (l.caption) label += ' — ' + l.caption;
-        a.innerHTML = label;
-        li.appendChild(a);
+        li.appendChild(listingAnchor(ch, l));
         ol.appendChild(li);
       });
     });
@@ -288,29 +305,96 @@
     return section;
   }
 
-  function appendSidebar() {
+  function appendBlock(chapters) {
     if (document.getElementById(SECTION_ID)) return; // idempotent
-    var manifest = readManifest();
-    if (!manifest) return;
-    // Phase 2 owns "append"; "nested" is Phase 3's job.
-    if (manifest.mode !== 'append') return;
     var nav = document.getElementById('mdbook-sidebar');
     if (!nav) return;
-    var section = buildSection(manifest.chapters);
+    var section = buildSection(chapters);
     var resize = document.getElementById('mdbook-sidebar-resize-handle');
     if (resize && resize.parentNode === nav) {
       nav.insertBefore(section, resize);
     } else {
       nav.appendChild(section);
     }
-    // Observable marker: e2e/devtools can read `window.__mdbookListingsSidebar`
-    // to confirm the block was built (and in which mode).
-    window.__mdbookListingsSidebar = manifest.mode;
+    window.__mdbookListingsSidebar = 'append';
+  }
+
+  // --- "nested" rung -----------------------------------------------------
+
+  function scrollbox() {
+    return (
+      document.querySelector('mdbook-sidebar-scrollbox') ||
+      document.getElementById('mdbook-sidebar-scrollbox')
+    );
+  }
+
+  // The nav <li> whose chapter link points at this page, or null. Compares
+  // the link's filename (hash/query stripped) against the manifest path.
+  function chapterItem(box, path) {
+    var links = box.querySelectorAll('a[href]');
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].getAttribute('href') || '';
+      var file = href.split('#')[0].split('?')[0];
+      if (file === path || file.endsWith('/' + path)) {
+        return links[i].closest('li');
+      }
+    }
+    return null;
+  }
+
+  function nestIntoNav(box, chapters) {
+    chapters.forEach(function (ch) {
+      var li = chapterItem(box, ch.path);
+      if (!li || li.dataset.mdbookListings) return; // idempotent per chapter
+      li.dataset.mdbookListings = '1';
+      var ol = document.createElement('ol');
+      ol.className = NESTED_CLASS;
+      (ch.listings || []).forEach(function (l) {
+        var item = document.createElement('li');
+        item.className = 'mdbook-listings-nav-item';
+        item.appendChild(listingAnchor(ch, l));
+        ol.appendChild(item);
+      });
+      li.appendChild(ol);
+    });
+    window.__mdbookListingsSidebar = 'nested';
+  }
+
+  // Nest now if the nav tree is already populated; return whether it was.
+  function tryNest(chapters) {
+    var box = scrollbox();
+    if (!box || !box.querySelector('ol.chapter')) return false;
+    nestIntoNav(box, chapters);
+    return true;
+  }
+
+  function startNested(chapters) {
+    if (tryNest(chapters)) return;
+    var box = scrollbox();
+    if (!box) return;
+    // mdbook's toc.js fills the scrollbox at runtime; observe until the
+    // chapter tree appears, nest once, then stop watching.
+    var obs = new MutationObserver(function () {
+      if (tryNest(chapters)) obs.disconnect();
+    });
+    obs.observe(box, { childList: true, subtree: true });
+  }
+
+  // --- bootstrap ---------------------------------------------------------
+
+  function buildSidebar() {
+    var manifest = readManifest();
+    if (!manifest) return;
+    if (manifest.mode === 'append') {
+      appendBlock(manifest.chapters);
+    } else if (manifest.mode === 'nested') {
+      startNested(manifest.chapters);
+    }
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', appendSidebar);
+    document.addEventListener('DOMContentLoaded', buildSidebar);
   } else {
-    appendSidebar();
+    buildSidebar();
   }
 })();

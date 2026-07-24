@@ -61,10 +61,10 @@ further downstream validation. Numbering and scoped badges are opt-in via
   book-wide, chapter-grouped index of every numbered listing, each entry
   linking to its anchor. Opt-in via `list-of-listings`.
 - **List of Listings sidebar** — a client-side variant of the index in the
-  sidebar, opt-in via `list-of-listings-sidebar`. `"append"` (shipped) adds
-  a self-contained "Listings" section below the table of contents;
-  `"nested"` (planned) will nest each listing under its chapter in the nav
-  tree. HTML only; the inline index is the floor for PDF.
+  sidebar, opt-in via `list-of-listings-sidebar`. `"append"` adds a
+  self-contained "Listings" section below the table of contents; `"nested"`
+  nests each listing under its chapter in the nav tree. HTML only; the
+  inline index is the floor for PDF.
 
 ## v0.2.0 — power-user ergonomics
 

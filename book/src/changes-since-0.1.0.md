@@ -25,11 +25,13 @@ and do not describe what follows.
   `[preprocessor.listings] list-of-listings`; this book's
   [List of Listings](listings-index.md) page uses it.
 - **List of Listings in the sidebar.** With
-  `[preprocessor.listings] list-of-listings-sidebar = "append"`, a
-  "Listings" section is added to the sidebar below the table of contents,
-  built in the browser from an inline manifest the preprocessor emits on
-  every page. This book turns it on, so the sidebar here carries that
-  section. It sits alongside mdbook's own navigation rather than inside it.
+  `[preprocessor.listings] list-of-listings-sidebar`, the numbered listings
+  show in the sidebar, built in the browser from an inline manifest the
+  preprocessor emits on every page. `"nested"` puts each listing under its
+  chapter in the navigation tree; `"append"` instead adds a self-contained
+  "Listings" section below the table of contents, independent of the theme's
+  nav. This book turns on `"nested"`, so the sidebar here lists each
+  chapter's listings beneath it.
 
 ## v0.1.1 — listing numbers and captions
 
