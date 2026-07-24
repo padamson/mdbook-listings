@@ -30,6 +30,14 @@ output is byte-identical to 0.1.0.
   `[preprocessor.listings] list-of-listings` (default off). Each numbered
   listing's caption gains an `id` so the index (and other prose) can link
   to it.
+- **List of Listings sidebar (append).** With
+  `[preprocessor.listings] list-of-listings-sidebar = "append"`, the
+  preprocessor emits an inline JSON manifest of the collected listings on
+  every page, and the bundled JS adds a self-contained "Listings" section
+  to the sidebar below mdbook's table of contents, each entry linking to a
+  listing's anchor. `"off"` (default) emits nothing; the section is built
+  as a sibling of the sidebar scrollbox, so it is independent of the
+  theme's navigation tree. HTML output only.
 
 ### Changed
 - Callout badges render as pills at any width, so a bare `1` and a scoped

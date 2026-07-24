@@ -56,7 +56,7 @@
  *    side/clamp choice live.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes
- * are the expected build-time asset: mdbook-listings-js-v7
+ * are the expected build-time asset: mdbook-listings-js-v8
  */
 (function () {
   var LEFT_FALLBACK_THRESHOLD_EM = 16;
@@ -220,4 +220,97 @@
       recalc();
     });
   });
+})();
+
+/* mdbook-listings — sidebar "List of Listings" (Phase 2: append).
+ *
+ * Reads the inline JSON manifest the preprocessor emits on every page
+ * (`<script id="mdbook-listings-manifest" data-sidebar="…">`) and, in
+ * "append" mode, adds a self-contained "Listings" section to the sidebar
+ * nav below mdbook's own table of contents. Each entry links to a listing's
+ * caption anchor (`path#id`).
+ *
+ * The section is inserted as a sibling of `<mdbook-sidebar-scrollbox>`, NOT
+ * inside it: mdbook's `toc.js` populates the scrollbox by assigning its
+ * `innerHTML` in a custom-element `connectedCallback`, which would wipe
+ * anything appended inside it depending on script order. A sibling under
+ * `<nav id="mdbook-sidebar">` (before the resize handle) survives that and
+ * needs no knowledge of the nav tree — that independence is the whole point
+ * of the "append" rung. The richer "nested" mode (Phase 3) is a separate
+ * path that does match the nav tree.
+ *
+ * Sentinel (paired with the -js-v8 bump above): mdbook-listings-sidebar-v8
+ */
+(function () {
+  var SECTION_ID = 'mdbook-listings-sidebar';
+
+  function readManifest() {
+    var el = document.getElementById('mdbook-listings-manifest');
+    if (!el) return null;
+    var mode = el.dataset.sidebar || 'off';
+    if (mode === 'off') return null;
+    var data;
+    try {
+      data = JSON.parse(el.textContent);
+    } catch (e) {
+      return null;
+    }
+    if (!Array.isArray(data) || data.length === 0) return null;
+    return { mode: mode, chapters: data };
+  }
+
+  function buildSection(chapters) {
+    var section = document.createElement('section');
+    section.id = SECTION_ID;
+    section.className = 'mdbook-listings-sidebar';
+    var heading = document.createElement('div');
+    heading.className = 'mdbook-listings-sidebar-heading';
+    heading.textContent = 'Listings';
+    section.appendChild(heading);
+    var ol = document.createElement('ol');
+    ol.className = 'mdbook-listings-sidebar-list';
+    chapters.forEach(function (ch) {
+      (ch.listings || []).forEach(function (l) {
+        var li = document.createElement('li');
+        var a = document.createElement('a');
+        a.href = ch.path + '#' + l.id;
+        // The number is plain digits/dots; the caption is already
+        // HTML-escaped upstream, so innerHTML restores its intended text
+        // (e.g. `&amp;` -> `&`) rather than showing the entities.
+        var label = 'Listing ' + l.number;
+        if (l.caption) label += ' — ' + l.caption;
+        a.innerHTML = label;
+        li.appendChild(a);
+        ol.appendChild(li);
+      });
+    });
+    section.appendChild(ol);
+    return section;
+  }
+
+  function appendSidebar() {
+    if (document.getElementById(SECTION_ID)) return; // idempotent
+    var manifest = readManifest();
+    if (!manifest) return;
+    // Phase 2 owns "append"; "nested" is Phase 3's job.
+    if (manifest.mode !== 'append') return;
+    var nav = document.getElementById('mdbook-sidebar');
+    if (!nav) return;
+    var section = buildSection(manifest.chapters);
+    var resize = document.getElementById('mdbook-sidebar-resize-handle');
+    if (resize && resize.parentNode === nav) {
+      nav.insertBefore(section, resize);
+    } else {
+      nav.appendChild(section);
+    }
+    // Observable marker: e2e/devtools can read `window.__mdbookListingsSidebar`
+    // to confirm the block was built (and in which mode).
+    window.__mdbookListingsSidebar = manifest.mode;
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', appendSidebar);
+  } else {
+    appendSidebar();
+  }
 })();

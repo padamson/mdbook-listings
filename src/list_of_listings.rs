@@ -9,12 +9,97 @@
 //! book-wide pass — after every chapter has been numbered — because the index
 //! spans the whole book.
 
+use serde::Serialize;
+
 use crate::directive::{FencePolicy, scan_directives};
 use crate::number::{ListingRef, label_text};
 
 /// The marker's literal prefix. It takes no arguments, so it has no trailing
 /// space (unlike `"{{#include "`); the scanner finds the closing `}}` itself.
 const MARKER_PREFIX: &str = "{{#list-of-listings";
+
+/// Where the sidebar variant of the index renders, set by
+/// `[preprocessor.listings] list-of-listings-sidebar`. Off is the default;
+/// `append` and `nested` are the two client-side rungs (Phases 2 and 3),
+/// distinguished only in the JS — the Rust side emits the same manifest for
+/// both, tagged with the mode so the script knows which layout to build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SidebarMode {
+    Off,
+    Append,
+    Nested,
+}
+
+impl SidebarMode {
+    /// Parse the config value; anything unrecognised (including a malformed or
+    /// empty string) falls back to `Off` rather than failing the build, matching
+    /// how the boolean flags default off.
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "append" => Self::Append,
+            "nested" => Self::Nested,
+            _ => Self::Off,
+        }
+    }
+
+    /// The `data-sidebar` value the JS reads off the manifest script.
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Append => "append",
+            Self::Nested => "nested",
+        }
+    }
+}
+
+/// One chapter as the client-side manifest sees it: the same shape as
+/// [`ChapterListings`] but with the link path pointing at the rendered `.html`
+/// page (the JS consumes this at runtime, where mdbook's markdown-link
+/// rewriting never reaches).
+#[derive(Serialize)]
+struct ManifestChapter<'a> {
+    name: &'a str,
+    path: String,
+    listings: &'a [ListingRef],
+}
+
+/// Rewrite a chapter's source path to its rendered page: `ch03.md` ->
+/// `ch03.html`. A path without a `.md` suffix is left untouched.
+fn html_path(src_path: &str) -> String {
+    match src_path.strip_suffix(".md") {
+        Some(stem) => format!("{stem}.html"),
+        None => src_path.to_string(),
+    }
+}
+
+/// Emit the collected index as an inline JSON manifest for the sidebar JS —
+/// `<script id="mdbook-listings-manifest" type="application/json"
+/// data-sidebar="…">[…]</script>`. Returns `""` when the sidebar is off or no
+/// chapter has a numbered listing, so nothing is appended in that case. The
+/// captions are already HTML-escaped (as stored on the anchor), which also
+/// keeps a caption from smuggling a `</script>` that would close the tag early.
+pub fn render_manifest(chapters: &[ChapterListings], mode: SidebarMode) -> String {
+    if mode == SidebarMode::Off {
+        return String::new();
+    }
+    let view: Vec<ManifestChapter> = chapters
+        .iter()
+        .filter(|ch| !ch.listings.is_empty())
+        .map(|ch| ManifestChapter {
+            name: &ch.name,
+            path: html_path(&ch.path),
+            listings: &ch.listings,
+        })
+        .collect();
+    if view.is_empty() {
+        return String::new();
+    }
+    let json = serde_json::to_string(&view).unwrap_or_default();
+    format!(
+        "\n<script id=\"mdbook-listings-manifest\" type=\"application/json\" data-sidebar=\"{}\">{json}</script>\n",
+        mode.as_str()
+    )
+}
 
 /// One chapter's numbered listings, paired with the chapter title (the group
 /// heading) and the link path to the chapter (the anchor target's page).
@@ -83,6 +168,100 @@ mod tests {
             caption: caption.map(str::to_string),
             id: id.to_string(),
         }
+    }
+
+    fn one_chapter() -> Vec<ChapterListings> {
+        vec![ChapterListings {
+            name: "Freeze a listing".into(),
+            path: "ch03.md".into(),
+            listings: vec![listing("3.1", Some("The reuse manifest"), "listing-3-1")],
+        }]
+    }
+
+    #[test]
+    fn sidebar_mode_parses_known_values_and_defaults_off() {
+        assert_eq!(SidebarMode::parse("append"), SidebarMode::Append);
+        assert_eq!(SidebarMode::parse("nested"), SidebarMode::Nested);
+        assert_eq!(SidebarMode::parse("off"), SidebarMode::Off);
+        // Unknown / malformed values fall back to off rather than failing.
+        assert_eq!(SidebarMode::parse("wobble"), SidebarMode::Off);
+        assert_eq!(SidebarMode::parse(""), SidebarMode::Off);
+    }
+
+    #[test]
+    fn manifest_is_empty_when_mode_off() {
+        assert_eq!(render_manifest(&one_chapter(), SidebarMode::Off), "");
+    }
+
+    #[test]
+    fn manifest_is_empty_when_no_listings() {
+        let chapters = vec![ChapterListings {
+            name: "Empty".into(),
+            path: "empty.md".into(),
+            listings: vec![],
+        }];
+        assert_eq!(render_manifest(&chapters, SidebarMode::Append), "");
+    }
+
+    #[test]
+    fn manifest_emits_json_script_with_mode_and_html_paths() {
+        let out = render_manifest(&one_chapter(), SidebarMode::Append);
+        assert!(
+            out.contains(r#"<script id="mdbook-listings-manifest" type="application/json" data-sidebar="append">"#),
+            "manifest script tag with mode; got:\n{out}"
+        );
+        assert!(
+            out.contains("</script>"),
+            "closes the script tag; got:\n{out}"
+        );
+        // The chapter link target is the rendered .html page, not the .md source
+        // (mdbook only rewrites markdown links, not JSON inside a <script>).
+        assert!(
+            out.contains(r#""path":"ch03.html""#),
+            "path rewritten .md -> .html; got:\n{out}"
+        );
+        assert!(
+            out.contains(r#""number":"3.1""#) && out.contains(r#""id":"listing-3-1""#),
+            "listing number and id; got:\n{out}"
+        );
+        assert!(
+            out.contains(r#""caption":"The reuse manifest""#),
+            "caption carried through; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn manifest_carries_the_nested_mode() {
+        let out = render_manifest(&one_chapter(), SidebarMode::Nested);
+        assert!(
+            out.contains(r#"data-sidebar="nested""#),
+            "nested mode on the script tag; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn manifest_skips_chapters_without_listings() {
+        let chapters = vec![
+            ChapterListings {
+                name: "Empty".into(),
+                path: "empty.md".into(),
+                listings: vec![],
+            },
+            ChapterListings {
+                name: "Freeze a listing".into(),
+                path: "ch03.md".into(),
+                listings: vec![listing("3.1", Some("The reuse manifest"), "listing-3-1")],
+            },
+        ];
+        let out = render_manifest(&chapters, SidebarMode::Append);
+        assert!(
+            !out.contains("empty.html"),
+            "chapter with no listings is omitted; got:\n{out}"
+        );
+        assert!(
+            out.contains("ch03.html"),
+            "populated chapter kept; got:\n{out}"
+        );
     }
 
     #[test]

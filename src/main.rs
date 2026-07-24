@@ -12,7 +12,9 @@ use mdbook_listings::freeze::{
 };
 use mdbook_listings::include::splice_chapter as splice_includes;
 use mdbook_listings::install::{InstallOutcome, ensure_assets_fresh, install};
-use mdbook_listings::list_of_listings::{ChapterListings, render_index, replace_markers};
+use mdbook_listings::list_of_listings::{
+    ChapterListings, SidebarMode, render_index, render_manifest, replace_markers,
+};
 use mdbook_listings::manifest::Manifest;
 use mdbook_listings::number::splice_chapter as splice_numbers;
 use mdbook_listings::verify::{Severity, verify};
@@ -220,9 +222,22 @@ fn preprocess() -> Result<()> {
         .ok()
         .flatten()
         .unwrap_or(false);
+    // Opt-in: the sidebar variant of the index. "off" (default), "append", or
+    // "nested"; an unrecognised value falls back to off.
+    let sidebar_mode = ctx
+        .config
+        .get::<String>("preprocessor.listings.list-of-listings-sidebar")
+        .ok()
+        .flatten()
+        .as_deref()
+        .map(SidebarMode::parse)
+        .unwrap_or(SidebarMode::Off);
 
     // Accumulates each chapter's numbered listings, in document order, for the
     // book-wide List-of-Listings index emitted after the per-chapter passes.
+    // Populated when either the inline index or the sidebar is on — both draw
+    // from the same collected data.
+    let collect_listings = list_of_listings || sidebar_mode != SidebarMode::Off;
     let mut collected: Vec<ChapterListings> = Vec::new();
     let mut splice_err: Option<anyhow::Error> = None;
     book.for_each_mut(|item| {
@@ -264,9 +279,9 @@ fn preprocess() -> Result<()> {
                     // The link path is the chapter file relative to the book
                     // src root (Phase 1 assumes the index page is top-level).
                     // Chapters with no listings are still recorded; render_index
-                    // skips them. The flag is the sole gate — when off, nothing
+                    // skips them. The gate is the sole control — when off, nothing
                     // is collected, so the index renders empty.
-                    if list_of_listings {
+                    if collect_listings {
                         collected.push(ChapterListings {
                             name: chapter.name.clone(),
                             path: chapter
@@ -293,13 +308,23 @@ fn preprocess() -> Result<()> {
     }
 
     // Final book-wide pass: replace every {{#list-of-listings}} marker with the
-    // index built from the collected listings. When the feature is off nothing
-    // was collected, so the index is empty and the marker is simply stripped —
-    // the raw directive never leaks into the output.
-    let index = render_index(&collected);
+    // index built from the collected listings, and append the sidebar manifest
+    // to every page when the sidebar is on. The inline index stays gated on its
+    // own flag (so the sidebar doesn't make a `{{#list-of-listings}}` marker
+    // render when the page index is off); when off the index is empty and the
+    // marker is simply stripped, so the raw directive never leaks. The manifest
+    // is emitted per page because each rendered page carries its own sidebar.
+    let index = if list_of_listings {
+        render_index(&collected)
+    } else {
+        String::new()
+    };
+    let manifest = render_manifest(&collected, sidebar_mode);
     book.for_each_mut(|item| {
         if let BookItem::Chapter(chapter) = item {
-            chapter.content = replace_markers(&chapter.content, &index);
+            let mut content = replace_markers(&chapter.content, &index);
+            content.push_str(&manifest);
+            chapter.content = content;
         }
     });
 

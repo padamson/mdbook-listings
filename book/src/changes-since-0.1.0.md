@@ -24,6 +24,12 @@ and do not describe what follows.
   appears in and linking to each one. Opt-in through
   `[preprocessor.listings] list-of-listings`; this book's
   [List of Listings](listings-index.md) page uses it.
+- **List of Listings in the sidebar.** With
+  `[preprocessor.listings] list-of-listings-sidebar = "append"`, a
+  "Listings" section is added to the sidebar below the table of contents,
+  built in the browser from an inline manifest the preprocessor emits on
+  every page. This book turns it on, so the sidebar here carries that
+  section. It sits alongside mdbook's own navigation rather than inside it.
 
 ## v0.1.1 — listing numbers and captions
 

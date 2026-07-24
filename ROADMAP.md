@@ -57,6 +57,14 @@ further downstream validation. Numbering and scoped badges are opt-in via
 - **`{{#diff}}` context window** — an optional `context=N` argument sets the
   unified-diff context radius (default 3), so a hunk can show enough
   surrounding lines to place a change.
+- **List of Listings index** — a `{{#list-of-listings}}` marker renders a
+  book-wide, chapter-grouped index of every numbered listing, each entry
+  linking to its anchor. Opt-in via `list-of-listings`.
+- **List of Listings sidebar** — a client-side variant of the index in the
+  sidebar, opt-in via `list-of-listings-sidebar`. `"append"` (shipped) adds
+  a self-contained "Listings" section below the table of contents;
+  `"nested"` (planned) will nest each listing under its chapter in the nav
+  tree. HTML only; the inline index is the floor for PDF.
 
 ## v0.2.0 — power-user ergonomics
 

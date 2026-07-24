@@ -25,6 +25,10 @@ struct Anchor {
 /// Carries the rendered number (`5.1`), the link-target id stamped onto its
 /// caption div (`listing-5-1`), and the caption still HTML-escaped as stored
 /// on the anchor.
+///
+/// `Serialize` feeds the sidebar manifest ([`crate::list_of_listings`]); the
+/// field names are the manifest's JSON keys, read by `mdbook-listings.js`.
+#[derive(serde::Serialize)]
 pub struct ListingRef {
     pub number: String,
     pub caption: Option<String>,

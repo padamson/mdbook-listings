@@ -33,6 +33,10 @@ number-listings = true
 # the back-matter page collects every numbered listing book-wide into a linked
 # index. Post-v0.1.0; see the "Changes since v0.1.0" errata.
 list-of-listings = true
+# Dogfood the sidebar variant: "append" adds a self-contained "Listings"
+# section below the sidebar ToC on every page, built client-side from an
+# inline manifest. Post-v0.1.0; see the "Changes since v0.1.0" errata.
+list-of-listings-sidebar = "append"
 
 [output.html]
 additional-css = ["./mdbook-admonish.css", "./mdbook-listings.css"]

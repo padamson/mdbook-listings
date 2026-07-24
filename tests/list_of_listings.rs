@@ -117,6 +117,91 @@ fn list_of_listings_directive_is_stripped_when_feature_disabled() {
     );
 }
 
+#[test]
+fn sidebar_append_emits_manifest_on_every_page() {
+    let book = MinimalBook::new();
+    let mut envelope_book = book.book(
+        Page {
+            name: "Freeze a listing",
+            path: "ch03.md",
+            number: Some(&[3]),
+            content: "```rust\n{{#include listings/sample.rs caption=\"The reuse manifest\"}}\n```\n",
+        },
+        Page {
+            name: "List of Listings",
+            path: "listings-index.md",
+            number: None,
+            content: "# List of Listings\n\n{{#list-of-listings}}\n",
+        },
+    );
+    // Sidebar on (append); the inline-page flag is independent and left off.
+    let ctx = book.context(
+        "[preprocessor.listings]\nnumber-listings = true\nlist-of-listings-sidebar = \"append\"\n",
+    );
+    let envelope = serialize(&ctx, &mut envelope_book);
+
+    let returned = run(envelope);
+
+    // The manifest rides on every page (each carries its own sidebar), even the
+    // chapter that hosts no marker.
+    for page in ["Freeze a listing", "List of Listings"] {
+        let content = chapter_content(&returned, page);
+        assert!(
+            content.contains(r#"<script id="mdbook-listings-manifest""#),
+            "manifest script should be on page `{page}`; got:\n{content}",
+        );
+        assert!(
+            content.contains(r#"data-sidebar="append""#),
+            "manifest should carry the sidebar mode on `{page}`; got:\n{content}",
+        );
+        assert!(
+            content.contains(r#""path":"ch03.html""#),
+            "manifest links the .html page on `{page}`; got:\n{content}",
+        );
+    }
+
+    // The page flag is off, so the inline `{{#list-of-listings}}` marker is
+    // stripped, not rendered — the sidebar doesn't turn the page index on.
+    let index_page = chapter_content(&returned, "List of Listings");
+    assert!(
+        !index_page.contains("{{#list-of-listings}}"),
+        "marker still stripped when page index off; got:\n{index_page}",
+    );
+    assert!(
+        !index_page.contains("## Freeze a listing"),
+        "no inline index rendered when the page flag is off; got:\n{index_page}",
+    );
+}
+
+#[test]
+fn sidebar_off_emits_no_manifest() {
+    let book = MinimalBook::new();
+    let mut envelope_book = book.book(
+        Page {
+            name: "Freeze a listing",
+            path: "ch03.md",
+            number: Some(&[3]),
+            content: "```rust\n{{#include listings/sample.rs caption=\"The reuse manifest\"}}\n```\n",
+        },
+        Page {
+            name: "List of Listings",
+            path: "listings-index.md",
+            number: None,
+            content: "# List of Listings\n\n{{#list-of-listings}}\n",
+        },
+    );
+    // Numbering on, but no sidebar option at all.
+    let ctx = book.context("[preprocessor.listings]\nnumber-listings = true\n");
+    let envelope = serialize(&ctx, &mut envelope_book);
+
+    let returned = run(envelope);
+    let content = chapter_content(&returned, "Freeze a listing");
+    assert!(
+        !content.contains("mdbook-listings-manifest"),
+        "no manifest when the sidebar is off; got:\n{content}",
+    );
+}
+
 // --- harness -------------------------------------------------------------
 
 struct Page<'a> {

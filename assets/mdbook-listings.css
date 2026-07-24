@@ -20,7 +20,7 @@
  * pre-script behaviour for any environment where JS doesn't run.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes are
- * the expected build-time asset: mdbook-listings-css-v7
+ * the expected build-time asset: mdbook-listings-css-v8
  */
 
 /* Listing caption line, emitted by the numbering pass immediately before a
@@ -246,4 +246,42 @@
   left: calc(100% - 1px);
   border-right: 0;
   border-left: calc(0.5em - 1px) solid var(--theme-popup-bg, #fff);
+}
+
+/* Sidebar "List of Listings" section (Phase 2: append), built at runtime by
+ * mdbook-listings.js from the inline manifest and inserted under
+ * `<nav id="mdbook-sidebar">`, below mdbook's table of contents. Styled to
+ * sit quietly beneath the ToC using the theme's own sidebar variables. */
+.mdbook-listings-sidebar {
+  border-top: 1px solid var(--sidebar-spacing, rgba(0, 0, 0, 0.1));
+  margin-top: 0.5em;
+  padding: 0.5em 0 1em;
+  font-size: 0.85em;
+}
+.mdbook-listings-sidebar-heading {
+  padding: 0 1.5rem 0.3em;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+}
+.mdbook-listings-sidebar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mdbook-listings-sidebar-list li {
+  margin: 0;
+  padding: 0;
+  line-height: 1.4;
+}
+.mdbook-listings-sidebar-list a {
+  display: block;
+  padding: 0.2em 1.5rem;
+  color: var(--sidebar-fg, #c8c9db);
+  text-decoration: none;
+}
+.mdbook-listings-sidebar-list a:hover {
+  background: var(--sidebar-active, #1f2226);
+  color: var(--sidebar-active, #fff);
 }
