@@ -1244,7 +1244,7 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 [[package]]
 name = "playwright-rs"
 version = "0.14.0"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#e0a057770682949bdd2fb310f519bda51b51d826"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#c294fee6243f2b1709ab2038ba62cee17687043d"
 dependencies = [
  "async-trait",
  "base64",
@@ -1272,7 +1272,7 @@ dependencies = [
 [[package]]
 name = "playwright-rs-macros"
 version = "0.1.0"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#e0a057770682949bdd2fb310f519bda51b51d826"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#c294fee6243f2b1709ab2038ba62cee17687043d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1282,7 +1282,7 @@ dependencies = [
 [[package]]
 name = "playwright-rs-trace"
 version = "0.1.0"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#e0a057770682949bdd2fb310f519bda51b51d826"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#c294fee6243f2b1709ab2038ba62cee17687043d"
 dependencies = [
  "serde",
  "serde_json",
@@ -1831,7 +1831,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.2",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
