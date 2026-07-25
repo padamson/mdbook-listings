@@ -72,12 +72,18 @@ fn html_path(src_path: &str) -> String {
     }
 }
 
-/// Emit the collected index as an inline JSON manifest for the sidebar JS —
-/// `<script id="mdbook-listings-manifest" type="application/json"
-/// data-sidebar="…">[…]</script>`. Returns `""` when the sidebar is off or no
-/// chapter has a numbered listing, so nothing is appended in that case. The
-/// captions are already HTML-escaped (as stored on the anchor), which also
-/// keeps a caption from smuggling a `</script>` that would close the tag early.
+/// Emit the sidebar's mode marker (and, for `append`, its data) as an inline
+/// script — `<script id="mdbook-listings-manifest" type="application/json"
+/// data-sidebar="…">…</script>`. Returns `""` when the sidebar is off or no
+/// chapter has a numbered listing.
+///
+/// `append` serialises the whole book-wide index into the body, since that
+/// rung renders every listing regardless of page. `nested` reads the current
+/// page's listings from the rendered content itself (the `listing-N-M` caption
+/// anchors), so its script is just the mode marker with an empty body — no
+/// point shipping a book-wide index every page won't use. Captions in the
+/// `append` body are already HTML-escaped (as stored on the anchor), which
+/// also keeps one from smuggling a `</script>` that would close the tag early.
 pub fn render_manifest(chapters: &[ChapterListings], mode: SidebarMode) -> String {
     if mode == SidebarMode::Off {
         return String::new();
@@ -94,9 +100,13 @@ pub fn render_manifest(chapters: &[ChapterListings], mode: SidebarMode) -> Strin
     if view.is_empty() {
         return String::new();
     }
-    let json = serde_json::to_string(&view).unwrap_or_default();
+    let body = match mode {
+        SidebarMode::Append => serde_json::to_string(&view).unwrap_or_default(),
+        // Nested reads listings from the page; the marker alone is enough.
+        SidebarMode::Nested | SidebarMode::Off => String::new(),
+    };
     format!(
-        "\n<script id=\"mdbook-listings-manifest\" type=\"application/json\" data-sidebar=\"{}\">{json}</script>\n",
+        "\n<script id=\"mdbook-listings-manifest\" type=\"application/json\" data-sidebar=\"{}\">{body}</script>\n",
         mode.as_str()
     )
 }
@@ -231,11 +241,17 @@ mod tests {
     }
 
     #[test]
-    fn manifest_carries_the_nested_mode() {
+    fn manifest_carries_the_nested_mode_with_an_empty_body() {
         let out = render_manifest(&one_chapter(), SidebarMode::Nested);
+        // Nested reads the listings from the page, so the marker's body is
+        // empty — no book-wide index is shipped.
         assert!(
-            out.contains(r#"data-sidebar="nested""#),
-            "nested mode on the script tag; got:\n{out}"
+            out.contains(r#"data-sidebar="nested"></script>"#),
+            "nested marker with empty body; got:\n{out}"
+        );
+        assert!(
+            !out.contains("listing-3-1"),
+            "nested body should carry no listing data; got:\n{out}"
         );
     }
 

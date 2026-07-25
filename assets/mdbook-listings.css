@@ -20,7 +20,7 @@
  * pre-script behaviour for any environment where JS doesn't run.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes are
- * the expected build-time asset: mdbook-listings-css-v9
+ * the expected build-time asset: mdbook-listings-css-v10
  */
 
 /* Listing caption line, emitted by the numbering pass immediately before a
@@ -286,10 +286,12 @@
   color: var(--sidebar-active, #fff);
 }
 
-/* "nested" rung: listing entries injected by mdbook-listings.js into
- * mdbook's own nav tree, as an <ol class="mdbook-listings-nav"> appended to
- * the chapter's <li>. Indented a step past the chapter link and rendered a
- * touch smaller so listings read as children of their chapter. */
+/* "nested" rung: listing entries injected by mdbook-listings.js into mdbook's
+ * per-page header tree, as an <ol class="mdbook-listings-nav"> hung under the
+ * heading (or chapter) <li> a listing lives beneath. It rides mdbook's own
+ * fold behaviour — a collapsed header hides its nested lists, ours included —
+ * so nothing extra is needed to collapse these. Rendered a touch smaller and
+ * indented a step past the heading so listings read as its children. */
 .mdbook-listings-nav {
   list-style: none;
   margin: 0;
@@ -302,10 +304,10 @@
 }
 .mdbook-listings-nav-item a {
   display: block;
-  padding: 0.15em 1.5rem 0.15em 3rem;
+  padding: 0.12em 1.5rem 0.12em 3.5rem;
   color: var(--sidebar-fg, #c8c9db);
   text-decoration: none;
-  opacity: 0.85;
+  opacity: 0.8;
 }
 .mdbook-listings-nav-item a:hover {
   background: var(--sidebar-active, #1f2226);
