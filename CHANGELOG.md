@@ -31,15 +31,15 @@ output is byte-identical to 0.1.0.
   listing's caption gains an `id` so the index (and other prose) can link
   to it.
 - **List of Listings sidebar.** With
-  `[preprocessor.listings] list-of-listings-sidebar`, the preprocessor emits
-  an inline JSON manifest of the collected listings on every page, and the
-  bundled JS renders a sidebar view of them. `"append"` adds a
-  self-contained "Listings" section below mdbook's table of contents, built
-  as a sibling of the sidebar scrollbox so it is independent of the theme's
-  navigation tree. `"nested"` injects each listing into the navigation tree
-  under the chapter it belongs to, matching the tree once mdbook populates
-  it at runtime. `"off"` (default) emits nothing. Each entry links to a
-  listing's anchor. HTML output only.
+  `[preprocessor.listings] list-of-listings-sidebar`, the bundled JS renders
+  a sidebar view of the numbered listings. `"append"` adds a self-contained
+  "Listings" section below mdbook's table of contents listing every listing
+  book-wide, built as a sibling of the sidebar scrollbox so it is independent
+  of the theme's navigation tree. `"nested"` places each of the current
+  page's listings in mdbook's per-page header tree, under the heading it
+  lives beneath, so a listing appears only when you are on its page and its
+  section is expanded, and folds with that heading. `"off"` (default) emits
+  nothing. Each entry links to a listing's anchor. HTML output only.
 
 ### Changed
 - Callout badges render as pills at any width, so a bare `1` and a scoped

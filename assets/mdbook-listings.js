@@ -56,7 +56,7 @@
  *    side/clamp choice live.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes
- * are the expected build-time asset: mdbook-listings-js-v9
+ * are the expected build-time asset: mdbook-listings-js-v10
  */
 (function () {
   var LEFT_FALLBACK_THRESHOLD_EM = 16;
@@ -224,56 +224,61 @@
 
 /* mdbook-listings — sidebar "List of Listings".
  *
- * Reads the inline JSON manifest the preprocessor emits on every page
- * (`<script id="mdbook-listings-manifest" data-sidebar="…">`) and renders a
- * sidebar view of the book's numbered listings. Two rungs, chosen by the
- * `data-sidebar` mode:
+ * The preprocessor emits a marker on every page,
+ * `<script id="mdbook-listings-manifest" data-sidebar="…">`, whose mode picks
+ * one of two rungs:
  *
  *   "append"  — a self-contained "Listings" section added below mdbook's
- *               table of contents. Inserted as a sibling of
- *               `<mdbook-sidebar-scrollbox>` (before the resize handle),
- *               NOT inside it: mdbook's `toc.js` fills the scrollbox by
- *               assigning its `innerHTML` in a custom-element
- *               `connectedCallback`, which would wipe anything appended
- *               inside it depending on script order. Staying a sibling
- *               survives that and needs no knowledge of the nav tree —
- *               that independence is the whole point of this rung.
+ *               table of contents, listing every numbered listing book-wide.
+ *               The marker's body carries that index as JSON. The section is
+ *               inserted as a sibling of `<mdbook-sidebar-scrollbox>` (before
+ *               the resize handle), NOT inside it: mdbook's `toc.js` fills the
+ *               scrollbox by assigning its `innerHTML` in a custom-element
+ *               `connectedCallback`, which would wipe anything appended inside
+ *               it. Staying a sibling survives that and needs no knowledge of
+ *               the nav tree — that independence is the point of this rung.
  *
- *   "nested"  — each listing is injected into mdbook's own nav tree, under
- *               the chapter it belongs to. That tree is populated at runtime
- *               (the scrollbox's `connectedCallback`), so if it isn't there
- *               yet we observe the scrollbox and nest once it appears. This
- *               rung matches the default theme's DOM.
+ *   "nested"  — each listing is placed in mdbook's own per-page header tree,
+ *               under the heading it lives beneath, on the current page only.
+ *               mdbook's `toc.js` renders the active page's `h2`–`h6` as
+ *               `<a class="header-in-summary" href="#slug">` nodes and folds
+ *               them; we read the page's `.listing-caption[id^="listing-"]`
+ *               anchors, pair each with its nearest preceding heading, and
+ *               hang it under that heading's node. So a listing shows only
+ *               when you're on its page and its section is expanded, and
+ *               collapses with the heading — the marker body is empty because
+ *               everything is read from the rendered page. Because the header
+ *               tree is built at runtime, we observe the scrollbox until it
+ *               appears. This rung is coupled to the default theme's DOM.
  *
- * Chapter link paths in the manifest are already `.html` (the JS runs past
- * mdbook's markdown-link rewriting). Captions arrive HTML-escaped, so
- * `innerHTML` restores their intended text and a caption can't smuggle a
- * closing tag.
- *
- * Sentinel (paired with the -js-v9 bump above): mdbook-listings-sidebar-v9
+ * Sentinel (paired with the -js-v10 bump above): mdbook-listings-sidebar-v10
  */
 (function () {
   var SECTION_ID = 'mdbook-listings-sidebar';
   var NESTED_CLASS = 'mdbook-listings-nav';
 
-  function readManifest() {
+  // The sidebar mode, read off the marker regardless of body (nested's body
+  // is empty). Returns null when there is no marker or the sidebar is off.
+  function readMode() {
     var el = document.getElementById('mdbook-listings-manifest');
     if (!el) return null;
     var mode = el.dataset.sidebar || 'off';
-    if (mode === 'off') return null;
-    var data;
-    try {
-      data = JSON.parse(el.textContent);
-    } catch (e) {
-      return null;
-    }
-    if (!Array.isArray(data) || data.length === 0) return null;
-    return { mode: mode, chapters: data };
+    if (mode !== 'append' && mode !== 'nested') return null;
+    return { el: el, mode: mode };
   }
 
-  // One listing's link. The number is plain digits/dots; the caption is
-  // already HTML-escaped upstream, so innerHTML restores its intended text.
-  function listingAnchor(ch, l) {
+  function scrollbox() {
+    return (
+      document.querySelector('mdbook-sidebar-scrollbox') ||
+      document.getElementById('mdbook-sidebar-scrollbox')
+    );
+  }
+
+  // --- "append" rung -----------------------------------------------------
+
+  // One book-wide listing's link. The number is plain digits/dots; the caption
+  // is already HTML-escaped upstream, so innerHTML restores its intended text.
+  function manifestAnchor(ch, l) {
     var a = document.createElement('a');
     a.href = ch.path + '#' + l.id;
     var label = 'Listing ' + l.number;
@@ -282,9 +287,17 @@
     return a;
   }
 
-  // --- "append" rung -----------------------------------------------------
-
-  function buildSection(chapters) {
+  function appendBlock(el) {
+    if (document.getElementById(SECTION_ID)) return; // idempotent
+    var chapters;
+    try {
+      chapters = JSON.parse(el.textContent);
+    } catch (e) {
+      return;
+    }
+    if (!Array.isArray(chapters) || chapters.length === 0) return;
+    var nav = document.getElementById('mdbook-sidebar');
+    if (!nav) return;
     var section = document.createElement('section');
     section.id = SECTION_ID;
     section.className = 'mdbook-listings-sidebar';
@@ -297,19 +310,11 @@
     chapters.forEach(function (ch) {
       (ch.listings || []).forEach(function (l) {
         var li = document.createElement('li');
-        li.appendChild(listingAnchor(ch, l));
+        li.appendChild(manifestAnchor(ch, l));
         ol.appendChild(li);
       });
     });
     section.appendChild(ol);
-    return section;
-  }
-
-  function appendBlock(chapters) {
-    if (document.getElementById(SECTION_ID)) return; // idempotent
-    var nav = document.getElementById('mdbook-sidebar');
-    if (!nav) return;
-    var section = buildSection(chapters);
     var resize = document.getElementById('mdbook-sidebar-resize-handle');
     if (resize && resize.parentNode === nav) {
       nav.insertBefore(section, resize);
@@ -321,61 +326,103 @@
 
   // --- "nested" rung -----------------------------------------------------
 
-  function scrollbox() {
-    return (
-      document.querySelector('mdbook-sidebar-scrollbox') ||
-      document.getElementById('mdbook-sidebar-scrollbox')
+  // The current page's listings grouped by their enclosing heading, in
+  // document order. Each group is { headingId, items:[{id, label}] };
+  // headingId is null for listings that precede the first heading.
+  function pageListingGroups() {
+    var root = document.querySelector('main') || document.querySelector('.content');
+    if (!root) return [];
+    var nodes = root.querySelectorAll(
+      'h2, h3, h4, h5, h6, .listing-caption[id^="listing-"]'
     );
+    var groups = [];
+    var current = null;
+    nodes.forEach(function (n) {
+      if (n.classList && n.classList.contains('listing-caption')) {
+        if (!current) {
+          current = { headingId: null, items: [] };
+          groups.push(current);
+        }
+        // textContent (not innerHTML): the caption div already holds the
+        // rendered "Listing N.M — caption" label as text.
+        current.items.push({ id: n.id, label: (n.textContent || '').trim() });
+      } else {
+        current = { headingId: n.id, items: [] };
+        groups.push(current);
+      }
+    });
+    return groups.filter(function (g) {
+      return g.items.length > 0;
+    });
   }
 
-  // The nav <li> whose chapter link points at this page, or null. Compares
-  // the link's filename (hash/query stripped) against the manifest path.
-  function chapterItem(box, path) {
-    var links = box.querySelectorAll('a[href]');
+  // The <li> of the header-tree node whose anchor targets `#headingId`.
+  function headerItem(box, headingId) {
+    var links = box.querySelectorAll('a.header-in-summary');
+    var target = '#' + headingId;
     for (var i = 0; i < links.length; i++) {
-      var href = links[i].getAttribute('href') || '';
-      var file = href.split('#')[0].split('?')[0];
-      if (file === path || file.endsWith('/' + path)) {
-        return links[i].closest('li');
-      }
+      if (links[i].getAttribute('href') === target) return links[i].closest('li');
     }
     return null;
   }
 
-  function nestIntoNav(box, chapters) {
-    chapters.forEach(function (ch) {
-      var li = chapterItem(box, ch.path);
-      if (!li || li.dataset.mdbookListings) return; // idempotent per chapter
-      li.dataset.mdbookListings = '1';
-      var ol = document.createElement('ol');
-      ol.className = NESTED_CLASS;
-      (ch.listings || []).forEach(function (l) {
-        var item = document.createElement('li');
-        item.className = 'mdbook-listings-nav-item';
-        item.appendChild(listingAnchor(ch, l));
-        ol.appendChild(item);
-      });
-      li.appendChild(ol);
+  // The active chapter's <li>, for listings that precede the first heading.
+  function activeChapterItem(box) {
+    var active = box.querySelector('.chapter-item a.active') || box.querySelector('a.active');
+    return active ? active.closest('li') : null;
+  }
+
+  function nestListingList(items) {
+    var ol = document.createElement('ol');
+    ol.className = NESTED_CLASS;
+    items.forEach(function (it) {
+      var li = document.createElement('li');
+      li.className = 'mdbook-listings-nav-item';
+      var a = document.createElement('a');
+      a.href = '#' + it.id;
+      a.textContent = it.label;
+      li.appendChild(a);
+      ol.appendChild(li);
     });
-    window.__mdbookListingsSidebar = 'nested';
+    return ol;
   }
 
-  // Nest now if the nav tree is already populated; return whether it was.
-  function tryNest(chapters) {
-    var box = scrollbox();
-    if (!box || !box.querySelector('ol.chapter')) return false;
-    nestIntoNav(box, chapters);
-    return true;
+  // Hang each group under its heading's node (or the active chapter for the
+  // no-heading group). Idempotent per container. Returns true once at least
+  // one group landed.
+  function nestIntoHeaders(box, groups) {
+    var landed = false;
+    groups.forEach(function (g) {
+      var container = g.headingId ? headerItem(box, g.headingId) : activeChapterItem(box);
+      if (!container || container.dataset.mdbookListings) return;
+      container.dataset.mdbookListings = '1';
+      container.appendChild(nestListingList(g.items));
+      landed = true;
+    });
+    if (landed) window.__mdbookListingsSidebar = 'nested';
+    return landed;
   }
 
-  function startNested(chapters) {
-    if (tryNest(chapters)) return;
+  function startNested() {
+    var groups = pageListingGroups();
+    if (!groups.length) return;
+    var needsHeaders = groups.some(function (g) {
+      return g.headingId !== null;
+    });
     var box = scrollbox();
     if (!box) return;
-    // mdbook's toc.js fills the scrollbox at runtime; observe until the
-    // chapter tree appears, nest once, then stop watching.
+
+    function attempt() {
+      nestIntoHeaders(box, groups);
+      // Done once the header tree exists (all heading nodes are built in one
+      // pass), or when no group needs one.
+      return !needsHeaders || box.querySelector('a.header-in-summary') !== null;
+    }
+
+    if (attempt()) return;
+    // mdbook builds the header tree at runtime; watch until it appears.
     var obs = new MutationObserver(function () {
-      if (tryNest(chapters)) obs.disconnect();
+      if (attempt()) obs.disconnect();
     });
     obs.observe(box, { childList: true, subtree: true });
   }
@@ -383,12 +430,12 @@
   // --- bootstrap ---------------------------------------------------------
 
   function buildSidebar() {
-    var manifest = readManifest();
-    if (!manifest) return;
-    if (manifest.mode === 'append') {
-      appendBlock(manifest.chapters);
-    } else if (manifest.mode === 'nested') {
-      startNested(manifest.chapters);
+    var marker = readMode();
+    if (!marker) return;
+    if (marker.mode === 'append') {
+      appendBlock(marker.el);
+    } else if (marker.mode === 'nested') {
+      startNested();
     }
   }
 
