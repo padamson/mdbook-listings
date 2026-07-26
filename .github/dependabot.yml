@@ -42,13 +42,11 @@ updates:
       time: "04:00"
       timezone: "America/New_York"
     open-pull-requests-limit: 10
-    # Same cooldown for actions: skip same-day releases that get yanked and
-    # let advisories surface before adopting a version.
+    # Same idea for actions: skip same-day releases that get yanked and let
+    # advisories surface first. Dependabot only supports `default-days` for
+    # the github-actions ecosystem (the per-semver keys are cargo-only).
     cooldown:
       default-days: 7
-      semver-major-days: 14
-      semver-minor-days: 7
-      semver-patch-days: 3
     groups:
       github-actions:
         patterns:
