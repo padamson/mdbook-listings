@@ -811,3 +811,117 @@ async fn list_of_listings_sidebar_nests_entries_under_page_headings() {
     )
     .await;
 }
+
+// The append rung, exercised on a page the book builds in "nested" mode by
+// rewriting the marker and rebuilding through the script's test seam. A book
+// is built in one sidebar mode, so without this the un-dogfooded rung has no
+// page to run on — which is how it shipped rendering as an overlay across
+// mdbook's table of contents.
+#[tokio::test]
+async fn list_of_listings_sidebar_append_flows_below_the_nav_tree() {
+    with_traced_chapter(
+        "list_of_listings_sidebar_append_flows_below_the_nav_tree",
+        CH05,
+        |page| async move {
+            // Swap the marker to append mode, carrying a manifest built from
+            // the page's own listings, then rebuild.
+            let built: String = page
+                .evaluate_value(
+                    r#"(() => {
+                        const el = document.getElementById('mdbook-listings-manifest');
+                        if (!el) return 'no-marker';
+                        const items = [...document.querySelectorAll('main .listing-caption[id^="listing-"]')]
+                            .map(d => ({ number: d.id.replace('listing-', '').replace('-', '.'),
+                                         caption: null, id: d.id }));
+                        if (!items.length) return 'no-listings';
+                        document.querySelectorAll('.mdbook-listings-nav').forEach(n => n.remove());
+                        el.dataset.sidebar = 'append';
+                        el.textContent = JSON.stringify([
+                            { name: 'Ch', path: location.pathname.split('/').pop(), listings: items }
+                        ]);
+                        window.__mdbookListingsSidebarBuild();
+                        return String(items.length);
+                    })()"#,
+                )
+                .await
+                .expect("rebuild sidebar in append mode");
+            assert!(
+                built.parse::<u32>().is_ok(),
+                "expected a listing count, got `{built}`"
+            );
+
+            let section = page.locator(locator!("#mdbook-listings-sidebar"));
+            expect(section)
+                .to_be_visible()
+                .await
+                .expect("append section must render");
+
+            // The defect this guards: the section used to be a normal-flow
+            // sibling of the absolutely-positioned `.sidebar-scrollbox`, so it
+            // painted on top of the nav tree instead of after it. Compare
+            // rendered boxes rather than DOM position — the DOM looked fine
+            // while the layout was broken.
+            let verdict: String = page
+                .evaluate_value(
+                    r#"(() => {
+                        const sec = document.getElementById('mdbook-listings-sidebar');
+                        const tree = document.querySelector('#mdbook-sidebar ol.chapter');
+                        if (!sec || !tree) return 'missing';
+                        const s = sec.getBoundingClientRect();
+                        const t = tree.getBoundingClientRect();
+                        if (s.height === 0 || s.width === 0) return 'section-collapsed';
+                        return s.top >= t.bottom - 1 ? 'below' : `overlaps(section.top=${Math.round(s.top)}, tree.bottom=${Math.round(t.bottom)})`;
+                    })()"#,
+                )
+                .await
+                .expect("compare section and nav-tree boxes");
+            assert_eq!(
+                verdict, "below",
+                "append section must flow below the nav tree, not over it"
+            );
+        },
+    )
+    .await;
+}
+
+// Hover recolours the entry's text; it must not paint a block behind it (and
+// must never make the text match its own background, which rendered the entry
+// as a solid unreadable bar).
+#[tokio::test]
+async fn list_of_listings_sidebar_hover_recolours_text_without_a_block() {
+    with_traced_chapter(
+        "list_of_listings_sidebar_hover_recolours_text_without_a_block",
+        CH05,
+        |page| async move {
+            let entry = page
+                .locator(locator!(".mdbook-listings-nav-item a"))
+                .first();
+            expect(entry.clone())
+                .to_be_visible()
+                .await
+                .expect("a nested listing entry must be present");
+            entry.hover(None).await.expect("hover the entry");
+
+            let verdict: String = page
+                .evaluate_value(
+                    r#"(() => {
+                        const a = document.querySelector('.mdbook-listings-nav-item a');
+                        if (!a) return 'missing';
+                        const s = getComputedStyle(a);
+                        const bg = s.backgroundColor;
+                        const transparent = bg === 'transparent' || /rgba\(0, 0, 0, 0\)/.test(bg);
+                        if (!transparent) return `block-highlight(${bg})`;
+                        if (s.color === bg) return `invisible-text(${s.color})`;
+                        return 'text-only';
+                    })()"#,
+                )
+                .await
+                .expect("inspect hovered entry style");
+            assert_eq!(
+                verdict, "text-only",
+                "hover must recolour text only, with no background block"
+            );
+        },
+    )
+    .await;
+}

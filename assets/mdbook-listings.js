@@ -56,7 +56,7 @@
  *    side/clamp choice live.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes
- * are the expected build-time asset: mdbook-listings-js-v10
+ * are the expected build-time asset: mdbook-listings-js-v11
  */
 (function () {
   var LEFT_FALLBACK_THRESHOLD_EM = 16;
@@ -251,7 +251,7 @@
  *               tree is built at runtime, we observe the scrollbox until it
  *               appears. This rung is coupled to the default theme's DOM.
  *
- * Sentinel (paired with the -js-v10 bump above): mdbook-listings-sidebar-v10
+ * Sentinel (paired with the -js-v11 bump above): mdbook-listings-sidebar-v11
  */
 (function () {
   var SECTION_ID = 'mdbook-listings-sidebar';
@@ -287,17 +287,7 @@
     return a;
   }
 
-  function appendBlock(el) {
-    if (document.getElementById(SECTION_ID)) return; // idempotent
-    var chapters;
-    try {
-      chapters = JSON.parse(el.textContent);
-    } catch (e) {
-      return;
-    }
-    if (!Array.isArray(chapters) || chapters.length === 0) return;
-    var nav = document.getElementById('mdbook-sidebar');
-    if (!nav) return;
+  function buildSection(chapters) {
     var section = document.createElement('section');
     section.id = SECTION_ID;
     section.className = 'mdbook-listings-sidebar';
@@ -315,13 +305,61 @@
       });
     });
     section.appendChild(ol);
+    return section;
+  }
+
+  // Place the section INSIDE the scrollbox, after mdbook's nav tree.
+  //
+  // It used to go in as a sibling of the scrollbox, which looked right in the
+  // DOM and rendered as an overlay: mdbook's theme gives `.sidebar-scrollbox`
+  // `position: absolute; top/bottom/left/right: 0`, so the scrollbox is out of
+  // normal flow and covers the whole nav. A normal-flow sibling after it
+  // therefore starts at the nav's top-left, under the tree, and the two paint
+  // over each other. Inside the scrollbox the section flows after the tree and
+  // scrolls with it, which is what "below the table of contents" means.
+  //
+  // The reason for staying outside originally was that mdbook's `toc.js` fills
+  // the scrollbox by assigning `innerHTML`, which would wipe anything already
+  // in there. The observer in `startAppend` handles that: if the section is
+  // wiped it is simply rebuilt on the next mutation.
+  function insertSection(chapters) {
+    if (document.getElementById(SECTION_ID)) return true; // idempotent
+    var box = scrollbox();
+    if (box) {
+      box.appendChild(buildSection(chapters));
+      window.__mdbookListingsSidebar = 'append';
+      return true;
+    }
+    // No scrollbox (a theme that doesn't use one): fall back to the nav, where
+    // normal flow is the whole story and a plain append is correct.
+    var nav = document.getElementById('mdbook-sidebar');
+    if (!nav) return false;
     var resize = document.getElementById('mdbook-sidebar-resize-handle');
     if (resize && resize.parentNode === nav) {
-      nav.insertBefore(section, resize);
+      nav.insertBefore(buildSection(chapters), resize);
     } else {
-      nav.appendChild(section);
+      nav.appendChild(buildSection(chapters));
     }
     window.__mdbookListingsSidebar = 'append';
+    return true;
+  }
+
+  function startAppend(el) {
+    var chapters;
+    try {
+      chapters = JSON.parse(el.textContent);
+    } catch (e) {
+      return;
+    }
+    if (!Array.isArray(chapters) || chapters.length === 0) return;
+    insertSection(chapters);
+    var box = scrollbox();
+    if (!box) return;
+    // Re-insert if toc.js repopulates the scrollbox and wipes the section.
+    var obs = new MutationObserver(function () {
+      insertSection(chapters);
+    });
+    obs.observe(box, { childList: true });
   }
 
   // --- "nested" rung -----------------------------------------------------
@@ -433,11 +471,17 @@
     var marker = readMode();
     if (!marker) return;
     if (marker.mode === 'append') {
-      appendBlock(marker.el);
+      startAppend(marker.el);
     } else if (marker.mode === 'nested') {
       startNested();
     }
   }
+
+  // Test seam: a book is built in exactly one sidebar mode, so the mode it
+  // does NOT dogfood has no page to exercise it on. Exposing the entry point
+  // lets an e2e rewrite the marker and rebuild against a real browser and the
+  // real theme CSS — which is where the append rung's layout bugs live.
+  window.__mdbookListingsSidebarBuild = buildSidebar;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', buildSidebar);

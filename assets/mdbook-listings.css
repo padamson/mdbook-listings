@@ -20,7 +20,7 @@
  * pre-script behaviour for any environment where JS doesn't run.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes are
- * the expected build-time asset: mdbook-listings-css-v10
+ * the expected build-time asset: mdbook-listings-css-v11
  */
 
 /* Listing caption line, emitted by the numbering pass immediately before a
@@ -281,9 +281,10 @@
   color: var(--sidebar-fg, #c8c9db);
   text-decoration: none;
 }
+/* Text-recolour hover, matching mdbook's `.chapter li a:hover` — see the
+ * note on the nested rung's hover below. */
 .mdbook-listings-sidebar-list a:hover {
-  background: var(--sidebar-active, #1f2226);
-  color: var(--sidebar-active, #fff);
+  color: var(--sidebar-active, #3473ad);
 }
 
 /* "nested" rung: listing entries injected by mdbook-listings.js into mdbook's
@@ -309,8 +310,11 @@
   text-decoration: none;
   opacity: 0.8;
 }
+/* Hover matches mdbook's own sidebar convention (`.chapter li a:hover`):
+ * recolour the text, don't paint a block behind it. An earlier version set a
+ * background AND took the text colour from the same `--sidebar-active`
+ * variable, so the entry hovered into a solid bar of invisible text. */
 .mdbook-listings-nav-item a:hover {
-  background: var(--sidebar-active, #1f2226);
-  color: var(--sidebar-active, #fff);
+  color: var(--sidebar-active, #3473ad);
   opacity: 1;
 }

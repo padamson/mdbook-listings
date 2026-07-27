@@ -34,8 +34,8 @@ output is byte-identical to 0.1.0.
   `[preprocessor.listings] list-of-listings-sidebar`, the bundled JS renders
   a sidebar view of the numbered listings. `"append"` adds a self-contained
   "Listings" section below mdbook's table of contents listing every listing
-  book-wide, built as a sibling of the sidebar scrollbox so it is independent
-  of the theme's navigation tree. `"nested"` places each of the current
+  book-wide, placed inside the sidebar scrollbox after the navigation tree so
+  it flows below the tree and scrolls with it. `"nested"` places each of the current
   page's listings in mdbook's per-page header tree, under the heading it
   lives beneath, so a listing appears only when you are on its page and its
   section is expanded, and folds with that heading. `"off"` (default) emits
