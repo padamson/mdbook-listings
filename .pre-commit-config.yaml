@@ -109,3 +109,11 @@ repos:
         language: system
         pass_filenames: false
         files: ^book/
+
+      - id: plugin-version-bumped
+        name: plugin version bumped
+        description: Skill/plugin edits must bump plugin.json version (the consumer update gate)
+        entry: ./scripts/check-plugin-version-bumped.sh
+        language: system
+        pass_filenames: false
+        files: ^(skills/|\.claude-plugin/)
