@@ -56,6 +56,17 @@ and then install:
 Install at user scope (every project) or, in a book repo, at project scope
 (`--scope project`) so collaborators pick it up too.
 
+Marketplaces added this way do not auto-update by default. To pick up a newer
+plugin version, refresh the marketplace first, then update:
+
+```text
+/plugin marketplace update mdbook-listings
+/plugin update mdbook-listings@mdbook-listings
+```
+
+(You can also enable auto-update for this marketplace under `/plugin` →
+Marketplaces.)
+
 ## Development
 
 See [CLAUDE.md](CLAUDE.md) for development commands.

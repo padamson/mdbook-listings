@@ -139,10 +139,13 @@ list-of-listings-sidebar = "nested"  # "off" (default) | "append" | "nested"
 
 ## Authoritative sources
 
-This skill captures the **stable interface**. When in doubt, the binary's own
-help never drifts:
+This skill captures the **stable interface**. The installed binary may be
+older or newer than the plugin — directive and config availability can
+differ by version — so when this doc and the tool disagree, the tool wins.
+Its own help never drifts, and `--version` identifies the exact build:
 
 ```bash
+mdbook-listings --version
 mdbook-listings --help
 mdbook-listings <subcommand> --help
 ```
