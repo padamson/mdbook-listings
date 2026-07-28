@@ -925,3 +925,106 @@ async fn list_of_listings_sidebar_hover_recolours_text_without_a_block() {
     )
     .await;
 }
+
+// Soft-wrap safety: badge placement must track the real line boxes, not
+// `index × average_row_height`. The average-math approach desyncs every
+// badge below a wrapped line (the average inflates), which is what forced
+// downstream books to choose between horizontal scroll and hand-folding
+// their sources. This test turns on `pre-wrap` at a width that wraps many
+// lines, then checks each badge sits on the line it annotates.
+#[tokio::test]
+async fn callout_badges_stay_on_their_lines_when_listing_soft_wraps() {
+    with_traced_chapter(
+        "callout_badges_stay_on_their_lines_when_listing_soft_wraps",
+        CH05,
+        |page| async move {
+            let _: String = page
+                .evaluate_value(
+                    r#"(() => {
+                        const style = document.createElement('style');
+                        style.textContent =
+                          'main pre, main pre code { white-space: pre-wrap !important; word-break: break-all; } ' +
+                          'main pre { max-width: 60ch; }';
+                        document.head.appendChild(style);
+                        window.dispatchEvent(new Event('resize'));
+                        return 'ok';
+                    })()"#,
+                )
+                .await
+                .expect("inject wrap css");
+            wait_for_layout_recalc(&page).await;
+            wait_for_layout_recalc(&page).await;
+
+            // For every callout entry: find the rendered box of its target
+            // line by walking the pre's text nodes (counting newlines) and
+            // measuring a Range at the line's first character — the ground
+            // truth regardless of wrapping — then compare the badge's
+            // vertical center against it. A wrapped target line anchors to
+            // its first visual row.
+            let report: String = page
+                .evaluate_value(
+                    r#"(() => {
+                        function lineRect(pre, line) {
+                          const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+                          let remaining = line - 1;
+                          let pending = false; // line starts at next non-empty node
+                          let node;
+                          while ((node = walker.nextNode())) {
+                            const text = node.nodeValue;
+                            let idx = 0;
+                            if (pending) {
+                              if (text.length === 0) continue;
+                              pending = false;
+                            } else {
+                              while (remaining > 0) {
+                                const nl = text.indexOf('\n', idx);
+                                if (nl === -1) break;
+                                idx = nl + 1;
+                                remaining--;
+                              }
+                              if (remaining > 0) continue;
+                              if (idx >= text.length) { pending = true; continue; }
+                            }
+                            const r = document.createRange();
+                            r.setStart(node, idx);
+                            r.setEnd(node, Math.min(idx + 1, text.length));
+                            return r.getBoundingClientRect();
+                          }
+                          return null;
+                        }
+                        const bad = [];
+                        let checked = 0;
+                        document.querySelectorAll('.callout-overlay').forEach(ov => {
+                          const pre = ov.previousElementSibling;
+                          if (!pre || pre.tagName !== 'PRE') return;
+                          ov.querySelectorAll('.callout-entry').forEach(e => {
+                            const line = parseInt(e.dataset.calloutLine, 10);
+                            const badge = e.querySelector('.callout-badge');
+                            if (!line || !badge) return;
+                            const lr = lineRect(pre, line);
+                            if (!lr || lr.height === 0) return;
+                            checked++;
+                            const br = badge.getBoundingClientRect();
+                            const c = (br.top + br.bottom) / 2;
+                            if (c < lr.top - 2 || c > lr.bottom + 2) {
+                              bad.push(badge.id + ': center=' + Math.round(c) +
+                                ' line=[' + Math.round(lr.top) + ',' + Math.round(lr.bottom) + ']');
+                            }
+                          });
+                        });
+                        if (checked === 0) return 'no-entries-checked';
+                        return bad.length
+                          ? 'MISALIGNED(' + bad.length + '/' + checked + ') ' + bad.slice(0, 4).join('; ')
+                          : 'aligned:' + checked;
+                    })()"#,
+                )
+                .await
+                .expect("measure badge-vs-line alignment");
+            assert!(
+                report.starts_with("aligned:"),
+                "every badge must sit on its target line under soft-wrap; got: {report}"
+            );
+        },
+    )
+    .await;
+}

@@ -51,6 +51,14 @@ output is byte-identical to 0.1.0.
 - Callout badges render as pills at any width, so a bare `1` and a scoped
   `5.3.1` share one shape in prose and in listings.
 
+### Fixed
+- **Callout badges survive soft-wrap.** Badge placement now measures each
+  target line's rendered box instead of assuming one visual row per logical
+  line, so a book can enable `white-space: pre-wrap` on listings (long
+  lines wrap instead of forcing horizontal scroll) without badges below a
+  wrapped line drifting onto the wrong line. The average-row-height scheme
+  remains as the no-JS fallback.
+
 ## [0.1.0] - 2026-06-13
 
 First release. Managed code listings for mdbook, built around four

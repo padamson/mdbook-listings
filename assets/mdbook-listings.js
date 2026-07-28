@@ -56,7 +56,7 @@
  *    side/clamp choice live.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes
- * are the expected build-time asset: mdbook-listings-js-v11
+ * are the expected build-time asset: mdbook-listings-js-v12
  */
 (function () {
   var LEFT_FALLBACK_THRESHOLD_EM = 16;
@@ -68,19 +68,97 @@
   // with it.
   var GUTTER_BUFFER_EM = 2;
 
+  // The rendered box of logical line `line` (1-based) inside `pre`: walk the
+  // text nodes counting newlines to the line's first character and measure a
+  // Range around it. Measuring through the text nodes makes the result exact
+  // regardless of soft-wrap (a wrapped line anchors to its first visual row)
+  // and of highlight.js having fragmented the code into spans. Returns null
+  // when the line can't be found (empty pre, out-of-range line).
+  function lineStartRect(pre, line) {
+    var walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+    var remaining = line - 1;
+    var pending = false; // line starts at the next node with characters
+    var node;
+    while ((node = walker.nextNode())) {
+      var text = node.nodeValue;
+      var idx = 0;
+      if (pending) {
+        if (text.length === 0) continue;
+        pending = false;
+      } else {
+        while (remaining > 0) {
+          var nl = text.indexOf('\n', idx);
+          if (nl === -1) break;
+          idx = nl + 1;
+          remaining--;
+        }
+        if (remaining > 0) continue;
+        if (idx >= text.length) {
+          pending = true;
+          continue;
+        }
+      }
+      var range = document.createRange();
+      range.setStart(node, idx);
+      range.setEnd(node, Math.min(idx + 1, text.length));
+      return range.getBoundingClientRect();
+    }
+    return null;
+  }
+
+  // Position each callout entry on the measured box of its target line, and
+  // refresh each overlay's average-row-height variable as the fallback for
+  // entries the measurement can't resolve (and for no-JS, via the em-based
+  // CSS default — exact only while no line soft-wraps).
+  //
+  // Per-line anchoring is what makes soft-wrap safe: the average-height
+  // scheme assumes one visual row per logical line, so the moment any line
+  // wraps the average inflates and every badge below the wrap drifts onto
+  // the wrong line — which made `pre-wrap` unusable on calloutted listings.
+  //
+  // Structured as one global read phase then one write phase: any style
+  // write between two measurements invalidates layout, and per-entry
+  // write→measure cycles force a full page reflow per badge — seconds of
+  // jank on a long chapter. Batched, the browser lays out once.
   function calibrateLineHeights() {
+    var calibrations = [];
+    var placements = [];
     document.querySelectorAll('.callout-overlay').forEach(function (overlay) {
       var pre = overlay.previousElementSibling;
       if (!pre || pre.tagName !== 'PRE') return;
-      var entry = overlay.querySelector('.callout-entry');
-      if (!entry) return;
+      var entries = overlay.querySelectorAll('.callout-entry');
+      if (!entries.length) return;
+
       var lines = parseInt(
-        entry.style.getPropertyValue('--callout-listing-lines') || '0',
+        entries[0].style.getPropertyValue('--callout-listing-lines') || '0',
         10
       );
-      if (lines <= 0) return;
-      var perLine = pre.getBoundingClientRect().height / lines;
-      overlay.style.setProperty('--callout-line-px', perLine + 'px');
+      if (lines > 0) {
+        calibrations.push({
+          overlay: overlay,
+          perLine: pre.getBoundingClientRect().height / lines,
+        });
+      }
+
+      var overlayTop = overlay.getBoundingClientRect().top;
+      entries.forEach(function (entry) {
+        var line = parseInt(entry.dataset.calloutLine || '0', 10);
+        if (!line) return;
+        var rect = lineStartRect(pre, line);
+        if (!rect || rect.height === 0) return; // keep the CSS fallback
+        placements.push({
+          entry: entry,
+          top: rect.top - overlayTop,
+          height: rect.height,
+        });
+      });
+    });
+    calibrations.forEach(function (c) {
+      c.overlay.style.setProperty('--callout-line-px', c.perLine + 'px');
+    });
+    placements.forEach(function (p) {
+      p.entry.style.top = p.top + 'px';
+      p.entry.style.height = p.height + 'px';
     });
   }
 
