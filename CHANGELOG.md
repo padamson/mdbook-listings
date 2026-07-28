@@ -41,6 +41,12 @@ output is byte-identical to 0.1.0.
   section is expanded, and folds with that heading. `"off"` (default) emits
   nothing. Each entry links to a listing's anchor. HTML output only.
 
+- **`--version` identifies non-release builds.** A binary built from git
+  reports `<version> (<short sha>)` unless HEAD sits exactly on the
+  release tag, so a build from `main` is distinguishable from the release
+  and "rebuild to pick up the fix" is verifiable. Installs without git
+  (crates.io, source tarball) print the bare version as before.
+
 ### Changed
 - Callout badges render as pills at any width, so a bare `1` and a scoped
   `5.3.1` share one shape in prose and in listings.

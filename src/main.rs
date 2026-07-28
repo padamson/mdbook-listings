@@ -22,7 +22,10 @@ use mdbook_preprocessor::book::BookItem;
 
 /// Managed code listings for mdbook: inline callouts, freezing, and verification.
 #[derive(Parser)]
-#[command(version, about, long_about = None)]
+// The version carries the short git sha for non-release builds (see
+// build.rs), so a binary built from main is distinguishable from the
+// release it would otherwise impersonate.
+#[command(version = env!("CRATE_VERSION_WITH_BUILD"), about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
