@@ -6,8 +6,9 @@ description: >-
   the listings.toml manifest, or book.toml, or when running the mdbook-listings
   CLI. Covers freezing source files into verifiable snapshots, embedding them
   with {{#include}}, annotating lines with {{#callout}} badges, showing
-  {{#diff}} between slices, and verifying that the book stays in sync with its
-  sources.
+  {{#diff}} between slices, numbering and captioning listings, rendering a
+  book-wide List of Listings index, and verifying that the book stays in sync
+  with its sources.
 ---
 
 # Authoring with mdbook-listings
@@ -92,12 +93,42 @@ edge cases live in [references/directives.md](references/directives.md).
 
 - `{{#include listings/<tag>.<ext>}}` — embed a frozen listing (inside a fenced
   ```` ```lang ```` block). Optional `:start:end` suffix embeds only a line
-  range: `{{#include listings/<tag>.<ext>:1:30}}`.
+  range: `{{#include listings/<tag>.<ext>:1:30}}`. Optional
+  `caption="..."` renders a caption line above the listing.
 - `{{#diff <old-tag> <new-tag>}}` — render the line-by-line diff between two
   frozen listings (inside a ```` ```diff ```` -less fenced block, or on its own
   line). Both tags must exist in `listings.toml`. Optional per-side line ranges:
   `{{#diff a b 1:30 1:30}}`. Either operand may be `live:<path>` to diff against
-  a live file (chapter-relative path).
+  a live file (chapter-relative path). Also accepts `caption="..."` and
+  `context=N` (unified-diff context radius, default 3).
+- `{{#list-of-listings}}` — replaced with a book-wide, chapter-grouped index of
+  every numbered listing, each entry linked to its listing. Requires the
+  `list-of-listings` opt-in; typically placed on its own back-matter page.
+
+## Numbering, captions, and the List of Listings
+
+Opt-in features, configured under `[preprocessor.listings]` in `book.toml`.
+With none of them on, output is unchanged — existing books are unaffected.
+
+```toml
+[preprocessor.listings]
+number-listings = true            # "Listing N.M" labels + scoped badges
+list-of-listings = true           # enables the {{#list-of-listings}} marker
+list-of-listings-sidebar = "nested"  # "off" (default) | "append" | "nested"
+```
+
+- **`number-listings`** — every listing gets a `Listing N.M` label (`N` =
+  chapter section number, `M` = order of appearance), and callout badges
+  scope to it: a badge reads `5.3.1` instead of a bare `1`, in the listing
+  and in prose cross-references.
+- **Captions** — `caption="..."` on `{{#include}}` or `{{#diff}}` renders as
+  `Listing N.M — caption` (or just the caption when numbering is off).
+- **`list-of-listings`** — the `{{#list-of-listings}}` marker renders the
+  index; link the hosting page from `SUMMARY.md`.
+- **`list-of-listings-sidebar`** — a browser-built sidebar view (HTML only).
+  `"nested"` places each of the current page's listings under its heading in
+  the sidebar's per-page header tree, folding with it; `"append"` adds a
+  self-contained book-wide "Listings" section below the table of contents.
 - **Callout markers** — `// CALLOUT: <label> <body>` comment lines written *in
   the source* (comment prefix is language-specific). On render the marker line
   is stripped and replaced with a numbered badge; the body shows on hover (HTML)

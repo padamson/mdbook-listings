@@ -1,9 +1,10 @@
 # mdbook-listings directive reference
 
-There are three directives — `{{#include}}`, `{{#diff}}`, and `{{#callout}}` —
-plus the `// CALLOUT:` source-marker syntax. They are written by hand in chapter
-markdown and expanded by the preprocessor at build time. Code samples below use
-four-backtick fences so the inner three-backtick block is shown literally.
+There are four directives — `{{#include}}`, `{{#diff}}`, `{{#callout}}`, and
+`{{#list-of-listings}}` — plus the `// CALLOUT:` source-marker syntax. They are
+written by hand in chapter markdown and expanded by the preprocessor at build
+time. Code samples below use four-backtick fences so the inner three-backtick
+block is shown literally.
 
 ## Preprocessor ordering (important)
 
@@ -57,6 +58,23 @@ processed, so any `// CALLOUT:` markers in them render — but they are *not*
 verified by `mdbook-listings verify`. Use `listings/` for byte-exact frozen
 mirrors and `snippets/` only for curated excerpts.
 
+### Caption
+
+An optional `caption="..."` argument renders a caption line above the listing.
+The value is double-quoted; the first `"` ends it (there is no escape). It can
+sit anywhere among the arguments — the parser lifts it out before reading the
+path:
+
+````markdown
+```rust
+{{#include listings/foo.rs caption="The reuse manifest"}}
+```
+````
+
+With `number-listings` on (see [Numbering](#numbering-and-the-list-of-listings)
+below), the caption renders as `Listing N.M — caption`; with numbering off, a
+captioned listing still gets its caption line, just unnumbered.
+
 ## `{{#diff}}` — difference between two frozen slices
 
 Render the line-by-line difference between an older and a newer **frozen**
@@ -86,6 +104,20 @@ between versions). Same `start:end` rules as `{{#include}}`:
 
 Hunk headers are rewritten to parent-listing line numbers, so a sliced diff
 shows the real line positions, not slice-relative ones.
+
+### Caption and context radius
+
+`{{#diff}}` accepts the same `caption="..."` argument as `{{#include}}`, plus
+`context=N` to set the unified-diff context radius (default 3, matching
+`diff -U3`) — useful when a hunk needs more surrounding lines to place a
+change:
+
+````markdown
+{{#diff add-v1 add-v2 caption="Fence-aware scanning" context=8}}
+````
+
+A malformed value (`context=x`) falls back to the default rather than dropping
+the directive.
 
 ### `live:` operand
 
@@ -130,7 +162,9 @@ with a numbered badge on that line. In HTML the body appears in a hover popover;
 in PDF it renders as a styled note after the listing. A **label-only** marker
 produces a bare badge with no body — it exists purely as a stable
 cross-reference target. Badges are numbered ordinally within each listing and
-reset between listings.
+reset between listings; with `number-listings` on, badges are scoped to their
+listing's number instead (`5.3.1` — listing `5.3`, badge `1`), in the listing
+and in prose cross-references, so a badge says which listing it belongs to.
 
 Example source file, frozen and then included:
 
@@ -161,6 +195,67 @@ See callout {{#callout signature}} for why the parameter is borrowed.
 A reference to a label that no marker in the chapter defines **fails the build**
 with a diagnostic naming the missing label and the chapter. Adding or removing a
 marker renumbers badges visually but does not break label-based references.
+
+## Numbering and the List of Listings
+
+All opt-in via `[preprocessor.listings]` in `book.toml`; with everything off,
+output is unchanged.
+
+### `number-listings`
+
+```toml
+[preprocessor.listings]
+number-listings = true
+```
+
+Every listing (include or diff) renders a `Listing N.M` label above it — `N`
+the chapter's dotted section number, `M` the listing's 1-based order of
+appearance in the chapter. The label line carries a stable `id="listing-N-M"`
+anchor, so prose (and the index below) can link to a listing directly. Callout
+badges scope to the listing number, as described above.
+
+### `{{#list-of-listings}}` — book-wide index
+
+```toml
+[preprocessor.listings]
+number-listings = true
+list-of-listings = true
+```
+
+The marker is replaced with an index of every numbered listing in the book,
+grouped under a `##` heading per chapter, each entry a
+`Listing N.M — caption` link to the listing's anchor. It takes no arguments.
+The usual home is a dedicated back-matter page linked from `SUMMARY.md`:
+
+````markdown
+# List of Listings
+
+{{#list-of-listings}}
+````
+
+When the feature is off the marker is stripped, not leaked. Inside a fenced
+block it is left alone, so a chapter can show the directive verbatim.
+
+### `list-of-listings-sidebar`
+
+```toml
+[preprocessor.listings]
+number-listings = true
+list-of-listings-sidebar = "nested"   # "off" (default) | "append" | "nested"
+```
+
+A browser-built sidebar view of the numbered listings (HTML renderer only; the
+inline index above is the floor for PDF):
+
+- `"nested"` — each of the **current page's** listings is placed in the
+  sidebar's per-page header tree, under the heading it lives beneath, and
+  folds with that heading. Couples to mdBook's default-theme sidebar DOM.
+- `"append"` — a self-contained, book-wide "Listings" section below the table
+  of contents, independent of the theme's navigation tree. The
+  theme-independent fallback when `"nested"` doesn't match your theme.
+
+Both link each entry to its listing anchor. Independent of `list-of-listings`
+— a book can have the page index, the sidebar, or both.
 
 ## Gotcha: don't write a bare two-arg `{{#diff a b}}` in inline prose
 
