@@ -56,7 +56,7 @@
  *    side/clamp choice live.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes
- * are the expected build-time asset: mdbook-listings-js-v12
+ * are the expected build-time asset: mdbook-listings-js-v13
  */
 (function () {
   var LEFT_FALLBACK_THRESHOLD_EM = 16;
@@ -283,21 +283,40 @@
     recalc();
   }
 
-  // requestAnimationFrame-debounced resize handler: coalesces rapid
-  // resize events (e.g., during a window drag) into one recalc per
-  // animation frame, but fires by the next frame instead of waiting
-  // a fixed timeout. The frame-based pacing also makes the recalc
-  // visible to e2e tests that hover immediately after set_viewport_size
-  // (one rAF cycle is much shorter than a setTimeout poll).
+  // requestAnimationFrame-debounced trigger: coalesces rapid events
+  // (e.g., resizes during a window drag) into one recalc per animation
+  // frame, but fires by the next frame instead of waiting a fixed
+  // timeout. The frame-based pacing also makes the recalc visible to
+  // e2e tests that act immediately after triggering it (one rAF cycle
+  // is much shorter than a setTimeout poll).
   var rafScheduled = false;
-  window.addEventListener('resize', function () {
+  function scheduleRecalc() {
     if (rafScheduled) return;
     rafScheduled = true;
     requestAnimationFrame(function () {
       rafScheduled = false;
       recalc();
     });
-  });
+  }
+  window.addEventListener('resize', scheduleRecalc);
+
+  // Badge tops are pixel-pinned from measurements, so anything that
+  // reflows the pre after the initial placement leaves them stale.
+  // The big one: mdbook loads the code font (Source Code Pro) as an
+  // async @font-face, so on a cold cache the DOMContentLoaded pass
+  // measures the FALLBACK font's layout, the real font then swaps in,
+  // the pre reflows, and every badge sits several lines low until a
+  // resize happens to fire. Re-measure whenever the font set finishes
+  // loading — `fonts.ready` for the initial batch (it may already have
+  // resolved; then this is a cheap idempotent re-run), `loadingdone`
+  // for any font that finishes later — and on window `load`, which
+  // catches other late layout above a listing (images, canvases)
+  // shifting the overlay's own position.
+  if (document.fonts) {
+    document.fonts.ready.then(scheduleRecalc);
+    document.fonts.addEventListener('loadingdone', scheduleRecalc);
+  }
+  window.addEventListener('load', scheduleRecalc);
 })();
 
 /* mdbook-listings — sidebar "List of Listings".

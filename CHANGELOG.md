@@ -58,6 +58,13 @@ output is byte-identical to 0.1.0.
   lines wrap instead of forcing horizontal scroll) without badges below a
   wrapped line drifting onto the wrong line. The average-row-height scheme
   remains as the no-JS fallback.
+- **Callout badges place correctly before the code font loads.** Badge
+  positions were measured once at `DOMContentLoaded`; on a cold cache the
+  async code font then swapped in, reflowed the listing, and left every
+  badge several lines low until a resize or reload. Placement now re-runs
+  when the font set finishes loading (`document.fonts` ready and
+  `loadingdone`) and on window `load`, so first paint on a cold cache ends
+  up correct without user intervention.
 
 ## [0.1.0] - 2026-06-13
 

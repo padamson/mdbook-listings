@@ -1028,3 +1028,100 @@ async fn callout_badges_stay_on_their_lines_when_listing_soft_wraps() {
     )
     .await;
 }
+
+// Font-timing safety: badge positions are pixel-pinned from measurements, so
+// anything that reflows the pre after the initial placement — above all the
+// async code-font swap on a cold cache — must trigger a re-measure. This
+// simulates the swap by shifting the pre's font metrics without firing a
+// resize (exactly what @font-face activation does), then fires the
+// FontFaceSet's `loadingdone` event and expects the badges to re-anchor.
+#[tokio::test]
+async fn callout_badges_realign_after_late_font_load() {
+    with_traced_chapter(
+        "callout_badges_realign_after_late_font_load",
+        CH05,
+        |page| async move {
+            let outcome: String = page
+                .evaluate_value(
+                    r#"(async () => {
+                        function lineRect(pre, line) {
+                          const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+                          let remaining = line - 1;
+                          let pending = false;
+                          let node;
+                          while ((node = walker.nextNode())) {
+                            const text = node.nodeValue;
+                            let idx = 0;
+                            if (pending) {
+                              if (text.length === 0) continue;
+                              pending = false;
+                            } else {
+                              while (remaining > 0) {
+                                const nl = text.indexOf('\n', idx);
+                                if (nl === -1) break;
+                                idx = nl + 1;
+                                remaining--;
+                              }
+                              if (remaining > 0) continue;
+                              if (idx >= text.length) { pending = true; continue; }
+                            }
+                            const r = document.createRange();
+                            r.setStart(node, idx);
+                            r.setEnd(node, Math.min(idx + 1, text.length));
+                            return r.getBoundingClientRect();
+                          }
+                          return null;
+                        }
+                        function survey() {
+                          let checked = 0, misaligned = 0;
+                          document.querySelectorAll('.callout-overlay').forEach(ov => {
+                            const pre = ov.previousElementSibling;
+                            if (!pre || pre.tagName !== 'PRE') return;
+                            ov.querySelectorAll('.callout-entry').forEach(e => {
+                              const line = parseInt(e.dataset.calloutLine, 10);
+                              const badge = e.querySelector('.callout-badge');
+                              if (!line || !badge) return;
+                              const lr = lineRect(pre, line);
+                              if (!lr || lr.height === 0) return;
+                              checked++;
+                              const c = (badge.getBoundingClientRect().top +
+                                         badge.getBoundingClientRect().bottom) / 2;
+                              if (c < lr.top - 2 || c > lr.bottom + 2) misaligned++;
+                            });
+                          });
+                          return { checked, misaligned };
+                        }
+                        const raf2 = () => new Promise(r =>
+                          requestAnimationFrame(() => requestAnimationFrame(r)));
+
+                        // Reflow the pres the way a late font activation does:
+                        // metrics change, no resize event.
+                        const style = document.createElement('style');
+                        style.textContent =
+                          'main pre, main pre code { font-size: 19px !important; }';
+                        document.head.appendChild(style);
+                        await raf2();
+                        const before = survey();
+                        if (before.checked === 0) return 'no-entries';
+                        if (before.misaligned === 0) return 'perturbation-had-no-effect';
+
+                        // The production signal that fonts finished loading.
+                        document.fonts.dispatchEvent(new Event('loadingdone'));
+                        await raf2();
+                        await raf2();
+                        const after = survey();
+                        return after.misaligned === 0
+                          ? 'realigned:' + after.checked
+                          : 'STILL-STALE(' + after.misaligned + '/' + after.checked + ')';
+                    })()"#,
+                )
+                .await
+                .expect("perturb, signal loadingdone, survey alignment");
+            assert!(
+                outcome.starts_with("realigned:"),
+                "badges must re-anchor when the font set finishes loading; got: {outcome}"
+            );
+        },
+    )
+    .await;
+}
