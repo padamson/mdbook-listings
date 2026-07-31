@@ -15,6 +15,16 @@ cargo deny check         # license/dependency check
 cargo vet                # supply chain review
 ```
 
+## Plugin skill stays in sync
+
+The repo ships a Claude Code plugin (`.claude-plugin/` + `skills/mdbook-listings/`).
+When a change touches the CLI surface or directive syntax, updating the skill
+is part of done, the same as tests and docs. The `plugin version bumped` prek
+hook enforces the other half: any commit touching `skills/` or `.claude-plugin/`
+must bump the `plugin.json` version, because that version is the update gate
+for installed consumers — without a bump, `/plugin update` reports "already at
+the latest version" and the edit never reaches anyone.
+
 ## Pre-commit hooks
 
 ```bash
