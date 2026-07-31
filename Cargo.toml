@@ -25,7 +25,11 @@ toml_edit = "0.25"
 [dev-dependencies]
 assert_cmd = "2"
 futures = "0.3"
-pdf-extract = "0.10"
+# Fork carries the per-page font-cache fix (upstream jrmuizel/pdf-extract#152,
+# unmerged); 0.12.0 garbles multi-page typst extraction and 0.10 pulls the
+# lopdf with RUSTSEC-2026-0187. Swap back to crates.io when a release ships
+# with the fix. Tracked in #31.
+pdf-extract = { git = "https://github.com/padamson/pdf-extract", branch = "fix/per-page-font-cache" }
 playwright-rs = { workspace = true }
 playwright-rs-trace = { git = "https://github.com/padamson/playwright-rust", branch = "main" }
 predicates = "3"

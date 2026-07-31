@@ -10,21 +10,15 @@ no-default-features = false
 feature-depth = 1
 
 [advisories]
-# RUSTSEC-2026-0187: stack-overflow DoS in lopdf via deeply nested PDF
-# objects. lopdf is reachable only through pdf-extract, a dev-dependency
-# used by tests/pdf_callouts.rs to extract text from our own typst-generated
-# book PDF -- a trusted, fixed input. The published crate never links lopdf,
-# and we never parse untrusted PDFs, so the advisory has no real exposure.
-# We hold pdf-extract at 0.10 because 0.12 (which pulls the patched lopdf
-# >=0.42) regresses text extraction on typst PDFs and breaks that test.
-# Revisit when pdf-extract ships a release that fixes the regression.
-#
 # RUSTSEC-2026-0192: ttf-parser is unmaintained. It reaches us only through
-# the same dev-only lopdf -> pdf-extract path as RUSTSEC-2026-0187 above, so
-# the published crate never links it and it never touches untrusted input.
-# An "unmaintained" advisory carries no fix to apply; drop this once
+# lopdf -> pdf-extract, a dev-dependency used by tests/pdf_callouts.rs to
+# extract text from our own typst-generated book PDF -- a trusted, fixed
+# input. The published crate never links it and it never touches untrusted
+# input. An "unmaintained" advisory carries no fix to apply; drop this once
 # pdf-extract's dependency tree stops pulling ttf-parser.
-ignore = ["RUSTSEC-2026-0187", "RUSTSEC-2026-0192"]
+# (RUSTSEC-2026-0187 -- lopdf stack overflow -- cleared 2026-07-31: the
+# pdf-extract fork pin pulls the patched lopdf 0.42.)
+ignore = ["RUSTSEC-2026-0192"]
 
 [licenses]
 allow = [
@@ -74,5 +68,9 @@ skip-tree = [
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-# Our own repo: playwright-rs tracks playwright-rust main for dogfooding.
-allow-git = ["https://github.com/padamson/playwright-rust"]
+allow-git = [
+    # Our own playwright-rust, tracked at main for dogfooding.
+    "https://github.com/padamson/playwright-rust",
+    # pdf-extract fork carrying the per-page font-cache fix (jrmuizel/pdf-extract#152).
+    "https://github.com/padamson/pdf-extract",
+]
