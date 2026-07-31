@@ -58,6 +58,13 @@ output is byte-identical to 0.1.0.
   lines wrap instead of forcing horizontal scroll) without badges below a
   wrapped line drifting onto the wrong line. The average-row-height scheme
   remains as the no-JS fallback.
+- **Callout badges place correctly in Safari.** Badge placement measured
+  a Range over the line's leading whitespace; release Safari returns a
+  two-line union rect for a Range on the whitespace character at a line
+  boundary in `white-space: pre` content (its top is the previous line's
+  top), so every badge sat one line high — uniformly, since code lines
+  almost all start with indentation. Placement now measures the line's
+  first non-whitespace glyph, which every engine boxes identically.
 - **Callout badges place correctly before the code font loads.** Badge
   positions were measured once at `DOMContentLoaded`; on a cold cache the
   async code font then swapped in, reflowed the listing, and left every

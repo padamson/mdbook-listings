@@ -1125,3 +1125,108 @@ async fn callout_badges_realign_after_late_font_load() {
     )
     .await;
 }
+
+// Engine-tolerance: release Safari returns a two-line union rect for a Range
+// over the whitespace character at a line boundary in `white-space: pre`
+// content (its top is the PREVIOUS line's top, height two rows), where
+// Chromium and newer WebKit return the plain one-row glyph box. Anchoring to
+// that rect put every badge one line high in Safari — uniformly, since YAML
+// and Rust lines all start with indentation. This test emulates Safari's
+// semantics in Chromium by patching Range.getBoundingClientRect for
+// boundary-whitespace ranges (the survey keeps the unpatched original), then
+// expects badges to land correctly anyway — which requires the placement to
+// measure a visible glyph, not boundary whitespace.
+#[tokio::test]
+async fn callout_badges_place_correctly_under_safari_boundary_rect_semantics() {
+    with_traced_chapter(
+        "callout_badges_place_correctly_under_safari_boundary_rect_semantics",
+        CH05,
+        |page| async move {
+            let outcome: String = page
+                .evaluate_value(
+                    r#"(async () => {
+                        const orig = Range.prototype.getBoundingClientRect;
+                        Range.prototype.getBoundingClientRect = function () {
+                          const r = orig.call(this);
+                          const s = this.toString();
+                          if (s === ' ' || s === '\t') {
+                            const c = this.startContainer, o = this.startOffset;
+                            const boundary = o > 0
+                              ? c.nodeValue.charAt(o - 1) === '\n'
+                              : true; // cross-node line starts
+                            if (boundary) {
+                              return new DOMRect(r.x, r.y - r.height, r.width, r.height * 2);
+                            }
+                          }
+                          return r;
+                        };
+
+                        window.dispatchEvent(new Event('resize'));
+                        const raf2 = () => new Promise(r =>
+                          requestAnimationFrame(() => requestAnimationFrame(r)));
+                        await raf2();
+                        await raf2();
+
+                        function lineRectTrue(pre, line) {
+                          const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+                          let remaining = line - 1, pending = false, node;
+                          while ((node = walker.nextNode())) {
+                            let text = node.nodeValue, idx = 0;
+                            if (pending) { if (!text.length) continue; pending = false; }
+                            else {
+                              while (remaining > 0) {
+                                const nl = text.indexOf('\n', idx);
+                                if (nl === -1) break;
+                                idx = nl + 1; remaining--;
+                              }
+                              if (remaining > 0) continue;
+                              if (idx >= text.length) { pending = true; continue; }
+                            }
+                            // survey against the line's first visible glyph,
+                            // measured with the UNPATCHED rect.
+                            while (true) {
+                              while (idx < text.length && (text[idx] === ' ' || text[idx] === '\t')) idx++;
+                              if (idx < text.length) break;
+                              node = walker.nextNode(); if (!node) return null;
+                              text = node.nodeValue; idx = 0;
+                            }
+                            if (text[idx] === '\n') return null;
+                            const r = document.createRange();
+                            r.setStart(node, idx); r.setEnd(node, idx + 1);
+                            return orig.call(r);
+                          }
+                          return null;
+                        }
+                        let checked = 0, misaligned = 0;
+                        document.querySelectorAll('.callout-overlay').forEach(ov => {
+                          const pre = ov.previousElementSibling;
+                          if (!pre || pre.tagName !== 'PRE') return;
+                          ov.querySelectorAll('.callout-entry').forEach(e => {
+                            const line = parseInt(e.dataset.calloutLine, 10);
+                            const badge = e.querySelector('.callout-badge');
+                            if (!line || !badge) return;
+                            const lr = lineRectTrue(pre, line);
+                            if (!lr || lr.height === 0) return;
+                            checked++;
+                            const br = badge.getBoundingClientRect();
+                            const c = (br.top + br.bottom) / 2;
+                            if (c < lr.top - 2 || c > lr.bottom + 2) misaligned++;
+                          });
+                        });
+                        Range.prototype.getBoundingClientRect = orig;
+                        if (checked === 0) return 'no-entries';
+                        return misaligned === 0
+                          ? 'aligned:' + checked
+                          : 'MISALIGNED(' + misaligned + '/' + checked + ')';
+                    })()"#,
+                )
+                .await
+                .expect("emulate safari rects, survey alignment");
+            assert!(
+                outcome.starts_with("aligned:"),
+                "badges must place correctly under Safari's boundary-whitespace rect semantics; got: {outcome}"
+            );
+        },
+    )
+    .await;
+}

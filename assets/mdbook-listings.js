@@ -56,7 +56,7 @@
  *    side/clamp choice live.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes
- * are the expected build-time asset: mdbook-listings-js-v13
+ * are the expected build-time asset: mdbook-listings-js-v14
  */
 (function () {
   var LEFT_FALLBACK_THRESHOLD_EM = 16;
@@ -69,11 +69,23 @@
   var GUTTER_BUFFER_EM = 2;
 
   // The rendered box of logical line `line` (1-based) inside `pre`: walk the
-  // text nodes counting newlines to the line's first character and measure a
-  // Range around it. Measuring through the text nodes makes the result exact
-  // regardless of soft-wrap (a wrapped line anchors to its first visual row)
-  // and of highlight.js having fragmented the code into spans. Returns null
-  // when the line can't be found (empty pre, out-of-range line).
+  // text nodes counting newlines to the line's start, then measure a Range
+  // around the line's FIRST NON-WHITESPACE character. Measuring through the
+  // text nodes makes the result exact regardless of soft-wrap (a wrapped line
+  // anchors to its first visual row) and of highlight.js having fragmented
+  // the code into spans.
+  //
+  // Skipping the leading whitespace is load-bearing, not cosmetic: release
+  // Safari returns a two-line union rect for a Range over the whitespace
+  // character at a line boundary in `white-space: pre` content — its top is
+  // the PREVIOUS line's top and its height spans both rows — where Chromium
+  // and newer WebKit return the plain one-row glyph box. Since code lines
+  // almost all start with indentation, anchoring to the boundary whitespace
+  // put every badge one line high in Safari, uniformly. A visible glyph's
+  // rect is unambiguous in every engine.
+  //
+  // Returns null when the line can't be found or is blank (nothing but
+  // whitespace before the next newline) — callers keep the CSS fallback.
   function lineStartRect(pre, line) {
     var walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
     var remaining = line - 1;
@@ -98,9 +110,23 @@
           continue;
         }
       }
+      // Advance to the line's first visible glyph, crossing node
+      // boundaries (the indent and the first token are often separate
+      // nodes once highlight.js has run).
+      while (true) {
+        while (idx < text.length && (text[idx] === ' ' || text[idx] === '\t')) {
+          idx++;
+        }
+        if (idx < text.length) break;
+        node = walker.nextNode();
+        if (!node) return null;
+        text = node.nodeValue;
+        idx = 0;
+      }
+      if (text[idx] === '\n') return null; // blank line: CSS fallback
       var range = document.createRange();
       range.setStart(node, idx);
-      range.setEnd(node, Math.min(idx + 1, text.length));
+      range.setEnd(node, idx + 1);
       return range.getBoundingClientRect();
     }
     return null;
