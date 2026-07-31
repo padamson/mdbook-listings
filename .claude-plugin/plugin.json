@@ -1,6 +1,6 @@
 {
   "name": "mdbook-listings",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Author and maintain managed code listings in an mdBook book that uses the mdbook-listings preprocessor: freeze source files, embed them, annotate lines, and verify sync.",
   "author": {
     "name": "Paul Adamson",

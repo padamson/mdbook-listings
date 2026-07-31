@@ -17,7 +17,7 @@ use mdbook_listings::list_of_listings::{
 };
 use mdbook_listings::listing_ref::{LabelIndex, replace_refs};
 use mdbook_listings::manifest::Manifest;
-use mdbook_listings::number::splice_chapter as splice_numbers;
+use mdbook_listings::number::{listing_prefix, splice_chapter as splice_numbers};
 use mdbook_listings::verify::{Severity, verify};
 use mdbook_preprocessor::book::BookItem;
 
@@ -275,7 +275,11 @@ fn preprocess() -> Result<()> {
                 .map(|new_content| {
                     let (numbered, refs) = splice_numbers(
                         &new_content,
-                        chapter.number.as_ref().map(|n| n.as_slice()),
+                        listing_prefix(
+                            chapter.number.as_ref().map(|n| n.as_slice()),
+                            &chapter.name,
+                        )
+                        .as_deref(),
                         number_listings,
                         renderer,
                     );

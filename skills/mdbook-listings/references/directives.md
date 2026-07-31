@@ -215,6 +215,12 @@ appearance in the chapter. The label line carries a stable `id="listing-N-M"`
 anchor, so prose (and the index below) can link to a listing directly. Callout
 badges scope to the listing number, as described above.
 
+**Appendices:** a suffix chapter titled `Appendix A …` numbers its listings
+`Listing A.1`, `A.2` — the letter is derived from the chapter title, since
+mdbook hands suffix chapters no section number. Badges scope to `A.1.1`,
+and the index and `{{#listing-ref}}` pick the letter up. Other suffix
+chapters (Introduction, this index page) stay unnumbered.
+
 ### `{{#list-of-listings}}` — book-wide index
 
 ```toml

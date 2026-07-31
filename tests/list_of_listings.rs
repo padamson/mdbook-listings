@@ -202,6 +202,61 @@ fn sidebar_off_emits_no_manifest() {
     );
 }
 
+#[test]
+fn appendix_listings_number_with_the_title_letter() {
+    let book = MinimalBook::new();
+    let envelope = book.envelope(
+        // Numbered chapter: dotted section number as before.
+        Page {
+            name: "Freeze a listing",
+            path: "ch03.md",
+            number: Some(&[3]),
+            content: "```rust\n{{#include listings/sample.rs caption=\"The reuse manifest\"}}\n```\n",
+        },
+        // Suffix chapter titled as an appendix: mdbook hands us number: None,
+        // but the title names the letter — listings number A.1, A.2.
+        Page {
+            name: "Appendix A: The Worked Example",
+            path: "appendix-a.md",
+            number: None,
+            content: "```rust\n{{#include listings/sample.rs caption=\"The catalog\"}}\n```\n\n\
+                      ```rust\n{{#include listings/claim.rs}}\n```\n",
+        },
+        // Suffix chapter that is NOT an appendix: stays caption-only.
+        Page {
+            name: "List of Listings",
+            path: "listings-index.md",
+            number: None,
+            content: "# List of Listings\n\n{{#list-of-listings}}\n",
+        },
+    );
+
+    let returned = run(envelope);
+
+    let appendix = chapter_content(&returned, "Appendix A: The Worked Example");
+    assert!(
+        appendix.contains("Listing A.1 — The catalog")
+            && appendix.contains(r##"id="listing-A-1""##),
+        "appendix listings should number from the title letter; got:\n{appendix}",
+    );
+    assert!(
+        appendix.contains("Listing A.2"),
+        "within-appendix ordinal should advance; got:\n{appendix}",
+    );
+
+    // The book-wide index picks the appendix up with its letter.
+    let index = chapter_content(&returned, "List of Listings");
+    assert!(
+        index.contains("[Listing A.1 — The catalog](appendix-a.md#listing-A-1)"),
+        "index should list appendix listings; got:\n{index}",
+    );
+    // ...and the non-appendix suffix page itself gained no number.
+    assert!(
+        !index.contains("List of Listings]("),
+        "a non-appendix suffix chapter must not be numbered; got:\n{index}",
+    );
+}
+
 // --- harness -------------------------------------------------------------
 
 struct Page<'a> {

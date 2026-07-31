@@ -176,6 +176,32 @@ fn duplicate_label_fails_the_build() {
     );
 }
 
+#[test]
+fn listing_ref_resolves_to_an_appendix_letter_listing() {
+    let book = MinimalBook::new();
+    let envelope = book.envelope(
+        Page {
+            name: "Render callouts",
+            path: "ch05.md",
+            number: Some(&[5]),
+            content: "The full catalog is in {{#listing-ref worked-example}}.\n",
+        },
+        Page {
+            name: "Appendix A: The Worked Example",
+            path: "appendix-a.md",
+            number: None,
+            content: "```rust\n{{#include listings/sample.rs label=\"worked-example\" caption=\"The catalog\"}}\n```\n",
+        },
+    );
+
+    let returned = run(envelope);
+    let ch05 = chapter_content(&returned, "Render callouts");
+    assert!(
+        ch05.contains("[Listing A.1](appendix-a.md#listing-A-1)"),
+        "refs should resolve to appendix-lettered listings; got:\n{ch05}",
+    );
+}
+
 // --- harness (mirrors tests/list_of_listings.rs) -------------------------
 
 struct Page<'a> {

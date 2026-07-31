@@ -47,6 +47,13 @@ output is byte-identical to 0.1.0.
   typst-pdf renderer), so a reference can't go stale when numbers shift.
   Unknown and duplicated labels fail the build with the chapter and line,
   like an unknown `{{#callout}}`. `verify` accepts the new argument.
+- **Appendix letter listing numbers.** Listings in a suffix chapter titled
+  `Appendix A …` number as `Listing A.1`, `A.2` (badges `A.1.1`, index
+  entries and `{{#listing-ref}}` targets included). mdbook has no appendix
+  concept — suffix chapters arrive unnumbered — so the letter is derived
+  from the chapter's own title; a real mdbook section number always wins,
+  and non-appendix suffix chapters (Introduction, a List of Listings page)
+  stay unnumbered.
 - **`--version` identifies non-release builds.** A binary built from git
   reports `<version> (<short sha>)` unless HEAD sits exactly on the
   release tag, so a build from `main` is distinguishable from the release

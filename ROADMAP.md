@@ -60,6 +60,9 @@ further downstream validation. Numbering and scoped badges are opt-in via
 - **List of Listings index** — a `{{#list-of-listings}}` marker renders a
   book-wide, chapter-grouped index of every numbered listing, each entry
   linking to its anchor. Opt-in via `list-of-listings`.
+- **Appendix letter listing numbers** — `Listing A.1` in suffix chapters
+  titled `Appendix X …`, derived from the title; defers to a real mdbook
+  section number if one ever exists.
 - **Stable listing cross-references** — `label="..."` on a listing plus
   `{{#listing-ref <label>}}` in prose, resolving to the current number,
   linked; unknown/duplicate labels fail the build.

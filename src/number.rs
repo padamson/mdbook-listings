@@ -47,16 +47,17 @@ pub struct ListingRef {
 /// content and the numbered listings it found, in document order, for the
 /// List-of-Listings index.
 ///
-/// `chapter_number` is the chapter's dotted section number (`[5]` → `5`,
-/// `[5, 2]` → `5.2`); `None` for an unnumbered (draft/prefix) chapter.
-/// `number_listings` is the `[preprocessor.listings] number-listings` opt-in.
-/// A listing's number renders only when the flag is on and the chapter has a
-/// number; its caption renders whenever one is present. A numbered listing's
-/// caption div also gains an `id` so the index can link to it. When neither
-/// piece applies to any listing, `content` is returned unchanged with no refs.
+/// `prefix` is the chapter part of `Listing N.M` — the dotted section number
+/// (`5`, `5.2`) or an appendix letter (`A`); see [`listing_prefix`]. `None`
+/// for a chapter with neither. `number_listings` is the
+/// `[preprocessor.listings] number-listings` opt-in. A listing's number
+/// renders only when the flag is on and the chapter has a prefix; its caption
+/// renders whenever one is present. A numbered listing's caption div also
+/// gains an `id` so the index can link to it. When neither piece applies to
+/// any listing, `content` is returned unchanged with no refs.
 pub fn splice_chapter(
     content: &str,
-    chapter_number: Option<&[u32]>,
+    prefix: Option<&str>,
     number_listings: bool,
     renderer: SupportedRenderer,
 ) -> (String, Vec<ListingRef>) {
@@ -73,9 +74,7 @@ pub fn splice_chapter(
         return (content.to_string(), Vec::new());
     }
 
-    let prefix = chapter_number
-        .filter(|n| !n.is_empty())
-        .map(|n| n.iter().map(u32::to_string).collect::<Vec<_>>().join("."));
+    let prefix = prefix.filter(|p| !p.is_empty()).map(str::to_string);
 
     // Each numbered listing contributes up to two edits: a caption element
     // inserted before its opening fence, and a `data-listing-number` attribute
@@ -125,6 +124,43 @@ pub fn splice_chapter(
     }
     out.push_str(&content[cursor..]);
     (out, refs)
+}
+
+/// The chapter part of `Listing N.M` for a chapter: its dotted section
+/// number when mdbook assigned one, otherwise an appendix letter derived
+/// from the chapter title. mdbook has no appendix concept — a
+/// `[Appendix A…](…)` SUMMARY line is a suffix chapter handed to us as
+/// `number: None`, indistinguishable from an Introduction — so the title's
+/// own "Appendix A" is the only honest source for the letter, and it can't
+/// disagree with what the reader sees. A real section number always wins:
+/// if mdbook ever grows appendix numbering, this fallback becomes a no-op.
+pub fn listing_prefix(chapter_number: Option<&[u32]>, chapter_name: &str) -> Option<String> {
+    chapter_number
+        .filter(|n| !n.is_empty())
+        .map(|n| n.iter().map(u32::to_string).collect::<Vec<_>>().join("."))
+        .or_else(|| appendix_letter(chapter_name))
+}
+
+/// `Appendix A: The Worked Example` → `A`. The title must start with the
+/// literal `Appendix`, whitespace, then an uppercase-alphanumeric token; the
+/// token must end at a word boundary (end of title or a non-alphanumeric
+/// character), so `Appendixes …` and lowercase letters don't match. Chapters
+/// titled `Introduction` or `List of Listings` — also `number: None` — fall
+/// through untouched.
+fn appendix_letter(chapter_name: &str) -> Option<String> {
+    let rest = chapter_name.trim_start().strip_prefix("Appendix")?;
+    let rest = rest.strip_prefix(char::is_whitespace)?.trim_start();
+    let letter: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        .collect();
+    if letter.is_empty() {
+        return None;
+    }
+    match rest[letter.len()..].chars().next() {
+        Some(c) if c.is_alphanumeric() => None,
+        _ => Some(letter),
+    }
 }
 
 /// The HTML link-target id for a numbered listing: `5.1` → `listing-5-1`.
@@ -260,7 +296,7 @@ mod tests {
             include_block("a", None),
             include_block("b", None)
         );
-        let (out, _) = splice_chapter(&content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), true, Html);
         assert!(
             out.contains(r#"<div class="listing-caption" id="listing-5-1">Listing 5.1</div>"#),
             "{out}"
@@ -274,7 +310,7 @@ mod tests {
     #[test]
     fn interleaves_include_and_diff_anchors_in_one_sequence() {
         let content = format!("{}\n\n{}\n", include_block("a", None), diff_block("a", "b"));
-        let (out, _) = splice_chapter(&content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), true, Html);
         assert!(out.contains("Listing 5.1"), "include is 5.1; got:\n{out}");
         assert!(out.contains("Listing 5.2"), "diff is 5.2; got:\n{out}");
         // Both anchors carry the machine-readable number for the callout pass,
@@ -292,14 +328,14 @@ mod tests {
     #[test]
     fn subsection_number_prefixes_listing() {
         let content = include_block("a", None);
-        let (out, _) = splice_chapter(&content, Some(&[5, 2]), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5.2"), true, Html);
         assert!(out.contains("Listing 5.2.1"), "got:\n{out}");
     }
 
     #[test]
     fn number_and_caption_join_with_em_dash() {
         let content = include_block("a", Some("The claim layer"));
-        let (out, _) = splice_chapter(&content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), true, Html);
         assert!(
             out.contains(
                 r#"<div class="listing-caption" id="listing-5-1">Listing 5.1 — The claim layer</div>"#
@@ -311,7 +347,7 @@ mod tests {
     #[test]
     fn flag_off_renders_caption_only_without_number_or_attribute() {
         let content = include_block("a", Some("Just a caption"));
-        let (out, _) = splice_chapter(&content, Some(&[5]), false, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), false, Html);
         assert!(
             out.contains(r#"<div class="listing-caption">Just a caption</div>"#),
             "caption renders with the flag off; got:\n{out}",
@@ -329,7 +365,7 @@ mod tests {
     #[test]
     fn flag_off_without_caption_is_byte_identical() {
         let content = include_block("a", None);
-        let (out, _) = splice_chapter(&content, Some(&[5]), false, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), false, Html);
         assert_eq!(
             out, content,
             "flag off + no caption must pass through unchanged"
@@ -351,9 +387,9 @@ mod tests {
             "```rust\nlet plain = 1;\n```\n\n",
             "Tail.\n",
         );
-        assert_eq!(splice_chapter(content, Some(&[5]), false, Html).0, content);
+        assert_eq!(splice_chapter(content, Some("5"), false, Html).0, content);
         assert_eq!(
-            splice_chapter(content, Some(&[5]), false, TypstPdf).0,
+            splice_chapter(content, Some("5"), false, TypstPdf).0,
             content
         );
     }
@@ -383,7 +419,7 @@ mod tests {
     #[test]
     fn plain_code_block_without_anchor_is_byte_identical() {
         let content = "```rust\nlet x = 1;\n```\n".to_string();
-        let (out, _) = splice_chapter(&content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), true, Html);
         assert_eq!(
             out, content,
             "a block with no locator anchor is not a listing"
@@ -396,7 +432,7 @@ mod tests {
         // preceding prose (not jump to the start of the chapter) and sit
         // immediately before the opening fence (not a line early).
         let content = format!("intro\n\n{}", include_block("a", None));
-        let (out, _) = splice_chapter(&content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), true, Html);
         assert!(
             out.contains(
                 "intro\n\n<div class=\"listing-caption\" id=\"listing-5-1\">Listing 5.1</div>\n\n```rust"
@@ -411,7 +447,7 @@ mod tests {
         // and the anchor; a numbered listing must still be recognized.
         let content =
             "```rust\nfn a() {}\n```\n\n<div data-listing-tag=\"a\" aria-hidden=\"true\"></div>\n";
-        let (out, _) = splice_chapter(content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(content, Some("5"), true, Html);
         assert!(out.contains("Listing 5.1"), "got:\n{out}");
         assert!(
             out.contains(r#"<div data-listing-number="5.1" data-listing-tag="a""#),
@@ -423,7 +459,7 @@ mod tests {
     fn html_keeps_caption_escaped() {
         // Caption arrives HTML-escaped on the anchor; HTML text wants it as-is.
         let content = include_block("a", Some("A &amp; B &lt;t&gt;"));
-        let (out, _) = splice_chapter(&content, Some(&[5]), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), true, Html);
         assert!(
             out.contains("Listing 5.1 — A &amp; B &lt;t&gt;"),
             "got:\n{out}"
@@ -433,7 +469,7 @@ mod tests {
     #[test]
     fn pdf_renders_bold_markdown_and_unescapes_caption() {
         let content = include_block("a", Some("A &amp; B &lt;t&gt;"));
-        let (out, _) = splice_chapter(&content, Some(&[5]), true, TypstPdf);
+        let (out, _) = splice_chapter(&content, Some("5"), true, TypstPdf);
         assert!(out.contains("**Listing 5.1 — A & B <t>**"), "got:\n{out}");
         assert!(
             !out.contains(r#"class="listing-caption""#),
@@ -444,5 +480,46 @@ mod tests {
     #[test]
     fn html_unescape_reverses_all_five_entities() {
         assert_eq!(html_unescape("&amp;&lt;&gt;&quot;&#123;"), "&<>\"{");
+    }
+
+    #[test]
+    fn appendix_letter_derives_from_conventional_titles() {
+        assert_eq!(
+            appendix_letter("Appendix A: The Worked Example").as_deref(),
+            Some("A")
+        );
+        assert_eq!(
+            appendix_letter("Appendix B — Grounding").as_deref(),
+            Some("B")
+        );
+        assert_eq!(appendix_letter("Appendix C"), Some("C".to_string()));
+        assert_eq!(
+            appendix_letter("Appendix AA: Overflow").as_deref(),
+            Some("AA")
+        );
+    }
+
+    #[test]
+    fn appendix_letter_rejects_non_appendix_titles() {
+        assert_eq!(appendix_letter("Introduction"), None);
+        assert_eq!(appendix_letter("List of Listings"), None);
+        assert_eq!(appendix_letter("Appendixes A"), None); // no word boundary
+        assert_eq!(appendix_letter("appendix A"), None); // case-sensitive
+        assert_eq!(appendix_letter("Appendix a"), None); // lowercase letter
+        assert_eq!(appendix_letter("Appendix Anew"), None); // letter run must end at a boundary
+        assert_eq!(appendix_letter("Appendix"), None); // no letter at all
+    }
+
+    #[test]
+    fn listing_prefix_prefers_a_real_section_number() {
+        // If mdbook ever numbers appendices, its number wins and the
+        // title-derived letter becomes a no-op.
+        assert_eq!(
+            listing_prefix(Some(&[7]), "Appendix A: X").as_deref(),
+            Some("7")
+        );
+        assert_eq!(listing_prefix(None, "Appendix A: X").as_deref(), Some("A"));
+        assert_eq!(listing_prefix(None, "Introduction"), None);
+        assert_eq!(listing_prefix(Some(&[]), "Introduction"), None);
     }
 }
