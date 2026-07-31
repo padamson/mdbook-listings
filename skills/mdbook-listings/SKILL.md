@@ -104,6 +104,10 @@ edge cases live in [references/directives.md](references/directives.md).
 - `{{#list-of-listings}}` — replaced with a book-wide, chapter-grouped index of
   every numbered listing, each entry linked to its listing. Requires the
   `list-of-listings` opt-in; typically placed on its own back-matter page.
+- `label="..."` on `{{#include}}` / `{{#diff}}` — names a listing;
+  `{{#listing-ref <label>}}` in prose then renders the listing's *current*
+  `Listing N.M`, hyperlinked, so "see Listing 5.4" can't go stale when
+  numbers shift. Unknown or duplicated labels fail the build.
 
 ## Numbering, captions, and the List of Listings
 

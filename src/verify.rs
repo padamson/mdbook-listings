@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::directive::{FencePolicy, line_number, scan_directives, split_caption};
+use crate::directive::{FencePolicy, line_number, scan_directives, split_caption, split_label};
 use crate::freeze::hex_sha256;
 use crate::manifest::Manifest;
 
@@ -117,6 +117,7 @@ fn check_references(book_root: &Path, manifest: &Manifest, report: &mut VerifyRe
     for (rel, content) in chapter_markdown(book_root) {
         for occ in scan_directives(&content, "{{#include ", FencePolicy::Annotate) {
             let (args, _caption) = split_caption(occ.args);
+            let (args, _label) = split_label(&args);
             let path = args.trim();
             // Only listings/ includes resolve to a frozen tag; snippets/
             // and other paths are not manifest records.
@@ -144,6 +145,7 @@ fn check_references(book_root: &Path, manifest: &Manifest, report: &mut VerifyRe
         }
         for occ in scan_directives(&content, "{{#diff", FencePolicy::SkipInside) {
             let (args, _caption) = split_caption(occ.args);
+            let (args, _label) = split_label(&args);
             // Drop a `context=N` token so it isn't miscounted as an operand,
             // matching the diff parser.
             let tokens: Vec<&str> = args
@@ -224,6 +226,7 @@ fn check_live_operands(book_root: &Path, report: &mut VerifyReport) {
     for (rel, content) in chapter_markdown(book_root) {
         for occ in scan_directives(&content, "{{#diff", FencePolicy::SkipInside) {
             let (args, _caption) = split_caption(occ.args);
+            let (args, _label) = split_label(&args);
             let tokens: Vec<&str> = args
                 .split_whitespace()
                 .filter(|t| !t.starts_with("context="))

@@ -41,6 +41,12 @@ output is byte-identical to 0.1.0.
   section is expanded, and folds with that heading. `"off"` (default) emits
   nothing. Each entry links to a listing's anchor. HTML output only.
 
+- **Stable listing cross-references.** `label="..."` on `{{#include}}` and
+  `{{#diff}}` names a listing; `{{#listing-ref <label>}}` in prose renders
+  the listing's current `Listing N.M`, hyperlinked (plain text in the
+  typst-pdf renderer), so a reference can't go stale when numbers shift.
+  Unknown and duplicated labels fail the build with the chapter and line,
+  like an unknown `{{#callout}}`. `verify` accepts the new argument.
 - **`--version` identifies non-release builds.** A binary built from git
   reports `<version> (<short sha>)` unless HEAD sits exactly on the
   release tag, so a build from `main` is distinguishable from the release

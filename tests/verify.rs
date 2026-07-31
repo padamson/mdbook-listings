@@ -179,6 +179,28 @@ fn verify_succeeds_when_every_reference_resolves() {
 }
 
 #[test]
+fn verify_accepts_label_and_caption_arguments_on_references() {
+    // `label=` (the {{#listing-ref}} anchor name) and `caption=` are directive
+    // arguments, not part of the path/operands — verify must lift them the
+    // same way the render passes do or a valid reference reads as broken.
+    let book = FrozenFixtureBook::new();
+    book.freeze("other-v1", "other: true\n");
+    book.write_chapter(
+        "ch",
+        // The first label contains a dot: naive path parsing that leaves the
+        // label token attached misreads it as a file extension.
+        "Real refs.\n\n```yaml\n{{#include listings/compose-v1.yaml label=\"compose.v1\" caption=\"The compose file\"}}\n```\n\n\
+         {{#diff compose-v1 other-v1 label=\"compose-diff\" context=5}}\n",
+    );
+
+    mdbook_listings()
+        .args(["verify", "--book-root"])
+        .arg(book.root())
+        .assert()
+        .success();
+}
+
+#[test]
 fn verify_fails_on_a_sidecar_with_no_matching_listing() {
     let book = FrozenFixtureBook::new();
     book.write_listing_file(

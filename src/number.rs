@@ -19,6 +19,9 @@ struct Anchor {
     /// The `data-listing-caption` value, still HTML-escaped as stored on the
     /// anchor.
     caption: Option<String>,
+    /// The `data-listing-label` value — the listing's stable cross-reference
+    /// name, still HTML-escaped as stored on the anchor.
+    label: Option<String>,
 }
 
 /// A numbered listing, surfaced for the book-wide List-of-Listings index.
@@ -33,6 +36,11 @@ pub struct ListingRef {
     pub number: String,
     pub caption: Option<String>,
     pub id: String,
+    /// Stable cross-reference name from `label="..."`, resolved by
+    /// `{{#listing-ref <label>}}`. Skipped in the sidebar manifest when
+    /// absent so the JSON stays lean.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 /// Splice listing numbers and captions into `content`, returning the rewritten
@@ -99,6 +107,7 @@ pub fn splice_chapter(
                 number: n,
                 caption: anchor.caption.clone(),
                 id: id.expect("a numbered listing always has an id"),
+                label: anchor.label.clone(),
             });
         }
     }
@@ -191,6 +200,7 @@ fn anchor_after_fence(content: &str, close_end: usize) -> Option<Anchor> {
     Some(Anchor {
         div_start,
         caption: attr_value(div_text, "data-listing-caption"),
+        label: attr_value(div_text, "data-listing-label"),
     })
 }
 

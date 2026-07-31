@@ -1,7 +1,8 @@
 # mdbook-listings directive reference
 
-There are four directives — `{{#include}}`, `{{#diff}}`, `{{#callout}}`, and
-`{{#list-of-listings}}` — plus the `// CALLOUT:` source-marker syntax. They are
+There are five directives — `{{#include}}`, `{{#diff}}`, `{{#callout}}`,
+`{{#listing-ref}}`, and `{{#list-of-listings}}` — plus the `// CALLOUT:`
+source-marker syntax. They are
 written by hand in chapter markdown and expanded by the preprocessor at build
 time. Code samples below use four-backtick fences so the inner three-backtick
 block is shown literally.
@@ -256,6 +257,36 @@ inline index above is the floor for PDF):
 
 Both link each entry to its listing anchor. Independent of `list-of-listings`
 — a book can have the page index, the sidebar, or both.
+
+### `label=` and `{{#listing-ref}}` — stable listing cross-references
+
+Listing numbers are assigned by order of appearance, so a hand-written "see
+Listing 5.4" silently goes stale when a listing is inserted above it. Name
+the listing instead, and reference it by name:
+
+````markdown
+```yaml
+{{#include listings/schema-v3.yaml label="claim-layer" caption="The claim layer"}}
+```
+````
+
+Anywhere in the book (cross-chapter included):
+
+````markdown
+The shape is defined in {{#listing-ref claim-layer}}.
+````
+
+renders as the listing's *current* number — `Listing 5.4`, hyperlinked to the
+listing — and keeps tracking it as numbers shift. Mirrors what
+`{{#callout <label>}}` does for badges, one level up.
+
+- `label="..."` works on `{{#include}}` and `{{#diff}}`, combines with
+  `caption=` in either order, and requires the listing to be numbered
+  (`number-listings` on, numbered chapter) — refs resolve to numbers.
+- An **unknown label fails the build** with the chapter and line; a **label
+  defined twice fails the build** (a ref must have exactly one target).
+- In the typst-pdf renderer the ref renders as plain `Listing N.M` text.
+- Inside a fenced block the directive is left verbatim, so you can quote it.
 
 ## Gotcha: don't write a bare two-arg `{{#diff a b}}` in inline prose
 

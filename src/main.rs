@@ -15,6 +15,7 @@ use mdbook_listings::install::{InstallOutcome, ensure_assets_fresh, install};
 use mdbook_listings::list_of_listings::{
     ChapterListings, SidebarMode, render_index, render_manifest, replace_markers,
 };
+use mdbook_listings::listing_ref::{LabelIndex, replace_refs};
 use mdbook_listings::manifest::Manifest;
 use mdbook_listings::number::splice_chapter as splice_numbers;
 use mdbook_listings::verify::{Severity, verify};
@@ -236,11 +237,11 @@ fn preprocess() -> Result<()> {
         .map(SidebarMode::parse)
         .unwrap_or(SidebarMode::Off);
 
-    // Accumulates each chapter's numbered listings, in document order, for the
-    // book-wide List-of-Listings index emitted after the per-chapter passes.
-    // Populated when either the inline index or the sidebar is on — both draw
-    // from the same collected data.
-    let collect_listings = list_of_listings || sidebar_mode != SidebarMode::Off;
+    // Accumulates each chapter's numbered listings, in document order, for
+    // the book-wide passes (List-of-Listings index, sidebar manifest, and
+    // {{#listing-ref}} resolution). Always collected: listing refs are
+    // opted into by writing the directive, not by a config flag, so the
+    // label index must exist regardless of the index/sidebar settings.
     let mut collected: Vec<ChapterListings> = Vec::new();
     let mut splice_err: Option<anyhow::Error> = None;
     book.for_each_mut(|item| {
@@ -281,20 +282,17 @@ fn preprocess() -> Result<()> {
                     // Record this chapter's listings for the book-wide index.
                     // The link path is the chapter file relative to the book
                     // src root (Phase 1 assumes the index page is top-level).
-                    // Chapters with no listings are still recorded; render_index
-                    // skips them. The gate is the sole control — when off, nothing
-                    // is collected, so the index renders empty.
-                    if collect_listings {
-                        collected.push(ChapterListings {
-                            name: chapter.name.clone(),
-                            path: chapter
-                                .path
-                                .as_ref()
-                                .map(|p| p.to_string_lossy().replace('\\', "/"))
-                                .unwrap_or_default(),
-                            listings: refs,
-                        });
-                    }
+                    // Chapters with no listings are still recorded;
+                    // render_index and the label index skip them.
+                    collected.push(ChapterListings {
+                        name: chapter.name.clone(),
+                        path: chapter
+                            .path
+                            .as_ref()
+                            .map(|p| p.to_string_lossy().replace('\\', "/"))
+                            .unwrap_or_default(),
+                        listings: refs,
+                    });
                     numbered
                 })
                 .and_then(|new_content| {
@@ -323,13 +321,29 @@ fn preprocess() -> Result<()> {
         String::new()
     };
     let manifest = render_manifest(&collected, sidebar_mode);
+    // {{#listing-ref}} resolution needs the whole book's labels, so it rides
+    // the same final pass. Unknown or duplicate labels fail the build — a
+    // broken pointer in prose is a defect, not a warning.
+    let label_index = LabelIndex::build(&collected).map_err(anyhow::Error::msg)?;
+    let mut ref_err: Option<anyhow::Error> = None;
     book.for_each_mut(|item| {
+        if ref_err.is_some() {
+            return;
+        }
         if let BookItem::Chapter(chapter) = item {
-            let mut content = replace_markers(&chapter.content, &index);
-            content.push_str(&manifest);
-            chapter.content = content;
+            match replace_refs(&chapter.content, &chapter.name, &label_index, renderer) {
+                Ok(resolved) => {
+                    let mut content = replace_markers(&resolved, &index);
+                    content.push_str(&manifest);
+                    chapter.content = content;
+                }
+                Err(e) => ref_err = Some(anyhow::Error::msg(e)),
+            }
         }
     });
+    if let Some(e) = ref_err {
+        return Err(e);
+    }
 
     serde_json::to_writer(std::io::stdout(), &book).context("writing transformed book to stdout")
 }

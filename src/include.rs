@@ -19,6 +19,9 @@ pub struct IncludeDirective {
     /// matching mdBook's built-in `{{#include path:start:end}}` form.
     pub range: Option<LineRange>,
     pub caption: Option<String>,
+    /// Stable name assigned via `label="..."`, resolved by
+    /// `{{#listing-ref <label>}}` to the listing's current number.
+    pub label: Option<String>,
     pub span: Range<usize>,
     pub fence_close_end: Option<usize>,
 }
@@ -28,6 +31,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
     let mut out = Vec::new();
     for occ in scan_directives(content, "{{#include ", FencePolicy::Annotate) {
         let (args, caption) = crate::directive::split_caption(occ.args);
+        let (args, label) = crate::directive::split_label(&args);
         let raw = args.trim();
         // CALLOUT: snippets-intercept Two prefixes are intercepted: `listings/` (frozen tags — emit anchor) and `snippets/` (no anchor; we expand to give the callout splicer a shot at any CALLOUT markers in the snippet source). Other forms fall through to mdbook's built-in `links` preprocessor.
         let intercepted = raw.starts_with("listings/") || raw.starts_with("snippets/");
@@ -64,6 +68,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
             rel_path: path.to_string(),
             range,
             caption,
+            label,
             span: occ.span,
             fence_close_end: occ.fence_close_end,
         });
@@ -220,6 +225,12 @@ pub fn splice_chapter(
                 anchor.push_str(&format!(
                     " data-listing-caption=\"{}\"",
                     crate::callout::html_escape(caption)
+                ));
+            }
+            if let Some(label) = &d.label {
+                anchor.push_str(&format!(
+                    " data-listing-label=\"{}\"",
+                    crate::callout::html_escape(label)
                 ));
             }
             anchor.push_str(" aria-hidden=\"true\"></div>\n");

@@ -177,6 +177,7 @@ mod tests {
             number: number.to_string(),
             caption: caption.map(str::to_string),
             id: id.to_string(),
+            label: None,
         }
     }
 

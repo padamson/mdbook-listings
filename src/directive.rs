@@ -113,18 +113,41 @@ pub(crate) fn line_number(content: &str, byte_offset: usize) -> usize {
 /// Lift a `caption="..."` token off a directive's args, returning the
 /// remaining args and the caption text. Shared so the include and diff
 /// passes parse captions identically. The first `"` ends the value.
-pub(crate) fn split_caption(args: &str) -> (&str, Option<String>) {
-    const KEY: &str = "caption=\"";
-    let Some(start) = args.find(KEY) else {
-        return (args, None);
+pub(crate) fn split_caption(args: &str) -> (String, Option<String>) {
+    split_quoted_kv(args, "caption=\"")
+}
+
+/// Lift a `label="..."` token off a directive's args — the stable name a
+/// `{{#listing-ref}}` resolves to the listing's current number. Same
+/// grammar as `caption=`.
+pub(crate) fn split_label(args: &str) -> (String, Option<String>) {
+    split_quoted_kv(args, "label=\"")
+}
+
+/// Shared lifter for `key="value"` directive arguments. The first `"` ends
+/// the value; an unterminated value leaves the args untouched rather than
+/// guess. The key may sit anywhere among the args; the surrounding tokens
+/// are re-joined so several quoted keys (`label="x" caption="y"`) can be
+/// lifted in sequence, in either order.
+fn split_quoted_kv(args: &str, key: &str) -> (String, Option<String>) {
+    let Some(start) = args.find(key) else {
+        return (args.to_string(), None);
     };
-    let value_start = start + KEY.len();
+    let value_start = start + key.len();
     let Some(rel_end) = args[value_start..].find('"') else {
-        // Unterminated caption: leave the args untouched rather than guess.
-        return (args, None);
+        return (args.to_string(), None);
     };
-    let caption = args[value_start..value_start + rel_end].to_string();
-    (args[..start].trim_end(), Some(caption))
+    let value = args[value_start..value_start + rel_end].to_string();
+    let before = args[..start].trim_end();
+    let after = args[value_start + rel_end + 1..].trim_start();
+    let rest = if after.is_empty() {
+        before.to_string()
+    } else if before.is_empty() {
+        after.to_string()
+    } else {
+        format!("{before} {after}")
+    };
+    (rest, Some(value))
 }
 
 #[cfg(test)]
@@ -133,6 +156,42 @@ mod tests {
 
     fn scan<'a>(content: &'a str, prefix: &str) -> Vec<DirectiveOccurrence<'a>> {
         scan_directives(content, prefix, FencePolicy::SkipInside)
+    }
+
+    #[test]
+    fn split_label_lifts_quoted_label() {
+        let (rest, label) = split_label("listings/foo.rs label=\"claim-layer\"");
+        assert_eq!(rest, "listings/foo.rs");
+        assert_eq!(label.as_deref(), Some("claim-layer"));
+    }
+
+    #[test]
+    fn split_label_none_when_absent() {
+        let (rest, label) = split_label("a b 1:2 1:3");
+        assert_eq!(rest, "a b 1:2 1:3");
+        assert_eq!(label, None);
+    }
+
+    #[test]
+    fn caption_and_label_lift_in_either_order() {
+        let (rest, caption) = split_caption("a b label=\"x\" caption=\"The cap\"");
+        let (rest, label) = split_label(&rest);
+        assert_eq!(rest, "a b");
+        assert_eq!(caption.as_deref(), Some("The cap"));
+        assert_eq!(label.as_deref(), Some("x"));
+
+        let (rest, caption) = split_caption("caption=\"The cap\" label=\"x\" a b");
+        let (rest, label) = split_label(&rest);
+        assert_eq!(rest, "a b");
+        assert_eq!(caption.as_deref(), Some("The cap"));
+        assert_eq!(label.as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn split_label_unterminated_left_untouched() {
+        let (rest, label) = split_label("a b label=\"oops");
+        assert_eq!(rest, "a b label=\"oops");
+        assert_eq!(label, None);
     }
 
     #[test]

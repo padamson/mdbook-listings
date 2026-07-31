@@ -23,6 +23,9 @@ pub struct DiffDirective {
     pub left_range: Option<LineRange>,
     pub right_range: Option<LineRange>,
     pub caption: Option<String>,
+    /// Stable name assigned via `label="..."`, resolved by
+    /// `{{#listing-ref <label>}}` to the listing's current number.
+    pub label: Option<String>,
     /// Optional `context=N` argument — the unified-diff context radius, the
     /// number of unchanged lines shown around each hunk. `None` falls back to
     /// [`DEFAULT_CONTEXT_RADIUS`].
@@ -124,6 +127,7 @@ pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
     let mut out = Vec::new();
     for occ in scan_directives(content, "{{#diff", FencePolicy::SkipInside) {
         let (args, caption) = crate::directive::split_caption(occ.args);
+        let (args, label) = crate::directive::split_label(&args);
         // Lift an optional `context=N` token out of the operands. A malformed
         // value (`context=x`) is ignored — it falls back to the default
         // context window rather than skipping the directive, since the window
@@ -156,6 +160,7 @@ pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
                 left_range,
                 right_range,
                 caption,
+                label,
                 context,
                 span: occ.span,
             });
@@ -478,6 +483,12 @@ pub fn splice_chapter(
             anchor.push_str(&format!(
                 " data-listing-caption=\"{}\"",
                 crate::callout::html_escape(caption)
+            ));
+        }
+        if let Some(label) = &d.label {
+            anchor.push_str(&format!(
+                " data-listing-label=\"{}\"",
+                crate::callout::html_escape(label)
             ));
         }
         anchor.push_str(" aria-hidden=\"true\"></div>");
@@ -940,6 +951,7 @@ mod tests {
         };
 
         let directive = DiffDirective {
+            label: None,
             left: "left-tag".into(),
             right: "right-tag".into(),
             left_range: None,

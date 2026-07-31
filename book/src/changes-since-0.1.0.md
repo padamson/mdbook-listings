@@ -24,6 +24,13 @@ and do not describe what follows.
   appears in and linking to each one. Opt-in through
   `[preprocessor.listings] list-of-listings`; this book's
   [List of Listings](listings-index.md) page uses it.
+- **Stable listing cross-references.** A listing can carry a
+  `label="..."` on its `{{#include}}` or `{{#diff}}` directive, and prose
+  anywhere in the book can point at it with a `listing-ref` directive that
+  renders the listing's *current* number, hyperlinked — so "see
+  {{#listing-ref freeze-acceptance-tests}}" stays correct when numbers
+  shift. An unknown or duplicated label fails the build. That reference is
+  live: it resolves to chapter 3's acceptance-criteria listing.
 - **List of Listings in the sidebar.** With
   `[preprocessor.listings] list-of-listings-sidebar`, the numbered listings
   show in the sidebar, built in the browser. `"nested"` puts each of the page

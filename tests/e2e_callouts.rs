@@ -1230,3 +1230,39 @@ async fn callout_badges_place_correctly_under_safari_boundary_rect_semantics() {
     )
     .await;
 }
+
+// Stable listing cross-references: the errata page carries a live
+// `listing-ref` to the labelled acceptance-tests listing in ch03. The
+// rendered artifact must be a link whose text is the target's *current*
+// number and whose href points at the matching caption anchor — the pair is
+// derived, so this stays green when ch03's numbering shifts.
+#[tokio::test]
+async fn listing_ref_renders_as_link_to_current_number() {
+    with_traced_chapter(
+        "listing_ref_renders_as_link_to_current_number",
+        "changes-since-0.1.0",
+        |page| async move {
+            let verdict: String = page
+                .evaluate_value(
+                    r#"(() => {
+                        const links = [...document.querySelectorAll(
+                          'main a[href*="ch03-freeze-a-listing.html#listing-"]')];
+                        if (!links.length) return 'no-ref-link';
+                        const a = links[0];
+                        const id = a.getAttribute('href').split('#')[1];
+                        const expected = 'Listing ' + id.replace('listing-', '').replace('-', '.');
+                        return a.textContent === expected
+                          ? 'ok:' + a.textContent
+                          : 'MISMATCH text=' + a.textContent + ' expected=' + expected;
+                    })()"#,
+                )
+                .await
+                .expect("inspect listing-ref link");
+            assert!(
+                verdict.starts_with("ok:"),
+                "listing-ref must render the target's current number as its link text; got: {verdict}"
+            );
+        },
+    )
+    .await;
+}
