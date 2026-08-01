@@ -80,6 +80,19 @@ further downstream validation. Numbering and scoped badges are opt-in via
 - `verify --prune` for interactive orphan removal.
 - Per-chapter tag namespacing under `book/src/listings/<chapter>/`.
 
+Internals (carried over from the 2026-06 architecture review; no
+user-visible change):
+
+- Pass structured per-chapter listing metadata between pipeline stages
+  instead of round-tripping through the `<div data-listing-…>` anchor
+  protocol (`src/anchor.rs` centralises the current string protocol; this
+  replaces it).
+- `thiserror` for the structured error enums (drop the hand-written
+  `Display`/`Error` impls).
+- Centralise the escaping policy scattered across `html_escape`,
+  `render_inline_markdown`, and the include splicer's `{{` escape (moot
+  if the structured-metadata item lands first).
+
 ## v0.3.0 — richer rendering
 
 - Syntax-highlighted diffs (currently plain unified-diff text).
