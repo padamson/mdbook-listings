@@ -11,4 +11,5 @@ pub mod list_of_listings;
 pub mod listing_ref;
 pub mod manifest;
 pub mod number;
+pub mod pipeline;
 pub mod verify;

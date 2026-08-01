@@ -3,23 +3,14 @@ use std::process;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use mdbook_listings::callout::{
-    SidecarCallouts, SupportedRenderer, splice_chapter as splice_callouts,
-};
-use mdbook_listings::diff::splice_chapter as splice_diffs;
+use mdbook_listings::callout::SupportedRenderer;
 use mdbook_listings::freeze::{
     FreezeOptions, FreezeOutcome, derive_default_tag, freeze, frozen_relative_path, path_to_string,
 };
-use mdbook_listings::include::splice_chapter as splice_includes;
 use mdbook_listings::install::{InstallOutcome, ensure_assets_fresh, install};
-use mdbook_listings::list_of_listings::{
-    ChapterListings, SidebarMode, render_index, render_manifest, replace_markers,
-};
-use mdbook_listings::listing_ref::{LabelIndex, replace_refs};
 use mdbook_listings::manifest::Manifest;
-use mdbook_listings::number::{listing_prefix, splice_chapter as splice_numbers};
+use mdbook_listings::pipeline;
 use mdbook_listings::verify::{Severity, verify};
-use mdbook_preprocessor::book::BookItem;
 
 /// Managed code listings for mdbook: inline callouts, freezing, and verification.
 #[derive(Parser)]
@@ -204,157 +195,17 @@ fn preprocess() -> Result<()> {
     let (ctx, mut book) = mdbook_preprocessor::parse_input(std::io::stdin())?;
     // CALLOUT: assets-on-build Refresh the bundled CSS/JS on every build so the rendered HTML always uses assets matching the binary version. No-op when bytes already match. Prevents asset-version skew when an author bumps the binary forward without re-running `install` — the stale on-disk copies would otherwise be mixed with new HTML emission.
     ensure_assets_fresh(&ctx.root).context("refreshing bundled CSS/JS assets")?;
-    let manifest = Manifest::load(&ctx.root)?;
-    let src_dir = ctx.root.join(&ctx.config.book.src);
-    let renderer = SupportedRenderer::from_renderer_name(&ctx.renderer)
-        .with_context(|| format!("unsupported renderer: {}", ctx.renderer))?;
-    let sidecars =
-        SidecarCallouts::load(&src_dir.join("listings")).context("loading sidecar callouts")?;
-    // Opt-in: numbering stays off unless `[preprocessor.listings] number-listings`
-    // is set true. A malformed value defaults off rather than failing the build.
-    let number_listings = ctx
-        .config
-        .get::<bool>("preprocessor.listings.number-listings")
-        .ok()
-        .flatten()
-        .unwrap_or(false);
-    // Opt-in: the {{#list-of-listings}} index renders only when this is set.
-    // A malformed value defaults off rather than failing the build.
-    let list_of_listings = ctx
-        .config
-        .get::<bool>("preprocessor.listings.list-of-listings")
-        .ok()
-        .flatten()
-        .unwrap_or(false);
-    // Opt-in: the sidebar variant of the index. "off" (default), "append", or
-    // "nested"; an unrecognised value falls back to off.
-    let sidebar_mode = ctx
-        .config
-        .get::<String>("preprocessor.listings.list-of-listings-sidebar")
-        .ok()
-        .flatten()
-        .as_deref()
-        .map(SidebarMode::parse)
-        .unwrap_or(SidebarMode::Off);
-
-    // Accumulates each chapter's numbered listings, in document order, for
-    // the book-wide passes (List-of-Listings index, sidebar manifest, and
-    // {{#listing-ref}} resolution). Always collected: listing refs are
-    // opted into by writing the directive, not by a config flag, so the
-    // label index must exist regardless of the index/sidebar settings.
-    let mut collected: Vec<ChapterListings> = Vec::new();
-    let mut splice_err: Option<anyhow::Error> = None;
-    book.for_each_mut(|item| {
-        if splice_err.is_some() {
-            return;
-        }
-        if let BookItem::Chapter(chapter) = item {
-            let chapter_dir = chapter
-                .source_path
-                .as_ref()
-                .and_then(|p| p.parent())
-                .map(|d| src_dir.join(d))
-                .unwrap_or_else(|| src_dir.clone());
-            // CALLOUT: preprocessor-chain Four-stage chain per chapter: includes (expand listings/snippets + drop locator anchors) → diffs (render `{{#diff}}` blocks + emit dual-attribute anchors) → numbering (label each anchored listing `Listing N.M` + caption, stamp the number onto its anchor) → callouts (strip CALLOUT comments + emit overlay, scoping badges to the listing number). The order matters: numbering needs both anchor kinds in one stream to count M, and callouts need the included source bytes inline to find `CALLOUT:` markers.
-            match splice_includes(&chapter.content, &src_dir, chapter.source_path.as_deref())
-                .map_err(|e| {
-                    anyhow::Error::new(e).context("expanding {{#include listings/...}} failed")
-                })
-                .and_then(|new_content| {
-                    splice_diffs(
-                        &new_content,
-                        &manifest,
-                        &ctx.root,
-                        chapter.source_path.as_deref(),
-                        &chapter_dir,
-                    )
-                    .map_err(|e| {
-                        anyhow::Error::new(e).context("rendering {{#diff}} directive failed")
-                    })
-                })
-                .map(|new_content| {
-                    let (numbered, refs) = splice_numbers(
-                        &new_content,
-                        listing_prefix(
-                            chapter.number.as_ref().map(|n| n.as_slice()),
-                            &chapter.name,
-                        )
-                        .as_deref(),
-                        number_listings,
-                        renderer,
-                    );
-                    // Record this chapter's listings for the book-wide index.
-                    // The link path is the chapter file relative to the book
-                    // src root (Phase 1 assumes the index page is top-level).
-                    // Chapters with no listings are still recorded;
-                    // render_index and the label index skip them.
-                    collected.push(ChapterListings {
-                        name: chapter.name.clone(),
-                        path: chapter
-                            .path
-                            .as_ref()
-                            .map(|p| p.to_string_lossy().replace('\\', "/"))
-                            .unwrap_or_default(),
-                        listings: refs,
-                    });
-                    numbered
-                })
-                .and_then(|new_content| {
-                    splice_callouts(&new_content, renderer, &sidecars)
-                        .map_err(|e| anyhow::Error::new(e).context("rendering callouts failed"))
-                }) {
-                Ok(new_content) => chapter.content = new_content,
-                Err(e) => splice_err = Some(e),
-            }
-        }
-    });
-    if let Some(e) = splice_err {
-        return Err(e);
-    }
-
-    // Final book-wide pass: replace every {{#list-of-listings}} marker with the
-    // index built from the collected listings, and append the sidebar manifest
-    // to every page when the sidebar is on. The inline index stays gated on its
-    // own flag (so the sidebar doesn't make a `{{#list-of-listings}}` marker
-    // render when the page index is off); when off the index is empty and the
-    // marker is simply stripped, so the raw directive never leaks. The manifest
-    // is emitted per page because each rendered page carries its own sidebar.
-    let index = if list_of_listings {
-        render_index(&collected)
-    } else {
-        String::new()
-    };
-    let manifest = render_manifest(&collected, sidebar_mode);
-    // {{#listing-ref}} resolution needs the whole book's labels, so it rides
-    // the same final pass. Unknown or duplicate labels fail the build — a
-    // broken pointer in prose is a defect, not a warning.
-    let label_index = LabelIndex::build(&collected).map_err(anyhow::Error::msg)?;
-    let mut ref_err: Option<anyhow::Error> = None;
-    book.for_each_mut(|item| {
-        if ref_err.is_some() {
-            return;
-        }
-        if let BookItem::Chapter(chapter) = item {
-            match replace_refs(&chapter.content, &chapter.name, &label_index, renderer) {
-                Ok(resolved) => {
-                    let mut content = replace_markers(&resolved, &index);
-                    content.push_str(&manifest);
-                    chapter.content = content;
-                }
-                Err(e) => ref_err = Some(anyhow::Error::msg(e)),
-            }
-        }
-    });
-    if let Some(e) = ref_err {
-        return Err(e);
-    }
-
+    // The chain itself lives in the library (`pipeline::process_book`) so
+    // its ordering invariant is unit-tested; this stays a thin adapter.
+    pipeline::process(&ctx, &mut book)?;
     serde_json::to_writer(std::io::stdout(), &book).context("writing transformed book to stdout")
 }
 
 /// Answer mdbook's renderer-support probe by exiting 0 (supported) or 1
 /// (unsupported). We do not return from this function.
 fn supports(renderer: &str) -> ! {
-    let supported = matches!(renderer, "html" | "typst-pdf");
+    // Delegate to the renderer enum so the supported set has one home —
+    // a literal match here silently drifts when a renderer is added.
+    let supported = SupportedRenderer::from_renderer_name(renderer).is_some();
     process::exit(if supported { 0 } else { 1 });
 }
