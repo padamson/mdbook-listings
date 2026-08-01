@@ -81,23 +81,26 @@ Re-verified post-fix with `cargo mutants --file src/install.rs`.
 swept via `cargo mutants --file src/install.rs`: 35 mutants, 33
 caught, 2 unviable, 0 missed.
 
-### src/callout.rs — truly-equivalent mutants (won't fix)
+### src/callout/ — truly-equivalent mutants (won't fix)
 
 Surfaced by `scripts/mutants.sh` on slice 9 (sidecar TOML
-callouts). 8 of 10 missed mutations were closed by new lib tests
-in the same slice; the 2 below are observationally equivalent
+callouts), when callout code was still the monolithic
+`src/callout.rs`. 8 of 10 missed mutations were closed by new lib
+tests in the same slice; the 2 below are observationally equivalent
 under all reachable inputs and can't be pinned without code
-churn that costs more than the coverage gap.
+churn that costs more than the coverage gap. Locations updated for
+the module split in
+[`fb4f2db`](https://github.com/padamson/mdbook-listings/commit/fb4f2db).
 
-- [ ] **L239:9** — `replace SidecarCallouts::empty -> Self with
-  Default::default()`. `empty()` is literally `Self::default()`
-  on line 239; mutation swaps one for the other and behaviour is
+- [ ] **sidecar.rs L43:9** — `replace SidecarCallouts::empty -> Self
+  with Default::default()`. `empty()` is literally `Self::default()`;
+  mutation swaps one for the other and behaviour is
   identical by definition. Keeping `empty()` as a readability
   affordance (callers in tests + `load`'s NotFound arm read
   more clearly with it). Closing this mutation would require
   either deleting the helper or giving it a distinguishing
   post-condition; neither is worth the API change.
-- [ ] **L1103:25** — `replace < with <= in
+- [ ] **strip.rs L224:25** — `replace < with <= in
   translate_sidecar_line_to_post_strip`. The
   `stripped_source_lines.iter().filter(|&&s| s < block_line)`
   shift count differs from `<=` only when `block_line` itself
@@ -108,6 +111,50 @@ churn that costs more than the coverage gap.
   counts. Pinning the mutant would require bypassing the
   earlier guard via a direct test that contradicts the public
   contract.
+
+### src/callout/ — surfaced by the module split (fb4f2db)
+
+The split in
+[`fb4f2db`](https://github.com/padamson/mdbook-listings/commit/fb4f2db)
+moved every callout line, so CI's diff-scoped run
+(`mutation-testing-diff`) mutated the whole module for the first
+time since mutation testing was adopted: 186 mutants, 159 caught,
+7 unviable, 20 missed. Two of the 20 are the known-equivalent
+entries above; the 18 below are genuine pre-existing gaps (the
+code is unchanged by the move — these mutants would also have
+survived against the old monolith). Note the lib-only scope in
+`.mutants.toml` matters here: some of these paths ARE covered by
+e2e/CLI tests, but nothing in-crate pins them.
+
+- [ ] **mod.rs L108:13** — `delete match arm "typst-pdf" in
+  SupportedRenderer::from_renderer_name`. Renderer dispatch is
+  exercised e2e, not by lib tests.
+- [ ] **parse.rs L159:13 / L160:13 / L161:13** — `replace || with
+  && in callouts_from_diff_block` (3 mutants). The skip-line
+  predicate for diff metadata lines; no lib test feeds a diff
+  block that distinguishes the disjuncts.
+- [ ] **parse.rs L174:69** — `replace + with * in
+  callouts_from_diff_block`. Display-line arithmetic.
+- [ ] **render_html.rs L161:28** — `replace match guard value ==
+  "left" || value == "right" with true in
+  render_callout_overlay_html`.
+- [ ] **render_html.rs L161:53** — `replace == with != in
+  render_callout_overlay_html`.
+- [ ] **render_pdf.rs L72:16** — `replace > with < / == / >= in
+  render_callout_list_pdf` (3 mutants). Pluralisation/threshold
+  in the PDF callout list.
+- [ ] **strip.rs L41:41** — `replace + with * in
+  strip_marker_lines`.
+- [ ] **strip.rs L46:27** — `replace += with *= in
+  strip_marker_lines`.
+- [ ] **strip.rs L69:13 / L70:13 / L71:13** — `replace || with &&
+  in strip_marker_lines_diff` (3 mutants).
+- [ ] **strip.rs L74:27** — `replace += with *= in
+  strip_marker_lines_diff`.
+- [ ] **strip.rs L94:45** — `replace + with * in
+  strip_marker_lines_diff`.
+- [ ] **strip.rs L101:27** — `replace += with *= in
+  strip_marker_lines_diff`.
 
 ## Status
 
