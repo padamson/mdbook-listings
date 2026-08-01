@@ -209,8 +209,11 @@ pub fn splice_chapter(
         }
         // Escape `{{` so mdbook's downstream links preprocessor doesn't
         // try to resolve literal directive-shaped strings in the
-        // substituted bytes. Safe: we only freeze source-code files,
-        // never Markdown.
+        // substituted bytes. Safe for frozen listings (source code, not
+        // Markdown). Caveat: `snippets/` accepts any extension, so a
+        // `.md` snippet would have its own directives escaped too —
+        // acceptable, since rendering them as literal text inside a code
+        // fence is what an author quoting markdown wants anyway.
         let body = body.replace("{{", "\\{{");
         out.push_str(&content[cursor..d.span.start]);
         out.push_str(&body);

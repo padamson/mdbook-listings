@@ -194,18 +194,15 @@ pub fn derive_default_tag(
 /// when the tag matches one of [`VERSION_PREFIXES`] and `N` is a
 /// non-negative integer; returns `None` otherwise. Pub for test
 /// access only.
-fn parse_version_suffix<'t>(tag: &'t str, basename: &str) -> Option<(&'t str, u64)> {
+fn parse_version_suffix(tag: &str, basename: &str) -> Option<(&'static str, u64)> {
     let after_basename = tag.strip_prefix(basename)?.strip_prefix('-')?;
     for &prefix in VERSION_PREFIXES {
         if let Some(rest) = after_basename.strip_prefix(prefix)
             && let Ok(n) = rest.parse::<u64>()
         {
-            // Slice the prefix back out of `tag` so we can return a
-            // reference into the original `&'t str` lifetime — runs
-            // from len(basename + '-') to that + len(prefix).
-            let start = basename.len() + 1;
-            let end = start + prefix.len();
-            return Some((&tag[start..end], n));
+            // The matched prefix IS the table entry — return it directly
+            // rather than re-slicing the same characters out of `tag`.
+            return Some((prefix, n));
         }
     }
     None
@@ -266,7 +263,18 @@ pub fn frozen_relative_path(tag: &str, source: &Path) -> Result<PathBuf> {
 }
 
 fn relativize(path: &Path, base: &Path) -> PathBuf {
-    pathdiff(path, base).unwrap_or_else(|| path.to_path_buf())
+    pathdiff(path, base).unwrap_or_else(|| {
+        // Falling back to the absolute path keeps the freeze working, but
+        // it bakes a machine-specific path into the manifest — say so
+        // instead of failing or staying silent.
+        eprintln!(
+            "warning: could not compute {} relative to {} (canonicalize failed); \
+             recording the absolute path in listings.toml",
+            path.display(),
+            base.display(),
+        );
+        path.to_path_buf()
+    })
 }
 
 /// Minimal relative-path computation: if `path` is under `base`, strip the
