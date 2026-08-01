@@ -55,13 +55,7 @@ impl LabelIndex {
                         "listing label \"{label}\" is defined twice \
                          (Listing {} and Listing {}) — labels must be unique \
                          across the book so a {{{{#listing-ref}}}} has one target",
-                        prev.number,
-                        chapters
-                            .iter()
-                            .flat_map(|c| &c.listings)
-                            .find(|r| r.label.as_deref() == Some(label))
-                            .map(|r| r.number.as_str())
-                            .unwrap_or("?"),
+                        prev.number, l.number,
                     ));
                 }
             }
@@ -191,6 +185,10 @@ mod tests {
         assert!(
             err.contains("reuse-manifest") && err.contains("twice"),
             "names the label; got: {err}"
+        );
+        assert!(
+            err.contains("Listing 3.1") && err.contains("Listing 5.1"),
+            "names BOTH occurrences distinctly, not the first twice; got: {err}"
         );
     }
 
