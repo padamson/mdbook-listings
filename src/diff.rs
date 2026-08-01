@@ -466,33 +466,14 @@ pub fn splice_chapter(
         out.push_str(&body);
         out.push_str("```\n");
         // CALLOUT: diff-anchor-dual Locator anchor for the capture-screenshots tool. Both operands are emitted as separate data-attributes so the tool can locate a diff block by its (LEFT, RIGHT) pair — unique even when multiple diffs share the same RIGHT tag, and unambiguous against the include splicer's `data-listing-tag` anchors.
-        let mut anchor = format!(
-            "<div data-listing-diff-left=\"{}\" data-listing-diff-right=\"{}\"",
-            d.left, d.right,
-        );
-        if let Some(r) = &d.left_range {
-            anchor.push_str(&format!(" data-listing-diff-left-range=\"{}\"", r.render()));
-        }
-        if let Some(r) = &d.right_range {
-            anchor.push_str(&format!(
-                " data-listing-diff-right-range=\"{}\"",
-                r.render()
-            ));
-        }
-        if let Some(caption) = &d.caption {
-            anchor.push_str(&format!(
-                " data-listing-caption=\"{}\"",
-                crate::callout::html_escape(caption)
-            ));
-        }
-        if let Some(label) = &d.label {
-            anchor.push_str(&format!(
-                " data-listing-label=\"{}\"",
-                crate::callout::html_escape(label)
-            ));
-        }
-        anchor.push_str(" aria-hidden=\"true\"></div>");
-        out.push_str(&anchor);
+        out.push_str(&crate::anchor::diff_anchor(
+            &d.left,
+            &d.right,
+            d.left_range.as_ref(),
+            d.right_range.as_ref(),
+            d.caption.as_deref(),
+            d.label.as_deref(),
+        ));
         cursor = d.span.end;
     }
     out.push_str(&content[cursor..]);

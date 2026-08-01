@@ -252,15 +252,12 @@ fn listing_number_after_fence(content: &str, close_end: usize) -> Option<String>
     let tail = &content[close_end..];
     let after_newline = tail.strip_prefix('\n').unwrap_or(tail);
     let div_open = after_newline.find("<div ")?;
-    if div_open > 64 {
+    if div_open > crate::anchor::SCAN_TOLERANCE {
         return None;
     }
     let div_end = after_newline[div_open..].find('>')? + div_open;
     let div_text = &after_newline[div_open..div_end];
-    let key = "data-listing-number=\"";
-    let start = div_text.find(key)? + key.len();
-    let end = div_text[start..].find('"')?;
-    Some(div_text[start..start + end].to_string())
+    crate::anchor::attr_value(div_text, "data-listing-number")
 }
 
 /// Split inline-marker callouts from sidecar callouts for a given block.

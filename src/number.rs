@@ -235,17 +235,9 @@ fn anchor_after_fence(content: &str, close_end: usize) -> Option<Anchor> {
     let div_text = &tail[..tail.find('>')?];
     Some(Anchor {
         div_start,
-        caption: attr_value(div_text, "data-listing-caption"),
-        label: attr_value(div_text, "data-listing-label"),
+        caption: crate::anchor::attr_value(div_text, "data-listing-caption"),
+        label: crate::anchor::attr_value(div_text, "data-listing-label"),
     })
-}
-
-/// Read a `name="value"` attribute's value out of an element's opening tag.
-fn attr_value(div_text: &str, name: &str) -> Option<String> {
-    let key = format!("{name}=\"");
-    let start = div_text.find(&key)? + key.len();
-    let end = div_text[start..].find('"')?;
-    Some(div_text[start..start + end].to_string())
 }
 
 /// Byte offset of the first character of the opener fence's line. `body_start`

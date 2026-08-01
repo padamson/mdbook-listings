@@ -1,5 +1,6 @@
 //! Managed code listings for mdbook.
 
+pub(crate) mod anchor;
 pub mod callout;
 pub mod diff;
 pub mod directive;

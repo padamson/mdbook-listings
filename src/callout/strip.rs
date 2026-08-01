@@ -136,7 +136,7 @@ pub(super) fn listing_anchor_after_fence<'c>(
     // inside it — the numbering pass may have stamped `data-listing-number`
     // ahead of the tag, so the tag is not necessarily the first attribute.
     let anchor_open = after_newline.find("<div ")?;
-    if anchor_open > 64 {
+    if anchor_open > crate::anchor::SCAN_TOLERANCE {
         return None;
     }
     // The full element fits on one line, so cap the search at the closing `>`.
@@ -174,11 +174,7 @@ pub(super) fn listing_tag_after_fence(content: &str, close_end: usize) -> Option
     listing_anchor_after_fence(content, close_end).map(|a| a.tag)
 }
 
-/// Number of header lines the include splicer prepends to a ranged
-/// `{{#include listings/...}}` expansion. The header is `<basename>\n@@
-/// start,end @@\n` — exactly 2 lines, both commented when the source's
-/// extension maps to a known single-line comment prefix.
-const RANGED_INCLUDE_HEADER_LINES: usize = 2;
+use crate::anchor::RANGED_INCLUDE_HEADER_LINES;
 
 /// Translate a sidecar entry's source-file line into the corresponding
 /// 1-based line within the rendered fenced block (`block_text`). For a

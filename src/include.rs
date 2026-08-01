@@ -6,7 +6,6 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use crate::callout::comment_prefix_for_extension;
 use crate::diff::{LineRange, parse_line_range};
 use crate::directive::{FencePolicy, line_number, scan_directives};
 
@@ -179,24 +178,7 @@ pub fn splice_chapter(
             // comment-prefixed when the file extension maps to a known
             // single-line syntax, so syntax highlighters render them as
             // metadata rather than invalid code.
-            let basename = std::path::Path::new(&d.rel_path)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or(d.rel_path.as_str());
-            let prefix = std::path::Path::new(&d.rel_path)
-                .extension()
-                .and_then(|e| e.to_str())
-                .and_then(comment_prefix_for_extension)
-                .map(|p| format!("{p} "))
-                .unwrap_or_default();
-            let header = format!(
-                "{prefix}{basename}\n{prefix}@@ {},{} @@",
-                range.start.unwrap_or(1),
-                range
-                    .end
-                    .map(|n| n.to_string())
-                    .unwrap_or_else(|| "EOF".to_string()),
-            );
+            let header = crate::anchor::ranged_include_header(&d.rel_path, range);
             let sliced = range.slice(&body);
             body = format!("{header}\n{sliced}");
         }
@@ -220,24 +202,12 @@ pub fn splice_chapter(
         out.push_str(&content[d.span.end..close_end]);
         if let Some(tag) = &d.tag {
             // CALLOUT: include-anchor-emit One `<div data-listing-tag="...">` per `listings/` include, dropped just past the closing fence so the screenshot tool can find the rendered `<pre>` via `previousElementSibling`.
-            let mut anchor = format!("<div data-listing-tag=\"{tag}\"");
-            if let Some(range) = &d.range {
-                anchor.push_str(&format!(" data-listing-tag-range=\"{}\"", range.render()));
-            }
-            if let Some(caption) = &d.caption {
-                anchor.push_str(&format!(
-                    " data-listing-caption=\"{}\"",
-                    crate::callout::html_escape(caption)
-                ));
-            }
-            if let Some(label) = &d.label {
-                anchor.push_str(&format!(
-                    " data-listing-label=\"{}\"",
-                    crate::callout::html_escape(label)
-                ));
-            }
-            anchor.push_str(" aria-hidden=\"true\"></div>\n");
-            out.push_str(&anchor);
+            out.push_str(&crate::anchor::include_anchor(
+                tag,
+                d.range.as_ref(),
+                d.caption.as_deref(),
+                d.label.as_deref(),
+            ));
         }
         cursor = close_end;
     }
