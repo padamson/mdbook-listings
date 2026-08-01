@@ -3,12 +3,12 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.1.1] - 2026-08-01
 
-Non-breaking follow-up toward 0.1.1: opt-in listing numbers, optional
-captions, and listing-scoped callout badges. Existing books are unchanged
-unless they opt in; with numbering off and no captions the preprocessor
-output is byte-identical to 0.1.0.
+Non-breaking follow-up: opt-in listing numbers, optional captions, and
+listing-scoped callout badges. Existing books are unchanged unless they
+opt in; with numbering off and no captions the preprocessor output is
+byte-identical to 0.1.0.
 
 ### Added
 - **Automatic listing numbers.** Each listing renders a `Listing N.M`
@@ -114,5 +114,5 @@ primitives and a verification gate (each is a user-story chapter in the
 - Claude Code plugin (marketplace + bundled skill) giving an agent a
   current reference for the CLI and directive syntax while authoring.
 
-[Unreleased]: https://github.com/padamson/mdbook-listings/compare/v0.1.0...HEAD
+[0.1.1]: https://github.com/padamson/mdbook-listings/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/padamson/mdbook-listings/releases/tag/v0.1.0

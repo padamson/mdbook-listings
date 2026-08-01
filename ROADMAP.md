@@ -40,12 +40,12 @@ theme is complete and ready to tag.
   trade away freeze stability. Shallow only — it checks snapshot
   integrity, not that the code still compiles (deep verify is ch.9).
 
-## v0.1.1 — listing numbers and captions *(on main, unreleased)*
+## v0.1.1 — listing numbers and captions *(shipped)*
 
 A non-breaking follow-up surfaced by dogfooding a content-heavy chapter
-elsewhere. Landed on `main` and live in the book; the release awaits
-further downstream validation. Numbering and scoped badges are opt-in via
-`[preprocessor.listings] number-listings`; captions are per-directive.
+elsewhere, validated downstream before tagging. Numbering and scoped
+badges are opt-in via `[preprocessor.listings] number-listings`; captions
+are per-directive.
 
 - **Automatic listing numbers** — `Listing N.M` labels, numbered in
   document order across includes and diffs.

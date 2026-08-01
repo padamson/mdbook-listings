@@ -5,7 +5,7 @@ kept moving after the book closed, so this page lists the changes that
 postdate the prose. The chapters themselves are left as the v0.1.0 record
 and do not describe what follows.
 
-## Unreleased — e2e suite tracks playwright-rust main
+## v0.1.1 — e2e suite tracks playwright-rust main
 
 - **`tests/e2e_callouts.rs` has moved past its frozen listings.** The e2e
   suite and the screenshot tool now build against
@@ -17,7 +17,7 @@ and do not describe what follows.
   show after every `locator()` call. The frozen `e2e-callouts-v*` and
   `capture-screenshots-v*` listings stay as the v0.1.0 record.
 
-## Unreleased — List of Listings
+## v0.1.1 — List of Listings
 
 - **List of Listings index.** A `{{#list-of-listings}}` marker renders a
   book-wide index of every numbered listing, grouped by the chapter it

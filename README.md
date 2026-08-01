@@ -19,6 +19,11 @@ real and the prose keyed to it:
 - **Callouts** — `// CALLOUT: <label>` markers turn into numbered badges
   with hover annotations and prose cross-references, so explanations stay
   attached to specific lines instead of fragile line numbers.
+- **Number and reference** — opt-in `Listing N.M` numbers (letters in
+  appendices) with per-listing captions, a book-wide List of Listings as
+  a page or in the sidebar, and `label=` + `{{#listing-ref}}`
+  cross-references that resolve to the current number so they never go
+  stale.
 - **Verify** in CI — `mdbook-listings verify` fails the build if a frozen
   snapshot was tampered with or a reference doesn't resolve.
 
