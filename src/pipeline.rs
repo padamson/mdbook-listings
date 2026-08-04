@@ -281,6 +281,34 @@ mod tests {
     }
 
     #[test]
+    fn a_bare_include_reaches_every_stage_the_fenced_form_does() {
+        // Same chapter as the test above with the fence removed. The block
+        // the splicer emits has to be indistinguishable from an author's
+        // to the numbering and callout passes that read it back.
+        let opts = PipelineOptions {
+            number_listings: true,
+            list_of_listings: false,
+            sidebar_mode: SidebarMode::Off,
+        };
+        let bare = run("{{#include listings/sample.rs caption=\"S\"}}\n", &opts);
+        let fenced = run(
+            "```rust\n{{#include listings/sample.rs caption=\"S\"}}\n```\n",
+            &opts,
+        );
+        assert_eq!(
+            bare, fenced,
+            "the two forms must render identically; bare:\n{bare}\nfenced:\n{fenced}"
+        );
+        assert!(bare.contains("fn sample()"), "include ran; got:\n{bare}");
+        assert!(bare.contains("Listing 5.1"), "numbered; got:\n{bare}");
+        assert!(
+            !bare.contains("CALLOUT: entry"),
+            "marker stripped; got:\n{bare}"
+        );
+        assert!(bare.contains(">5.1.1<"), "badge scoped; got:\n{bare}");
+    }
+
+    #[test]
     fn numbering_counts_diff_and_include_anchors_in_one_stream() {
         // A diff above an include: M counts across both anchor kinds in
         // document order, which only works if numbering runs after BOTH

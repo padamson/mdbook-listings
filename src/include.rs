@@ -21,8 +21,48 @@ pub struct IncludeDirective {
     /// Stable name assigned via `label="..."`, resolved by
     /// `{{#listing-ref <label>}}` to the listing's current number.
     pub label: Option<String>,
+    /// Highlight language from `lang="..."`, overriding the one the file
+    /// extension implies. Only consulted for the self-contained form —
+    /// inside an author's fence, the fence's own info string wins.
+    pub lang: Option<String>,
     pub span: Range<usize>,
     pub fence_close_end: Option<usize>,
+}
+
+impl IncludeDirective {
+    /// The info string for a self-contained expansion: the explicit
+    /// `lang="..."` when the author set one, otherwise the language named
+    /// by the file's extension. Empty for an extensionless path, which
+    /// yields an unlabelled fence rather than a guess.
+    fn info_string(&self) -> &str {
+        if let Some(lang) = &self.lang {
+            return lang;
+        }
+        Path::new(&self.rel_path)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map_or("", crate::callout::lang_for_extension)
+    }
+}
+
+/// One past the newline that ends the directive's line, when nothing but
+/// blanks follow it there. `None` when the rest of the line has content.
+fn trailing_newline_end(content: &str, from: usize) -> Option<usize> {
+    let rest = &content[from..];
+    let blanks = rest.len() - rest.trim_start_matches([' ', '\t']).len();
+    rest[blanks..]
+        .starts_with('\n')
+        .then_some(from + blanks + 1)
+}
+
+/// Whether the directive at `at` is the only thing on its line, give or
+/// take CommonMark's 3 spaces of leading indent. A fence emitted for a
+/// directive that shares its line would open mid-line and never be read
+/// as a fence at all, so the splicer rejects that case instead.
+fn starts_its_own_line(content: &str, at: usize) -> bool {
+    let line_start = content[..at].rfind('\n').map_or(0, |nl| nl + 1);
+    let indent = &content[line_start..at];
+    indent.len() <= 3 && indent.chars().all(|c| c == ' ')
 }
 
 // CALLOUT: include-parse-entry The shared directive scanner finds every unescaped `{{#include ...}}` outside inline code (chapter prose quotes the syntax verbatim); this pass keeps only the intercepted path prefixes and parses their range suffix. (Renamed from `parse-entry`, which collided with the marker of the same name in callout.rs.)
@@ -31,6 +71,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
     for occ in scan_directives(content, "{{#include ", FencePolicy::Annotate) {
         let (args, caption) = crate::directive::split_caption(occ.args);
         let (args, label) = crate::directive::split_label(&args);
+        let (args, lang) = crate::directive::split_lang(&args);
         let raw = args.trim();
         // CALLOUT: snippets-intercept Two prefixes are intercepted: `listings/` (frozen tags — emit anchor) and `snippets/` (no anchor; we expand to give the callout splicer a shot at any CALLOUT markers in the snippet source). Other forms fall through to mdbook's built-in `links` preprocessor.
         let intercepted = raw.starts_with("listings/") || raw.starts_with("snippets/");
@@ -68,6 +109,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
             range,
             caption,
             label,
+            lang,
             span: occ.span,
             fence_close_end: occ.fence_close_end,
         });
@@ -84,7 +126,7 @@ pub enum SpliceError {
         line: usize,
         chapter_path: Option<PathBuf>,
     },
-    ListingIncludeOutsideFence {
+    ListingIncludeMidLine {
         tag: String,
         line: usize,
         chapter_path: Option<PathBuf>,
@@ -111,15 +153,15 @@ impl std::fmt::Display for SpliceError {
                     path.display(),
                 )
             }
-            SpliceError::ListingIncludeOutsideFence {
+            SpliceError::ListingIncludeMidLine {
                 tag,
                 line,
                 chapter_path,
             } => {
                 write!(
                     f,
-                    "{}:{line}: {{{{#include listings/{tag}.…}}}} appears outside any fenced code block; \
-                     wrap it in ```<lang> ... ``` so the anchor has a <pre> sibling",
+                    "{}:{line}: {{{{#include listings/{tag}.…}}}} shares its line with other text; \
+                     put it on a line of its own so it can render as a code block",
                     chapter_path
                         .as_deref()
                         .map(|p| p.display().to_string())
@@ -134,7 +176,7 @@ impl std::error::Error for SpliceError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             SpliceError::ListingFileMissing { source, .. } => Some(source),
-            SpliceError::ListingIncludeOutsideFence { .. } => None,
+            SpliceError::ListingIncludeMidLine { .. } => None,
         }
     }
 }
@@ -153,13 +195,13 @@ pub fn splice_chapter(
     let mut out = String::with_capacity(content.len() * 2);
     let mut cursor = 0;
     for d in &directives {
-        let Some(close_end) = d.fence_close_end else {
-            return Err(SpliceError::ListingIncludeOutsideFence {
+        if d.fence_close_end.is_none() && !starts_its_own_line(content, d.span.start) {
+            return Err(SpliceError::ListingIncludeMidLine {
                 tag: d.tag.clone().unwrap_or_else(|| d.rel_path.clone()),
                 line: line_number(content, d.span.start),
                 chapter_path: chapter_path.map(Path::to_path_buf),
             });
-        };
+        }
         let abs_path = src_dir.join(&d.rel_path);
         let mut body = std::fs::read_to_string(&abs_path).map_err(|source| {
             SpliceError::ListingFileMissing {
@@ -182,24 +224,43 @@ pub fn splice_chapter(
             let sliced = range.slice(&body);
             body = format!("{header}\n{sliced}");
         }
-        // Why: the chapter's newline-after-directive (preserved via
-        // `content[d.span.end..]`) terminates the last content line; keeping
-        // the file's own trailing newline produces a blank line before the
-        // closing fence.
-        while body.ends_with('\n') {
-            body.pop();
-        }
-        // Escape `{{` so mdbook's downstream links preprocessor doesn't
-        // try to resolve literal directive-shaped strings in the
-        // substituted bytes. Safe for frozen listings (source code, not
-        // Markdown). Caveat: `snippets/` accepts any extension, so a
-        // `.md` snippet would have its own directives escaped too —
-        // acceptable, since rendering them as literal text inside a code
-        // fence is what an author quoting markdown wants anyway.
-        let body = body.replace("{{", "\\{{");
         out.push_str(&content[cursor..d.span.start]);
-        out.push_str(&body);
-        out.push_str(&content[d.span.end..close_end]);
+        match d.fence_close_end {
+            // The author wrote the fence, so only the bytes between its
+            // lines are ours to replace.
+            Some(close_end) => {
+                // Why: the chapter's newline-after-directive (preserved via
+                // `content[d.span.end..close_end]`) terminates the last
+                // content line; keeping the file's own trailing newline
+                // produces a blank line before the closing fence.
+                while body.ends_with('\n') {
+                    body.pop();
+                }
+                // Escape `{{` so mdbook's downstream links preprocessor
+                // doesn't try to resolve literal directive-shaped strings
+                // in the substituted bytes. Safe for frozen listings
+                // (source code, not Markdown). Caveat: `snippets/` accepts
+                // any extension, so a `.md` snippet would have its own
+                // directives escaped too — acceptable, since rendering
+                // them as literal text inside a code fence is what an
+                // author quoting markdown wants anyway.
+                out.push_str(&body.replace("{{", "\\{{"));
+                out.push_str(&content[d.span.end..close_end]);
+                cursor = close_end;
+            }
+            // No enclosing fence, so the directive renders the whole block
+            // itself. The info string is load-bearing twice over: it picks
+            // the highlighting, and the callout pass reads it back to learn
+            // which comment prefix marks a `CALLOUT:` line.
+            None => {
+                out.push_str(&crate::fence::render_block(d.info_string(), &body));
+                // The emitted block already ends in a newline, so the
+                // directive's own line terminator would leave a stray blank
+                // line — and the two forms would stop rendering identically.
+                // Anything else trailing the directive is prose; leave it.
+                cursor = trailing_newline_end(content, d.span.end).unwrap_or(d.span.end);
+            }
+        }
         if let Some(tag) = &d.tag {
             // CALLOUT: include-anchor-emit One `<div data-listing-tag="...">` per `listings/` include, dropped just past the closing fence so the screenshot tool can find the rendered `<pre>` via `previousElementSibling`.
             out.push_str(&crate::anchor::include_anchor(
@@ -209,7 +270,6 @@ pub fn splice_chapter(
                 d.label.as_deref(),
             ));
         }
-        cursor = close_end;
     }
     out.push_str(&content[cursor..]);
     Ok(out)
@@ -407,19 +467,20 @@ mod tests {
                 assert_eq!(line, 4);
                 assert_eq!(chapter_path.as_deref(), Some(chapter));
             }
-            SpliceError::ListingIncludeOutsideFence { .. } => panic!("wrong variant"),
+            SpliceError::ListingIncludeMidLine { .. } => panic!("wrong variant"),
         }
     }
 
     #[test]
-    fn splice_chapter_returns_listing_include_outside_fence_when_directive_has_no_enclosing_fence()
-    {
+    fn splice_chapter_rejects_a_directive_that_shares_its_line_with_prose() {
+        // A fence has to start a line, so there is no sensible block to
+        // render here — say so rather than emit broken Markdown.
         let chapter = std::path::Path::new("ch99-foo.md");
         let content = "Mid-paragraph: {{#include listings/foo.rs}} bare directive.\n";
         let tmp = TempDir::new().unwrap();
         let err = splice_chapter(content, tmp.path(), Some(chapter)).expect_err("should fail");
         match err {
-            SpliceError::ListingIncludeOutsideFence {
+            SpliceError::ListingIncludeMidLine {
                 tag,
                 line,
                 chapter_path,
@@ -430,6 +491,194 @@ mod tests {
             }
             SpliceError::ListingFileMissing { .. } => panic!("wrong variant"),
         }
+    }
+
+    /// A listing on disk plus the chapter text that includes it, spliced.
+    fn splice_one(file: &str, bytes: &str, chapter: &str) -> String {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path();
+        let path = src.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, bytes).unwrap();
+        splice_chapter(chapter, src, None).expect("splice")
+    }
+
+    #[test]
+    fn splice_chapter_renders_a_bare_include_as_its_own_fenced_block() {
+        // The directive alone on a line, no fence around it: the splicer
+        // supplies the block that the author used to have to write.
+        let out = splice_one(
+            "listings/foo.rs",
+            "fn body() {}\n",
+            "Before.\n\n{{#include listings/foo.rs}}\n\nAfter.\n",
+        );
+        assert!(
+            out.contains("```rust\nfn body() {}\n```\n"),
+            "expected a self-contained block; got:\n{out}",
+        );
+        assert!(out.starts_with("Before.\n"), "got:\n{out}");
+        assert!(out.ends_with("After.\n"), "got:\n{out}");
+        assert!(!out.contains("{{#include"), "got:\n{out}");
+    }
+
+    #[test]
+    fn splice_chapter_names_the_fence_language_from_the_file_extension() {
+        let out = splice_one(
+            "listings/conf.yml",
+            "key: value\n",
+            "{{#include listings/conf.yml}}\n",
+        );
+        assert!(
+            out.contains("```yaml\nkey: value\n```\n"),
+            "`.yml` should open a `yaml` fence; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_prefers_an_explicit_lang_over_the_extension() {
+        let out = splice_one(
+            "listings/schema.txt",
+            "@prefix ex: <http://example.org/> .\n",
+            "{{#include listings/schema.txt lang=\"turtle\"}}\n",
+        );
+        assert!(out.contains("```turtle\n"), "got:\n{out}");
+    }
+
+    #[test]
+    fn splice_chapter_leaves_the_fence_unlabelled_for_an_extensionless_path() {
+        // Better an unhighlighted block than a guessed language.
+        let out = splice_one(
+            "listings/Makefile",
+            "all:\n",
+            "{{#include listings/Makefile}}\n",
+        );
+        assert!(out.contains("```\nall:\n```\n"), "got:\n{out}");
+    }
+
+    #[test]
+    fn splice_chapter_emits_the_anchor_after_a_bare_includes_own_closing_fence() {
+        let out = splice_one(
+            "listings/foo.rs",
+            "fn body() {}\n",
+            "{{#include listings/foo.rs}}\n",
+        );
+        let anchor = out.find("data-listing-tag").expect("anchor present");
+        let close = out.rfind("```\n").expect("closing fence") + 4;
+        assert!(anchor > close, "anchor must follow the fence; got:\n{out}");
+    }
+
+    #[test]
+    fn splice_chapter_widens_a_bare_includes_fence_when_the_listing_contains_one() {
+        let out = splice_one(
+            "listings/readme.md",
+            "Example:\n\n```rust\nfn main() {}\n```\n",
+            "{{#include listings/readme.md}}\n",
+        );
+        assert!(
+            out.contains("````markdown\n"),
+            "wrapper must outgrow the listing's own fence; got:\n{out}",
+        );
+        assert!(out.trim_end().ends_with("</div>"), "got:\n{out}");
+    }
+
+    #[test]
+    fn splice_chapter_carries_range_caption_and_label_through_the_bare_form() {
+        // Everything the fenced form supports keeps working without a fence.
+        let out = splice_one(
+            "listings/sample.rs",
+            "line1\nline2\nline3\nline4\n",
+            "{{#include listings/sample.rs:2:3 caption=\"Cap\" label=\"lbl\"}}\n",
+        );
+        assert!(out.contains("line2\nline3"), "sliced body; got:\n{out}");
+        assert!(!out.contains("line4"), "range respected; got:\n{out}");
+        assert!(out.contains("// sample.rs"), "ranged header; got:\n{out}");
+        assert!(
+            out.contains(r#"data-listing-tag-range="2:3""#),
+            "got:\n{out}"
+        );
+        assert!(out.contains(r#"data-listing-caption="Cap""#), "got:\n{out}");
+        assert!(out.contains(r#"data-listing-label="lbl""#), "got:\n{out}");
+    }
+
+    #[test]
+    fn splice_chapter_escapes_double_braces_in_a_bare_include() {
+        let out = splice_one(
+            "listings/foo.rs",
+            "let example = \"{{#include listings/bar.rs}}\";\n",
+            "{{#include listings/foo.rs}}\n",
+        );
+        assert!(
+            out.contains("\"\\{{#include listings/bar.rs}}\""),
+            "got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_accepts_up_to_three_spaces_of_indent_before_a_bare_include() {
+        // CommonMark's own threshold for a fence opener.
+        let out = splice_one(
+            "listings/foo.rs",
+            "fn body() {}\n",
+            "   {{#include listings/foo.rs}}\n",
+        );
+        assert!(out.contains("```rust\n"), "got:\n{out}");
+    }
+
+    #[test]
+    fn splice_chapter_consumes_trailing_blanks_after_a_bare_include() {
+        // The directive's line terminator is redundant once the block is
+        // emitted, and so is any whitespace sitting before it.
+        let padded = splice_one(
+            "listings/foo.rs",
+            "fn body() {}\n",
+            "{{#include listings/foo.rs}}   \nAfter.\n",
+        );
+        let clean = splice_one(
+            "listings/foo.rs",
+            "fn body() {}\n",
+            "{{#include listings/foo.rs}}\nAfter.\n",
+        );
+        assert_eq!(padded, clean, "padded:\n{padded}\nclean:\n{clean}");
+        assert!(padded.ends_with("</div>\nAfter.\n"), "got:\n{padded}");
+    }
+
+    #[test]
+    fn splice_chapter_keeps_prose_that_follows_a_bare_include_on_its_line() {
+        let out = splice_one(
+            "listings/foo.rs",
+            "fn body() {}\n",
+            "{{#include listings/foo.rs}} trailing prose\n",
+        );
+        assert!(out.contains(" trailing prose\n"), "got:\n{out}");
+    }
+
+    #[test]
+    fn splice_chapter_rejects_a_bare_include_indented_past_a_fence_opener() {
+        // Four spaces would make the emitted fence an indented code block
+        // rather than a fence, so this is not a rendering we can produce.
+        let tmp = TempDir::new().unwrap();
+        let err = splice_chapter("    {{#include listings/foo.rs}}\n", tmp.path(), None)
+            .expect_err("four spaces of indent should be rejected");
+        assert!(matches!(err, SpliceError::ListingIncludeMidLine { .. }));
+    }
+
+    #[test]
+    fn splice_chapter_rejects_a_bare_include_behind_a_short_run_of_prose() {
+        // Short enough to pass an indent-length check on its own; the
+        // characters still have to be blanks.
+        let tmp = TempDir::new().unwrap();
+        let err = splice_chapter("ab {{#include listings/foo.rs}}\n", tmp.path(), None)
+            .expect_err("prose before the directive should be rejected");
+        assert!(matches!(err, SpliceError::ListingIncludeMidLine { .. }));
+    }
+
+    #[test]
+    fn parse_listing_includes_extracts_lang_and_keeps_path_clean() {
+        let content = "{{#include listings/foo.txt lang=\"turtle\"}}\n";
+        let got = parse_listing_includes(content);
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].rel_path, "listings/foo.txt");
+        assert_eq!(got[0].lang.as_deref(), Some("turtle"));
     }
 
     #[test]

@@ -124,6 +124,13 @@ pub(crate) fn split_label(args: &str) -> (String, Option<String>) {
     split_quoted_kv(args, "label=\"")
 }
 
+/// Lift a `lang="..."` token off a directive's args — the highlight
+/// language for a self-contained `{{#include}}`, overriding the one its
+/// file extension implies. Same grammar as `caption=`.
+pub(crate) fn split_lang(args: &str) -> (String, Option<String>) {
+    split_quoted_kv(args, "lang=\"")
+}
+
 /// Shared lifter for `key="value"` directive arguments. The first `"` ends
 /// the value; an unterminated value leaves the args untouched rather than
 /// guess. The key may sit anywhere among the args; the surrounding tokens

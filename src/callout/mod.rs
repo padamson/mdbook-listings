@@ -13,7 +13,8 @@ mod sidecar;
 mod strip;
 
 pub use parse::{
-    Callout, comment_prefix_for_extension, comment_prefix_for_language, parse_callouts,
+    Callout, comment_prefix_for_extension, comment_prefix_for_language, lang_for_extension,
+    parse_callouts,
 };
 pub(crate) use render_html::html_escape;
 pub use sidecar::{SidecarCallouts, SidecarLoadError};

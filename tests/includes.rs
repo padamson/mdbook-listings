@@ -58,6 +58,51 @@ fn listing_include_emits_anchor_after_closing_fence() {
 }
 
 #[test]
+fn listing_include_without_a_fence_renders_its_own_highlighted_block() {
+    // The directive on a line by itself, the way `{{#diff}}` has always
+    // been written. The preprocessor supplies the fence and picks the
+    // language off the file extension.
+    let book = MinimalIncludesBook::new();
+    let envelope = book.envelope_with_chapter(
+        "Before paragraph.\n\n{{#include listings/sample.rs}}\n\nAfter paragraph.\n",
+    );
+
+    let returned = run_preprocessor(envelope);
+    let content = chapter_content(&returned, "Include Test");
+
+    assert!(
+        content.contains("```rust\nfn sample_body() {}\n```\n"),
+        "expected a self-contained rust block; got:\n{content}",
+    );
+    assert!(
+        content.contains("data-listing-tag=\"sample\""),
+        "the locator anchor still lands; got:\n{content}",
+    );
+    assert!(
+        content.contains("Before paragraph.") && content.contains("After paragraph."),
+        "surrounding prose preserved; got:\n{content}",
+    );
+}
+
+#[test]
+fn fenced_and_unfenced_listing_includes_render_identically() {
+    // Dropping the fence from an existing book must be a no-op, so an
+    // author can migrate a chapter without re-reading its output.
+    let book = MinimalIncludesBook::new();
+    let fenced = chapter_content(
+        &run_preprocessor(
+            book.envelope_with_chapter("```rust\n{{#include listings/sample.rs}}\n```\n"),
+        ),
+        "Include Test",
+    );
+    let bare = chapter_content(
+        &run_preprocessor(book.envelope_with_chapter("{{#include listings/sample.rs}}\n")),
+        "Include Test",
+    );
+    assert_eq!(fenced, bare, "fenced:\n{fenced}\nbare:\n{bare}");
+}
+
+#[test]
 fn snippet_include_is_expanded_inline_without_listing_tag_anchor() {
     let book = MinimalIncludesBook::new();
     book.write_snippet("excerpt.rs", "fn snippet_body() {}\n");

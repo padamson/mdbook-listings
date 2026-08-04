@@ -113,6 +113,35 @@ pub fn comment_prefix_for_extension(ext: &str) -> Option<&'static str> {
     }
 }
 
+/// Extensions whose highlight-language name differs from the extension
+/// itself. Absent extensions pass through unchanged (`yaml`, `toml`,
+/// `sql`, `go`, …), which is both the info string a highlighter wants and
+/// the input [`comment_prefix_for_extension`] takes, so listing them
+/// would be noise.
+///
+/// The pairs are unique in both columns. That is what lets
+/// [`lang_for_extension`] and [`comment_prefix_for_language`] read the one
+/// table in opposite directions instead of each keeping its own copy.
+const EXTENSION_LANGUAGES: &[(&str, &str)] = &[
+    ("rs", "rust"),
+    ("py", "python"),
+    ("js", "javascript"),
+    ("ts", "typescript"),
+    ("sh", "bash"),
+    ("yml", "yaml"),
+    ("md", "markdown"),
+];
+
+/// The fence info string for a listing with this file extension — what a
+/// self-contained `{{#include}}` writes after its opening fence so the
+/// block highlights and its callout markers parse.
+pub fn lang_for_extension(ext: &str) -> &str {
+    EXTENSION_LANGUAGES
+        .iter()
+        .find(|(candidate, _)| *candidate == ext)
+        .map_or(ext, |(_, lang)| *lang)
+}
+
 /// Maps a fenced-code-block info string to the language's single-line
 /// comment prefix. Accepts the language names authors typically write
 /// after the opening fence (`rust`, `yaml`, `python`, etc.) and falls back
@@ -120,15 +149,20 @@ pub fn comment_prefix_for_extension(ext: &str) -> Option<&'static str> {
 /// extension (`rs`, `yml`).
 pub fn comment_prefix_for_language(language: &str) -> Option<&'static str> {
     let normalised = match language {
-        "rust" => "rs",
-        "python" => "py",
-        "javascript" => "js",
-        "typescript" => "ts",
+        // Spellings with no extension of their own, so they can't come
+        // back out of the table.
         "shell" | "zsh" => "sh",
         "c++" => "cpp",
-        other => other,
+        other => extension_for_lang(other).unwrap_or(other),
     };
     comment_prefix_for_extension(normalised)
+}
+
+fn extension_for_lang(lang: &str) -> Option<&'static str> {
+    EXTENSION_LANGUAGES
+        .iter()
+        .find(|(_, candidate)| *candidate == lang)
+        .map(|(ext, _)| *ext)
 }
 
 /// Produce the callout list for a fenced block. `info` is the fence's info
@@ -322,6 +356,57 @@ mod tests {
         assert_eq!(comment_prefix_for_language("c++"), Some("//"));
         assert_eq!(comment_prefix_for_language("yaml"), Some("#"));
         assert_eq!(comment_prefix_for_language("rs"), Some("//"));
+    }
+
+    #[test]
+    fn lang_for_extension_names_the_highlighter_language() {
+        assert_eq!(lang_for_extension("rs"), "rust");
+        assert_eq!(lang_for_extension("yml"), "yaml");
+        assert_eq!(lang_for_extension("sh"), "bash");
+    }
+
+    #[test]
+    fn lang_for_extension_passes_through_an_extension_that_is_already_a_language() {
+        assert_eq!(lang_for_extension("yaml"), "yaml");
+        assert_eq!(lang_for_extension("toml"), "toml");
+        assert_eq!(lang_for_extension("sql"), "sql");
+        // Unknown extensions pass through too, so an include of a file the
+        // table has never heard of still gets an info string that
+        // `comment_prefix_for_language` can act on.
+        assert_eq!(lang_for_extension("ttl"), "ttl");
+    }
+
+    #[test]
+    fn naming_a_listing_by_extension_or_by_language_finds_the_same_comment_prefix() {
+        // THE invariant the shared table exists to hold. A self-contained
+        // include picks its info string with `lang_for_extension`, and the
+        // callout pass reads that info string back with
+        // `comment_prefix_for_language`. If the two directions disagree,
+        // badges silently vanish from listings that used to carry them.
+        for (ext, lang) in EXTENSION_LANGUAGES {
+            assert_eq!(
+                lang_for_extension(ext),
+                *lang,
+                "ext {ext} lost its language"
+            );
+            assert_eq!(
+                comment_prefix_for_language(lang),
+                comment_prefix_for_extension(ext),
+                "{ext} and {lang} disagree on the comment prefix",
+            );
+        }
+    }
+
+    #[test]
+    fn the_extension_language_table_is_unique_in_both_columns() {
+        // Reading one table in two directions is only sound while neither
+        // column repeats.
+        for (i, (ext, lang)) in EXTENSION_LANGUAGES.iter().enumerate() {
+            for (other_ext, other_lang) in &EXTENSION_LANGUAGES[i + 1..] {
+                assert_ne!(ext, other_ext, "duplicate extension {ext}");
+                assert_ne!(lang, other_lang, "duplicate language {lang}");
+            }
+        }
     }
 
     // ---------------------------------------------------------------
