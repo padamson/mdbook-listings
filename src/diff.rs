@@ -458,13 +458,8 @@ pub fn splice_chapter(
             .map(|n| n - 1)
             .unwrap_or(0);
         let body = shift_hunk_headers(&body, left_offset, right_offset);
-        // Escape `{{` in the rendered diff body — same reason as in
-        // the include splicer.
-        let body = body.replace("{{", "\\{{");
         out.push_str(&content[cursor..d.span.start]);
-        out.push_str("```diff\n");
-        out.push_str(&body);
-        out.push_str("```\n");
+        out.push_str(&crate::fence::render_block("diff", &body));
         // CALLOUT: diff-anchor-dual Locator anchor for the capture-screenshots tool. Both operands are emitted as separate data-attributes so the tool can locate a diff block by its (LEFT, RIGHT) pair — unique even when multiple diffs share the same RIGHT tag, and unambiguous against the include splicer's `data-listing-tag` anchors.
         out.push_str(&crate::anchor::diff_anchor(
             &d.left,
@@ -1195,6 +1190,41 @@ mod tests {
             out.contains("data-listing-diff-right=\"right-tag\""),
             "expected diff-right anchor attribute; got:\n{out}",
         );
+    }
+
+    #[test]
+    fn splice_chapter_widens_the_fence_when_the_diffed_listings_contain_one() {
+        // Diffing two Markdown listings puts their own ``` lines inside the
+        // rendered block. A three-backtick wrapper would be closed by the
+        // first of them and the rest of the diff would escape as prose.
+        let (tmp, manifest, _) = fixture(
+            b"Intro.\n\n```rust\nfn old() {}\n```\n",
+            b"Intro.\n\n```rust\nfn new() {}\n```\n",
+        );
+        let out =
+            splice_chapter(content_with_diff(), &manifest, tmp.path(), None, tmp.path()).unwrap();
+
+        assert!(
+            out.contains("````diff\n"),
+            "wrapper must outgrow the body's own fence; got:\n{out}",
+        );
+        let body_start = out.find("````diff\n").unwrap();
+        let body_end = out[body_start..]
+            .find("\n````\n")
+            .map(|off| body_start + off)
+            .expect("closing fence present");
+        assert!(
+            out[body_start..body_end].contains("-fn old() {}"),
+            "the whole diff must stay inside the block; got:\n{out}",
+        );
+        assert!(
+            out[body_start..body_end].contains("+fn new() {}"),
+            "the whole diff must stay inside the block; got:\n{out}",
+        );
+    }
+
+    fn content_with_diff() -> &'static str {
+        "Before.\n\n{{#diff left-tag right-tag}}\n\nAfter.\n"
     }
 
     #[test]

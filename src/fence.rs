@@ -153,6 +153,58 @@ pub(crate) fn line_closes_fence(line: &str, opener: Fence) -> bool {
     trimmed[count..].trim().is_empty()
 }
 
+/// The fence to wrap `body` in so the body cannot close it: one longer
+/// than the longest fence-shaped run already in the body, and never
+/// shorter than CommonMark's minimum of 3.
+///
+/// Only line-initial runs are counted (at most 3 leading spaces, matching
+/// [`line_closes_fence`]) — backticks inside a line can't close a block.
+/// A run is counted whatever follows it, so a body containing an opener
+/// like ` ```rust ` widens the wrapper too, even though that line would
+/// not have closed anything. The wider fence is free and it keeps the
+/// emitted block readable when the body is itself Markdown.
+pub(crate) fn fence_for_body(body: &str, char: u8) -> Fence {
+    let longest_run = body
+        .lines()
+        .map(|line| {
+            let trimmed = line.trim_start();
+            if line.len() - trimmed.len() > 3 {
+                return 0;
+            }
+            trimmed.bytes().take_while(|&b| b == char).count()
+        })
+        .filter(|&run| run >= 3)
+        .max()
+        .unwrap_or(0);
+    Fence {
+        char,
+        count: longest_run.saturating_add(1).max(3),
+    }
+}
+
+impl Fence {
+    /// The fence line itself, without a trailing newline.
+    pub(crate) fn render(&self) -> String {
+        (self.char as char).to_string().repeat(self.count)
+    }
+}
+
+/// Render `body` as a self-contained fenced block carrying `info` as its
+/// opener's info string. Both the include and diff splicers emit their
+/// blocks through here so a listing and a diff of that same listing are
+/// wrapped by identical rules.
+///
+/// Two normalisations the callers used to each do for themselves: `{{` in
+/// the body is escaped to `\{{` so mdbook's built-in `links` preprocessor
+/// leaves directive-shaped bytes inside a listing alone, and the body is
+/// reduced to exactly one trailing newline so the closing fence lands on
+/// its own line with no blank line above it.
+pub(crate) fn render_block(info: &str, body: &str) -> String {
+    let fence = fence_for_body(body, b'`').render();
+    let body = body.trim_end_matches('\n').replace("{{", "\\{{");
+    format!("{fence}{info}\n{body}\n{fence}\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,5 +346,57 @@ mod tests {
         assert!(!line_closes_fence("```", opener));
         assert!(line_closes_fence("````", opener));
         assert!(line_closes_fence("`````", opener));
+    }
+
+    #[test]
+    fn fence_for_body_uses_the_commonmark_minimum_for_ordinary_source() {
+        let fence = fence_for_body("fn main() {\n    println!(\"hi\");\n}\n", b'`');
+        assert_eq!(fence.count, 3);
+        assert_eq!(fence.render(), "```");
+    }
+
+    #[test]
+    fn fence_for_body_outgrows_a_fence_the_body_contains() {
+        // The whole point: a listing that is itself Markdown must not
+        // close the block we wrap it in.
+        let body = "Example:\n\n```rust\nfn main() {}\n```\n";
+        let fence = fence_for_body(body, b'`');
+        assert_eq!(fence.count, 4);
+        assert!(!line_closes_fence("```", fence));
+    }
+
+    #[test]
+    fn fence_for_body_outgrows_the_longest_of_several_fences() {
+        let body = "```\na\n```\n\n`````\nb\n`````\n\n````\nc\n````\n";
+        assert_eq!(fence_for_body(body, b'`').count, 6);
+    }
+
+    #[test]
+    fn fence_for_body_ignores_backticks_that_are_not_line_initial() {
+        // Inline code spans can't close a block, so they must not widen it.
+        let body = "let doc = \"see ```rust``` above\";\n";
+        assert_eq!(fence_for_body(body, b'`').count, 3);
+    }
+
+    #[test]
+    fn fence_for_body_ignores_a_run_indented_past_three_spaces() {
+        // Four spaces of indent puts the run out of closing range.
+        assert_eq!(fence_for_body("    ```\n", b'`').count, 3);
+        assert_eq!(fence_for_body("   ```\n", b'`').count, 4);
+    }
+
+    #[test]
+    fn fence_for_body_ignores_runs_shorter_than_a_fence() {
+        assert_eq!(fence_for_body("``\n`\n", b'`').count, 3);
+    }
+
+    #[test]
+    fn fence_for_body_sizes_tilde_fences_independently() {
+        let body = "~~~~\nnested\n~~~~\n";
+        let fence = fence_for_body(body, b'~');
+        assert_eq!(fence.count, 5);
+        assert_eq!(fence.render(), "~~~~~");
+        // Backticks in the body are irrelevant to a tilde fence.
+        assert_eq!(fence_for_body("```\n", b'~').count, 3);
     }
 }
