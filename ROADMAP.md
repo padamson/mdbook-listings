@@ -18,7 +18,8 @@ theme is complete and ready to tag.
 - **Install the Preprocessor** *(shipped)* — one-shot setup of an
   existing book.
 - **Freeze a Listing** *(shipped)* — snapshot a source file under a
-  tag, embed it via mdbook's existing `{{#include}}` machinery.
+  tag, embed it via the `{{#include}}` directive. `--tag` is optional;
+  omitting it derives `<basename>-v<next>` from the manifest.
 - **Show Diffs Between Slices** *(shipped)* — render a unified diff
   between two frozen tags inline in a chapter, with a `live:` escape
   hatch for diffing against current source.
@@ -72,10 +73,27 @@ are per-directive.
   places each listing under its heading in mdbook's per-page header tree,
   folding with it. HTML only; the inline index is the floor for PDF.
 
-## v0.2.0 — power-user ergonomics
+## v0.2.0 — one directive idiom *(shipped)*
 
-- Auto-tag derivation for `freeze` (no `--tag` required;
-  `<basename>-v<next>`).
+Surfaced by a downstream author who hit the asymmetry between the two
+embedding directives. Books upgrade without edits: the fenced
+`{{#include}}` form renders byte-identically to 0.1.1.
+
+- **Fence-free `{{#include}}`** — a directive on a line of its own renders
+  the whole code block, the way `{{#diff}}` always has. The highlight
+  language comes from the file extension, or from `lang="..."`.
+- **Correctly sized fences** — both directives size the fence they emit to
+  the content it wraps, so a listing or diff containing a fence of its own
+  no longer breaks out of its block.
+- **`MIT OR Apache-2.0`** — dual licensed, per the ecosystem license
+  strategy for core tools.
+- **Crate-private library** — all modules but `install` are internal, and
+  the CLI lives in `cli::run`. Nothing consumed the old public API, and
+  removing it means new error variants and directive fields stop forcing
+  major releases.
+
+## v0.3.0 — power-user ergonomics
+
 - `mdbook-listings unfreeze <tag>` for orphan cleanup.
 - `verify --prune` for interactive orphan removal.
 - Per-chapter tag namespacing under `book/src/listings/<chapter>/`.
@@ -94,13 +112,13 @@ user-visible change):
   first). The `{{` escape the include and diff splicers each applied is
   already done: both emit through `fence::render_block`, which owns it.
 
-## v0.3.0 — richer rendering
+## v0.4.0 — richer rendering
 
 - Syntax-highlighted diffs (currently plain unified-diff text).
 - Multi-paragraph callout bodies, inline code in callouts.
 - Callouts overlaid on diff output.
 
-## v0.4.0 — language reach + workflow
+## v0.5.0 — language reach + workflow
 
 - Block-comment-only languages for inline callouts (CSS, plain
   Markdown).

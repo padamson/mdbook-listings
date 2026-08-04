@@ -12,12 +12,9 @@ mod render_pdf;
 mod sidecar;
 mod strip;
 
-pub use parse::{
-    Callout, comment_prefix_for_extension, comment_prefix_for_language, lang_for_extension,
-    parse_callouts,
-};
+pub(crate) use parse::{Callout, comment_prefix_for_extension, lang_for_extension};
 pub(crate) use render_html::html_escape;
-pub use sidecar::{SidecarCallouts, SidecarLoadError};
+pub(crate) use sidecar::SidecarCallouts;
 
 use parse::{callouts_for_block, is_valid_label};
 use render_html::splice_callout_lists_html;

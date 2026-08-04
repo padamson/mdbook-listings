@@ -1,9 +1,9 @@
 [package]
 name = "mdbook-listings"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 description = "Managed code listings for mdbook: inline callouts, freezing, and verification"
 repository = "https://github.com/padamson/mdbook-listings"
 categories = ["command-line-utilities", "text-processing"]

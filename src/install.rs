@@ -12,9 +12,12 @@ pub const CSS_ASSET: &[u8] = include_bytes!("../assets/mdbook-listings.css");
 pub const JS_ASSET: &[u8] = include_bytes!("../assets/mdbook-listings.js");
 
 /// Catches builds that stripped or replaced the asset — a missing sentinel
-/// means the bundled bytes are not the expected build-time asset.
-pub const CSS_ASSET_SENTINEL: &str = "mdbook-listings-css-v11";
-pub const JS_ASSET_SENTINEL: &str = "mdbook-listings-js-v14";
+/// means the bundled bytes are not the expected build-time asset. Only the
+/// tests below assert on these; nothing at runtime reads them.
+#[cfg(test)]
+const CSS_ASSET_SENTINEL: &str = "mdbook-listings-css-v11";
+#[cfg(test)]
+const JS_ASSET_SENTINEL: &str = "mdbook-listings-js-v14";
 
 /// Shared between the writer and the registrar so the two can't drift.
 pub const CSS_ASSET_FILENAME: &str = "mdbook-listings.css";
@@ -125,6 +128,10 @@ pub fn install(book_root: &Path) -> Result<InstallOutcome> {
 
 /// Lets the CLI tell the author whether a re-install was a no-op (AC 3).
 #[derive(Debug, PartialEq, Eq)]
+// `install` is the one module that stays public (the integration tests
+// drive it directly), so this enum is the crate's last semver tripwire.
+// Non-exhaustive keeps a future outcome from forcing a major release.
+#[non_exhaustive]
 pub enum InstallOutcome {
     Installed,
     Unchanged,

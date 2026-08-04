@@ -3,7 +3,14 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.2.0] - 2026-08-04
+
+One authoring idiom for both directives, plus the dual license and a
+library surface cut back to what the binary and its tests actually use.
+Nothing here changes what an existing book renders: the fenced
+`{{#include}}` form is byte-identical to before, so books upgrade without
+edits. The major bump is for the Rust API, which no published crate
+depends on.
 
 ### Added
 - **`{{#include}}` no longer needs a surrounding fence.** A directive on
@@ -23,10 +30,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   now fires only when the directive shares its line with other text,
   where no code block can be rendered at all.
 
+- **Dual licensed as `MIT OR Apache-2.0`** (was MIT). Apache-2.0 adds a
+  patent grant; keeping MIT alongside it means nothing that relied on the
+  0.1.x terms loses them. `LICENSE` is now `LICENSE-MIT`, beside a new
+  `LICENSE-APACHE`.
+
 ### Fixed
 - **`{{#diff}}` no longer breaks out of its own code block** when the
   listings being compared contain a fence of their own. Both directives
   now size the fence they emit to the content it wraps.
+
+### Removed
+- **The Rust library surface is no longer public.** `lib.rs` exposed
+  fourteen modules that nothing outside the crate consumed: crates.io
+  reports zero reverse dependencies, and in-repo only `tests/install.rs`
+  builds against the library. All but `install` are now crate-private,
+  and the CLI moved from `src/main.rs` into `cli::run` so it no longer
+  needs them public either. This is the breaking change behind the major
+  bump, and it exists so that future features stop forcing one:
+  adding an error variant or a directive field is no longer a semver
+  event. `InstallOutcome`, the last publicly-reachable enum, is now
+  `#[non_exhaustive]` for the same reason.
 
 ## [0.1.1] - 2026-08-01
 

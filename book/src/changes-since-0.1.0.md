@@ -5,7 +5,7 @@ kept moving after the book closed, so this page lists the changes that
 postdate the prose. The chapters themselves are left as the v0.1.0 record
 and do not describe what follows.
 
-## Unreleased — one authoring idiom for both directives
+## v0.2.0 — one authoring idiom for both directives
 
 Every chapter in this book wraps its includes in a ` ```rust ` block,
 because until now the build failed without one. `{{#diff}}` never had
