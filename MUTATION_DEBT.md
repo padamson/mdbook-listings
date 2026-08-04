@@ -162,13 +162,23 @@ Renaming the `ListingIncludeOutsideFence` variant put the whole
 `SpliceError` impl block back in a diff for the first time since it
 was written, so the diff-scoped run mutated it.
 
-- [ ] **include.rs L177:9** — `replace <impl std::error::Error for
+- [x] ~~**include.rs L177:9** — `replace <impl std::error::Error for
   SpliceError>::source with None`. Nothing calls `source()` on a
   splice error: the pipeline wraps it with `anyhow::Error::new(e)
-  .context(...)` and only the `Display` text is asserted on. The
-  same gap applies to the other hand-written `Error` impls, and it
-  closes for all of them at once if the `thiserror` migration on the
-  v0.2.0 roadmap lands.
+  .context(...)` and only the `Display` text is asserted on.~~ Closed
+  by `splice_error_exposes_the_io_cause_only_for_a_missing_file`,
+  which asserts the io cause is in the chain for a missing file and
+  absent for a mid-line directive. `cargo mutants --file
+  src/include.rs` is now 27 caught / 2 unviable / 0 missed. The same
+  gap remains on the other hand-written `Error` impls, and closes for
+  all of them at once if the `thiserror` migration lands.
+
+**Note on this file's standing.** CI's `mutation-testing-diff` job
+exits non-zero on any `MISSED`, so an entry added here does *not*
+placate the gate — it red-lights `main` until the test is written or
+the job is changed. Logging debt only works for findings from the full
+sweep, which is `workflow_dispatch`-only. A per-diff finding has to be
+fixed.
 
 ## Status
 

@@ -472,6 +472,31 @@ mod tests {
     }
 
     #[test]
+    fn splice_error_exposes_the_io_cause_only_for_a_missing_file() {
+        // `source()` is what surfaces the underlying io::Error when the
+        // pipeline wraps a splice failure in anyhow, so the chain has to
+        // carry it for a missing file and stop at a mid-line directive.
+        use std::error::Error;
+
+        let missing = SpliceError::ListingFileMissing {
+            tag: "foo".into(),
+            path: PathBuf::from("listings/foo.rs"),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "no such file"),
+            line: 1,
+            chapter_path: None,
+        };
+        let cause = missing.source().expect("io cause is part of the chain");
+        assert!(cause.to_string().contains("no such file"), "got: {cause}");
+
+        let mid_line = SpliceError::ListingIncludeMidLine {
+            tag: "foo".into(),
+            line: 1,
+            chapter_path: None,
+        };
+        assert!(mid_line.source().is_none(), "nothing underlies this one");
+    }
+
+    #[test]
     fn splice_chapter_rejects_a_directive_that_shares_its_line_with_prose() {
         // A fence has to start a line, so there is no sensible block to
         // render here — say so rather than emit broken Markdown.
