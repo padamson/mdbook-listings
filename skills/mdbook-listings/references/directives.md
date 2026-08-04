@@ -22,9 +22,33 @@ before = ["admonish", "links"]
 
 ## `{{#include}}` — embed a frozen listing
 
-mdBook's native include directive. Point it at the **frozen** copy in
-`listings/` (relative to the chapter's `src/` directory), inside a fenced block
-whose language sets the highlighting:
+Point it at the **frozen** copy in `listings/` (relative to the chapter's
+`src/` directory), on a line of its own:
+
+````markdown
+{{#include listings/main-v1.rs}}
+````
+
+Readers see the frozen snapshot; you maintain the original source and re-freeze
+when it changes.
+
+The directive renders the whole code block, so no surrounding fence is needed —
+same as `{{#diff}}`. The highlight language comes from the file extension:
+`.rs` opens a `rust` block, `.yml` a `yaml` one, and an extension that is
+already a language name (`toml`, `sql`, `go`) is used as written.
+
+### Language override
+
+When the extension doesn't name the highlighter you want, set it explicitly
+with `lang="..."`:
+
+````markdown
+{{#include listings/shapes.txt lang="turtle"}}
+````
+
+### Wrapping it in a fence still works
+
+The older form, with the author supplying the fence, renders identically:
 
 ````markdown
 ```rust
@@ -32,23 +56,25 @@ whose language sets the highlighting:
 ```
 ````
 
-Readers see the frozen snapshot; you maintain the original source and re-freeze
-when it changes. The `<ext>` should match the source file's extension so
-highlighting works.
+Both produce byte-identical output, so there is nothing to migrate in an
+existing book. Inside a fence the fence's own info string sets the language and
+`lang="..."` is ignored.
+
+One case is an error either way: a directive that shares its line with other
+text. A code block has to start a line, so there is no rendering for
+`see {{#include listings/foo.rs}} above`.
 
 ### Line ranges
 
 A trailing `:start:end` suffix embeds only part of the file. Endpoints are
 **inclusive and 1-based**; empty endpoints mean "to end" / "from start":
 
-````markdown
-```rust
-{{#include listings/foo.rs}}        // whole file
-{{#include listings/foo.rs:1:30}}   // lines 1–30
-{{#include listings/foo.rs:200:}}   // line 200 to EOF
-{{#include listings/foo.rs::100}}   // start to line 100
-```
-````
+| Directive | Embeds |
+|---|---|
+| `{{#include listings/foo.rs}}` | the whole file |
+| `{{#include listings/foo.rs:1:30}}` | lines 1–30 |
+| `{{#include listings/foo.rs:200:}}` | line 200 to EOF |
+| `{{#include listings/foo.rs::100}}` | the start through line 100 |
 
 A sliced include is prefixed with a two-line, language-aware locator banner
 (e.g. `// basename` then `// @@ start,end @@`) so readers can tell it's a
@@ -67,9 +93,7 @@ sit anywhere among the arguments — the parser lifts it out before reading the
 path:
 
 ````markdown
-```rust
 {{#include listings/foo.rs caption="The reuse manifest"}}
-```
 ````
 
 With `number-listings` on (see [Numbering](#numbering-and-the-list-of-listings)
@@ -170,9 +194,7 @@ and in prose cross-references, so a badge says which listing it belongs to.
 Example source file, frozen and then included:
 
 ````markdown
-```rust
 {{#include listings/greeting-v1.rs}}
-```
 ````
 
 where `greeting-v1.rs` contains:

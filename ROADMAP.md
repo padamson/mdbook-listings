@@ -89,9 +89,10 @@ user-visible change):
   replaces it).
 - `thiserror` for the structured error enums (drop the hand-written
   `Display`/`Error` impls).
-- Centralise the escaping policy scattered across `html_escape`,
-  `render_inline_markdown`, and the include splicer's `{{` escape (moot
-  if the structured-metadata item lands first).
+- Centralise the escaping policy scattered across `html_escape` and
+  `render_inline_markdown` (moot if the structured-metadata item lands
+  first). The `{{` escape the include and diff splicers each applied is
+  already done: both emit through `fence::render_block`, which owns it.
 
 ## v0.3.0 — richer rendering
 

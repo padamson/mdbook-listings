@@ -3,6 +3,31 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **`{{#include}}` no longer needs a surrounding fence.** A directive on
+  a line of its own renders the whole code block, matching how
+  `{{#diff}}` has always worked. The highlight language comes from the
+  file extension (`.rs` opens a `rust` fence, `.yml` a `yaml` one), and
+  an extension the mapping doesn't name is used as written.
+- **`lang="..."` on `{{#include}}`** overrides the language the file
+  extension implies, for listings whose extension doesn't name their
+  highlighter.
+
+### Changed
+- An `{{#include}}` still wrapped in a fence behaves exactly as before,
+  and both forms produce byte-identical output, so existing books need
+  no edits.
+- The error for an unfenced include is replaced by a narrower one. It
+  now fires only when the directive shares its line with other text,
+  where no code block can be rendered at all.
+
+### Fixed
+- **`{{#diff}}` no longer breaks out of its own code block** when the
+  listings being compared contain a fence of their own. Both directives
+  now size the fence they emit to the content it wraps.
+
 ## [0.1.1] - 2026-08-01
 
 Non-breaking follow-up: opt-in listing numbers, optional captions, and

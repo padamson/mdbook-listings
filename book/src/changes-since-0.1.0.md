@@ -5,6 +5,37 @@ kept moving after the book closed, so this page lists the changes that
 postdate the prose. The chapters themselves are left as the v0.1.0 record
 and do not describe what follows.
 
+## Unreleased — one authoring idiom for both directives
+
+Every chapter in this book wraps its includes in a ` ```rust ` block,
+because until now the build failed without one. `{{#diff}}` never had
+that requirement, and nothing in the syntax said which directive wanted
+the wrapper. A downstream author hit the asymmetry while writing a
+chapter against the crate and reported it.
+
+**`{{#include}}` no longer needs a surrounding fence.** An include on a
+line of its own now renders the whole block, the way a diff always has.
+The highlight language comes from the file extension, or from a new
+`lang="..."` argument when the extension doesn't name it. The one case
+that still fails is a directive sharing its line with prose: a code block
+has to start a line, so `see \{{#include listings/foo.rs}} above` has no
+rendering.
+
+Both forms produce byte-identical output, so the fenced includes
+throughout these chapters render exactly as they always did. This page is
+the only place in the book that uses the new form. What follows is a bare
+`\{{#include snippets/render-block-snippet-v1.rs}}` with no fence around
+it, showing the code that does the work:
+
+{{#include snippets/render-block-snippet-v1.rs}}
+
+**`{{#diff}}` no longer breaks out of its own block** when the listings it
+compares contain a fence. Its wrapper was three backticks regardless of
+content, so the first ` ``` ` inside a diffed Markdown listing closed it
+early and the rest of the diff spilled into the page as prose. Both
+directives now size the fence they emit to what it wraps, which is what
+{{#callout fence-line-initial}} computes.
+
 ## v0.1.1 — e2e suite tracks playwright-rust main
 
 - **`tests/e2e_callouts.rs` has moved past its frozen listings.** The e2e

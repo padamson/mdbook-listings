@@ -63,14 +63,13 @@ All CLI commands are run **from the book root** (the directory containing
    (`main.rs` → `main-v1`, then `main-v2` on the next freeze of the same
    basename).
 
-3. **Embed** the frozen snapshot in chapter prose with mdBook's native
-   `{{#include}}` inside a fenced block. The fence language controls
-   highlighting; the path points at the *frozen* copy, not the original:
+3. **Embed** the frozen snapshot in chapter prose with `{{#include}}` on a
+   line of its own. It renders the code block for you, taking the highlight
+   language from the file extension; the path points at the *frozen* copy,
+   not the original:
 
    ````markdown
-   ```rust
    {{#include listings/main-v1.rs}}
-   ```
    ````
 
 4. **(Optional) Annotate** lines by adding `// CALLOUT: <label> <body>` marker
@@ -91,13 +90,15 @@ All CLI commands are run **from the book root** (the directory containing
 Authored in markdown; the preprocessor expands them at build time. Details and
 edge cases live in [references/directives.md](references/directives.md).
 
-- `{{#include listings/<tag>.<ext>}}` — embed a frozen listing (inside a fenced
-  ```` ```lang ```` block). Optional `:start:end` suffix embeds only a line
-  range: `{{#include listings/<tag>.<ext>:1:30}}`. Optional
+- `{{#include listings/<tag>.<ext>}}` — embed a frozen listing. Put it on a
+  line of its own; it renders the code block and takes the highlight language
+  from the extension, which `lang="..."` overrides. Wrapping it in your own
+  fence still works and renders identically. Optional `:start:end` suffix
+  embeds only a line range: `{{#include listings/<tag>.<ext>:1:30}}`. Optional
   `caption="..."` renders a caption line above the listing.
 - `{{#diff <old-tag> <new-tag>}}` — render the line-by-line diff between two
-  frozen listings (inside a ```` ```diff ```` -less fenced block, or on its own
-  line). Both tags must exist in `listings.toml`. Optional per-side line ranges:
+  frozen listings, on a line of its own. Both tags must exist in
+  `listings.toml`. Optional per-side line ranges:
   `{{#diff a b 1:30 1:30}}`. Either operand may be `live:<path>` to diff against
   a live file (chapter-relative path). Also accepts `caption="..."` and
   `context=N` (unified-diff context radius, default 3).

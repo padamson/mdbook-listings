@@ -156,6 +156,20 @@ e2e/CLI tests, but nothing in-crate pins them.
 - [ ] **strip.rs L101:27** — `replace += with *= in
   strip_marker_lines_diff`.
 
+### src/include.rs — surfaced by the self-contained include form
+
+Renaming the `ListingIncludeOutsideFence` variant put the whole
+`SpliceError` impl block back in a diff for the first time since it
+was written, so the diff-scoped run mutated it.
+
+- [ ] **include.rs L177:9** — `replace <impl std::error::Error for
+  SpliceError>::source with None`. Nothing calls `source()` on a
+  splice error: the pipeline wraps it with `anyhow::Error::new(e)
+  .context(...)` and only the `Display` text is asserted on. The
+  same gap applies to the other hand-written `Error` impls, and it
+  closes for all of them at once if the `thiserror` migration on the
+  v0.2.0 roadmap lands.
+
 ## Status
 
 | | |
