@@ -1224,8 +1224,8 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 
 [[package]]
 name = "playwright-rs"
-version = "0.15.0"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#75b9074df8b6884d71fb9d75b59be0f563025119"
+version = "0.15.1"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#3e1b1eba1c733327a46b734d3ce5b91cf16b063f"
 dependencies = [
  "async-trait",
  "base64",
@@ -1253,8 +1253,8 @@ dependencies = [
 
 [[package]]
 name = "playwright-rs-macros"
-version = "0.1.0"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#75b9074df8b6884d71fb9d75b59be0f563025119"
+version = "0.1.1"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#3e1b1eba1c733327a46b734d3ce5b91cf16b063f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1263,8 +1263,8 @@ dependencies = [
 
 [[package]]
 name = "playwright-rs-trace"
-version = "0.1.1"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#75b9074df8b6884d71fb9d75b59be0f563025119"
+version = "0.1.2"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#3e1b1eba1c733327a46b734d3ce5b91cf16b063f"
 dependencies = [
  "serde",
  "serde_json",
