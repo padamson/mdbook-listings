@@ -5,7 +5,7 @@ kept moving after the book closed, so this page lists the changes that
 postdate the prose. The chapters themselves are left as the v0.1.0 record
 and do not describe what follows.
 
-## Unreleased — verify notices annotation without prose
+## Unreleased — two new verify warnings for callout slips
 
 A `\{{#callout}}` directive that names no marker fails the build
 ([chapter 7](ch07-verify-sync.md) covers why). The opposite slip built
@@ -26,6 +26,18 @@ buried the signal in old versions; with it, the 21 warnings this book
 reports (as of this writing) are badges rendered somewhere with no prose
 pointing at them. Warnings leave the exit code at 0, so a book that wants annotation
 without prose still builds.
+
+A related slip involves slices rather than missing prose. A marker
+annotates the line that follows it, so a sliced include whose range ends
+*on* a marker line renders the badge while excluding the one line it
+points at. Slice bounds are line numbers, and a listing's line numbers
+shift every refreeze; a range that ended cleanly before a marker one week
+ends on top of it the next, and the built page gives no sign. The same
+downstream author hit this one too, with a marker that *was* picked up in
+prose (in another chapter), so the orphan warning above had nothing to
+say about it. `verify` now warns on any sliced include whose end line is
+a marker, naming the chapter and line of the directive, the range, and
+the annotated line the slice excludes.
 
 ## v0.2.0 — one authoring idiom for both directives
 

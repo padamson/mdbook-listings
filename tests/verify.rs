@@ -270,6 +270,29 @@ fn verify_stays_silent_on_a_marker_in_a_listing_no_chapter_shows() {
 }
 
 #[test]
+fn verify_warns_when_a_slice_ends_on_a_callout_marker_but_succeeds() {
+    let book = FrozenFixtureBook::new();
+    book.freeze(
+        "sliced-v1",
+        "key: value\n# CALLOUT: cut-off Annotates the line below.\nnext: line\n",
+    );
+    book.write_chapter(
+        "ch",
+        "Sliced.\n\n```yaml\n{{#include listings/sliced-v1.yaml:1:2}}\n```\n\n\
+         Picked up as {{#callout cut-off}} here.\n",
+    );
+
+    mdbook_listings()
+        .args(["verify", "--book-root"])
+        .arg(book.root())
+        .assert()
+        .success()
+        .stderr(contains("warning:"))
+        .stderr(contains("cut-off"))
+        .stderr(contains("ch.md:4"));
+}
+
+#[test]
 fn verify_reports_every_broken_listing_not_just_the_first() {
     let tmp = TempDir::new().expect("tempdir");
     let root = tmp.path().join("book");

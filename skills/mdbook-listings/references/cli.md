@@ -81,6 +81,11 @@ Warnings (reported on stderr, exit stays 0):
   in a frozen version no chapter shows, on a line outside every include's
   slice, or on a context line of a diff produces no badge and is not
   reported.
+- A sliced include whose end line is a `CALLOUT:` marker. The marker
+  annotates the line after it, which the slice excludes, so the badge
+  attaches to nothing. Applies to `listings/` and `snippets/` includes; a
+  marker on the file's last line is exempt (its badge clamps the same way in
+  every rendering).
 
 **Run it in CI** to catch drift before readers see stale code.
 

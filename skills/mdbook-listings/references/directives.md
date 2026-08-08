@@ -80,10 +80,16 @@ A sliced include is prefixed with a two-line, language-aware locator banner
 (e.g. `// basename` then `// @@ start,end @@`) so readers can tell it's a
 fragment and which file it came from. Out-of-range endpoints clamp silently.
 
+A slice whose **end** line is a `CALLOUT:` marker draws a `verify` warning:
+the marker annotates the line after it, which the slice excludes, so the
+badge would attach to nothing. Line numbers shift every refreeze, so a range
+that ended cleanly before a marker can end on top of one later.
+
 Includes of `snippets/...` (hand-curated excerpts, not frozen tags) are also
-processed, so any `// CALLOUT:` markers in them render — but they are *not*
-verified by `mdbook-listings verify`. Use `listings/` for byte-exact frozen
-mirrors and `snippets/` only for curated excerpts.
+processed, so any `// CALLOUT:` markers in them render — but their bytes are
+*not* integrity-checked by `mdbook-listings verify` (the slice-end warning
+does apply to them). Use `listings/` for byte-exact frozen mirrors and
+`snippets/` only for curated excerpts.
 
 ### Caption
 

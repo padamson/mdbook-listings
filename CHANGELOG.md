@@ -16,6 +16,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   version no chapter shows, on a line outside every include's slice, or
   on a context line of a diff produces no badge and stays silent. The
   exit code is unchanged: annotation without prose still builds.
+- **`verify` warns when a slice ends on a callout marker.** A sliced
+  `{{#include}}` whose end line is a `CALLOUT:` marker renders the badge
+  while excluding the line it annotates, so the badge attaches to
+  nothing. Slice bounds are line numbers and shift every refreeze, which
+  makes this easy to hit without noticing. The warning names the chapter
+  and line of the directive, the range, the label, and the annotated
+  line the slice excludes. A marker on the file's last line is exempt
+  (its badge clamps to the last visible line in every rendering), and
+  `snippets/` includes are covered as well as `listings/` ones.
 
 ## [0.2.0] - 2026-08-04
 

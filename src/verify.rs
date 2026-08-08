@@ -15,7 +15,7 @@ use crate::diff::splice_chapter as splice_diffs;
 use crate::directive::{FencePolicy, line_number, scan_directives, split_caption, split_label};
 use crate::fence::FencedBlocks;
 use crate::freeze::hex_sha256;
-use crate::include::splice_chapter as splice_includes;
+use crate::include::{parse_listing_includes, splice_chapter as splice_includes};
 use crate::manifest::{Listing, Manifest};
 
 /// Where frozen listings live, relative to the book root. Matches
@@ -75,6 +75,7 @@ pub fn verify(book_root: &Path) -> Result<VerifyReport> {
     check_sidecars(book_root, &manifest, &mut report);
     check_orphans(book_root, &manifest, &mut report);
     check_unreferenced_markers(book_root, &manifest, &mut report);
+    check_slice_ends_on_marker(book_root, &mut report);
     check_live_operands(book_root, &mut report);
     Ok(report)
 }
@@ -305,6 +306,56 @@ fn check_unreferenced_markers(book_root: &Path, manifest: &Manifest, report: &mu
                     ));
                 }
             }
+        }
+    }
+}
+
+/// A sliced include whose end line is a `CALLOUT:` marker renders the
+/// badge while excluding the line it annotates — the badge attaches to
+/// nothing. Slice bounds are line numbers and shift every refreeze, so a
+/// range that ended cleanly one week ends on a marker the next, and the
+/// page still looks finished. A marker on the file's last line is skipped:
+/// its badge clamps to the last visible line in every rendering, sliced or
+/// not, so the slice is not what broke it.
+fn check_slice_ends_on_marker(book_root: &Path, report: &mut VerifyReport) {
+    let src_dir = chapter_src_dir(book_root);
+    for (rel, content) in chapter_markdown(book_root) {
+        for d in parse_listing_includes(&content) {
+            let Some(range) = &d.range else {
+                continue;
+            };
+            let Some(end) = range.end else {
+                continue;
+            };
+            let Some(prefix) = Path::new(&d.rel_path)
+                .extension()
+                .and_then(|e| e.to_str())
+                .and_then(comment_prefix_for_extension)
+            else {
+                continue;
+            };
+            // A dangling include is the reference pass's finding.
+            let Ok(file) = fs::read_to_string(src_dir.join(&d.rel_path)) else {
+                continue;
+            };
+            if end >= file.lines().count() {
+                continue;
+            }
+            let Some(marker_line) = file.lines().nth(end - 1) else {
+                continue;
+            };
+            let Some(callout) = parse_callouts(marker_line, prefix).into_iter().next() else {
+                continue;
+            };
+            report.warning(format!(
+                "{rel}:{}: slice {}:{} ends on the CALLOUT marker `{}`; \
+                 the line it annotates ({}) is outside the range",
+                line_number(&content, d.span.start),
+                d.rel_path,
+                range.render(),
+                callout.label,
+                end + 1,
+            ));
         }
     }
 }
@@ -934,6 +985,139 @@ mod tests {
         let at_65 = anchored(65);
         let close_end = at_65.rfind("```\n").map(|i| i + 4).unwrap();
         assert!(block_listing(&at_65, close_end, &manifest).is_none());
+    }
+
+    #[test]
+    fn check_slice_end_warns_when_the_end_line_is_a_marker() {
+        // Marker on line 2 annotates line 3; a slice ending on line 2
+        // renders a badge attached to nothing.
+        let (_t, root, _m) = book_with_marked_listing();
+        fs::write(
+            root.join("src/ch.md"),
+            "intro\n\n```yaml\n{{#include listings/demo-v1.yaml:1:2}}\n```\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_slice_ends_on_marker(&root, &mut report);
+        assert_eq!(report.error_count(), 0);
+        assert_eq!(report.findings.len(), 1, "got {:?}", report.findings);
+        assert_eq!(report.findings[0].severity, Severity::Warning);
+        let m = &report.findings[0].message;
+        assert!(m.contains("ch.md:4"), "expects chapter:line; got: {m}");
+        assert!(m.contains("1:2"), "got: {m}");
+        assert!(m.contains("`greeting`"), "got: {m}");
+        assert!(m.contains("(3)"), "expects the annotated line; got: {m}");
+    }
+
+    #[test]
+    fn check_slice_end_silent_when_the_slice_stops_before_the_marker() {
+        let (_t, root, _m) = book_with_marked_listing();
+        fs::write(
+            root.join("src/ch.md"),
+            "```yaml\n{{#include listings/demo-v1.yaml:1:1}}\n```\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_slice_ends_on_marker(&root, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_slice_end_silent_when_the_slice_covers_the_annotated_line() {
+        let (_t, root, _m) = book_with_marked_listing();
+        fs::write(
+            root.join("src/ch.md"),
+            "```yaml\n{{#include listings/demo-v1.yaml:1:3}}\n```\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_slice_ends_on_marker(&root, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_slice_end_silent_on_open_ended_and_full_file_includes() {
+        // An open end runs to EOF and a full-file include has no slice;
+        // neither can exclude a marker's annotated line.
+        let (_t, root, _m) = book_with_marked_listing();
+        fs::write(
+            root.join("src/ch.md"),
+            "```yaml\n{{#include listings/demo-v1.yaml:2:}}\n```\n\n\
+             ```yaml\n{{#include listings/demo-v1.yaml}}\n```\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_slice_ends_on_marker(&root, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_slice_end_silent_when_the_marker_is_the_last_file_line() {
+        // A marker with no following line clamps its badge to the last
+        // visible line in every rendering, sliced or not — the slice is
+        // not what broke it.
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        fs::create_dir_all(root.join("src/listings")).unwrap();
+        fs::write(
+            root.join("src/listings/tail-v1.yaml"),
+            "key: value\n# CALLOUT: tail At the end.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("src/ch.md"),
+            "```yaml\n{{#include listings/tail-v1.yaml:1:2}}\n```\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_slice_ends_on_marker(&root, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_slice_end_applies_to_snippets_includes_too() {
+        // Snippets aren't frozen, but their markers badge the same way,
+        // so the same slice slip breaks them the same way.
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        fs::create_dir_all(root.join("src/snippets")).unwrap();
+        fs::write(
+            root.join("src/snippets/demo.rs"),
+            "fn a() {}\n// CALLOUT: snip Note.\nfn b() {}\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("src/ch.md"),
+            "```rust\n{{#include snippets/demo.rs:1:2}}\n```\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_slice_ends_on_marker(&root, &mut report);
+        assert_eq!(report.findings.len(), 1, "got {:?}", report.findings);
+        assert!(report.findings[0].message.contains("`snip`"));
+    }
+
+    #[test]
+    fn check_slice_end_silent_on_a_missing_included_file() {
+        // A dangling include is the reference pass's finding.
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(
+            root.join("src/ch.md"),
+            "```yaml\n{{#include listings/ghost.yaml:1:2}}\n```\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_slice_ends_on_marker(&root, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
     }
 
     #[test]
