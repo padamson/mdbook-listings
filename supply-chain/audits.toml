@@ -21,6 +21,12 @@ who = "Paul Adamson <paul.adamson.01@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "0.13.3 -> 0.13.4"
 
+[[audits.similar]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "3.1.1 -> 3.1.2"
+notes = "Three bug fixes in the Lcs/Hunt algorithm implementations (empty-input handling, subrange index offsets, deadline fallback) plus regression tests. No unsafe, no I/O, no new dependencies."
+
 [[trusted.aho-corasick]]
 criteria = "safe-to-deploy"
 user-id = 189 # Andrew Gallant (BurntSushi)
