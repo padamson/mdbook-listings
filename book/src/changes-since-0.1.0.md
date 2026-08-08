@@ -5,6 +5,28 @@ kept moving after the book closed, so this page lists the changes that
 postdate the prose. The chapters themselves are left as the v0.1.0 record
 and do not describe what follows.
 
+## Unreleased — verify notices annotation without prose
+
+A `\{{#callout}}` directive that names no marker fails the build
+([chapter 7](ch07-verify-sync.md) covers why). The opposite slip built
+clean: add a `CALLOUT:` marker to a source file, freeze it, and nothing
+reminds you that no prose ever picks the label up. The badge renders, the
+hover text reads fine, and the page looks finished. A downstream author
+hit it the ordinary way (marker added while editing the source, prose
+deferred to a later chapter) and had to check by experiment whether
+adding the marker early was safe.
+
+`verify` now reports each such marker as a warning naming the frozen file
+and line. Only markers that actually render count. This book keeps every
+old version of its listings as diff history, and a marker in a version no
+chapter shows, or outside every include's slice, or on an unchanged line
+of a diff, produces no badge and stays silent. The first draft of the
+check skipped that rule, warned on every marker in every frozen file, and
+buried the signal in old versions; with it, the 21 warnings this book
+reports (as of this writing) are badges rendered somewhere with no prose
+pointing at them. Warnings leave the exit code at 0, so a book that wants annotation
+without prose still builds.
+
 ## v0.2.0 — one authoring idiom for both directives
 
 Every chapter in this book wraps its includes in a ` ```rust ` block,

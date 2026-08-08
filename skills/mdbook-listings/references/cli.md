@@ -64,14 +64,25 @@ match the frozen file's actual hash.
 mdbook-listings verify [--book-root <BOOK_ROOT>]
 ```
 
-Checks consistency across three things:
+Errors (any one exits non-zero):
 
 1. Each frozen listing still matches its recorded SHA-256 in `listings.toml`.
-2. Every `{{#include}}` reference in the book's markdown resolves.
-3. The manifest and the frozen files agree.
+2. Every `{{#include}}` path and `{{#diff}}` tag operand in the book's
+   markdown resolves to a manifest record.
+3. Every `<tag>.callouts.toml` sidecar names a frozen listing.
 
-Exits non-zero on any mismatch. **Run it in CI** to catch drift before readers
-see stale code.
+Warnings (reported on stderr, exit stays 0):
+
+- A frozen file under `src/listings/` that no manifest record claims.
+- A `live:` diff operand — that spot tracks moving source by choice, and the
+  audit lists where.
+- A `CALLOUT:` marker whose badge renders in some chapter but that no
+  `{{#callout}}` directive references. Only rendered markers count: a marker
+  in a frozen version no chapter shows, on a line outside every include's
+  slice, or on a context line of a diff produces no badge and is not
+  reported.
+
+**Run it in CI** to catch drift before readers see stale code.
 
 ## `list`
 

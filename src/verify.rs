@@ -10,9 +10,13 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
+use crate::callout::{callouts_for_block, comment_prefix_for_extension, parse_callouts};
+use crate::diff::splice_chapter as splice_diffs;
 use crate::directive::{FencePolicy, line_number, scan_directives, split_caption, split_label};
+use crate::fence::FencedBlocks;
 use crate::freeze::hex_sha256;
-use crate::manifest::Manifest;
+use crate::include::splice_chapter as splice_includes;
+use crate::manifest::{Listing, Manifest};
 
 /// Where frozen listings live, relative to the book root. Matches
 /// `freeze`'s `LISTINGS_SUBDIR` — frozen files always land here regardless
@@ -70,6 +74,7 @@ pub fn verify(book_root: &Path) -> Result<VerifyReport> {
     check_references(book_root, &manifest, &mut report);
     check_sidecars(book_root, &manifest, &mut report);
     check_orphans(book_root, &manifest, &mut report);
+    check_unreferenced_markers(book_root, &manifest, &mut report);
     check_live_operands(book_root, &mut report);
     Ok(report)
 }
@@ -246,6 +251,113 @@ fn check_live_operands(book_root: &Path, report: &mut VerifyReport) {
             }
         }
     }
+}
+
+/// Every `CALLOUT:` marker that renders a badge should be picked up by a
+/// `{{#callout <label>}}` somewhere in the book's prose. The reverse
+/// direction already fails the build (an unknown label errors), but this
+/// direction matches the ordinary authoring slip — marker added while
+/// editing the source, prose never written — and fails into a page that
+/// looks fine. A warning, not an error: the badge's hover text is
+/// self-contained, so annotation without prose stays a legitimate choice.
+///
+/// Only markers that actually render count. A marker in a frozen file no
+/// chapter shows — an old version kept as a diff operand, a line outside
+/// every include's slice, a context line in a diff — produces no badge,
+/// so warning on it would be noise. Verify runs the same include and diff
+/// splices as the build and asks the same question the callout pass does:
+/// which markers does this block badge?
+fn check_unreferenced_markers(book_root: &Path, manifest: &Manifest, report: &mut VerifyReport) {
+    let referenced = referenced_callout_labels(book_root);
+    let src_dir = chapter_src_dir(book_root);
+    let mut reported: HashSet<(String, String)> = HashSet::new();
+    for (rel, content) in chapter_markdown(book_root) {
+        let chapter_abs = book_root.join(&rel);
+        let chapter_path = chapter_abs.strip_prefix(&src_dir).ok();
+        let chapter_dir = chapter_abs
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| src_dir.clone());
+        // A chapter the splicers reject is skipped: whatever is broken
+        // there is the reference or integrity pass's finding.
+        let Ok(expanded) = splice_includes(&content, &src_dir, chapter_path) else {
+            continue;
+        };
+        let Ok(expanded) = splice_diffs(&expanded, manifest, book_root, chapter_path, &chapter_dir)
+        else {
+            continue;
+        };
+        for block in FencedBlocks::new(&expanded) {
+            for callout in callouts_for_block(block.info, block.body) {
+                if referenced.contains(&callout.label) {
+                    continue;
+                }
+                let Some(listing) = block_listing(&expanded, block.close_end, manifest) else {
+                    continue;
+                };
+                let Some(line) = marker_line_in_frozen(book_root, listing, &callout.label) else {
+                    continue;
+                };
+                if reported.insert((listing.frozen.clone(), callout.label.clone())) {
+                    report.warning(format!(
+                        "{}:{}: CALLOUT marker `{}` is referenced by no {{{{#callout}}}} directive",
+                        listing.frozen, line, callout.label,
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/// The manifest record behind a rendered block, read off the locator
+/// anchor after its closing fence. For a diff block that is the right-hand
+/// operand: only added lines carry badges, and added lines belong to the
+/// right side. A `live:` operand names no record and returns `None`.
+fn block_listing<'m>(
+    content: &str,
+    close_end: usize,
+    manifest: &'m Manifest,
+) -> Option<&'m Listing> {
+    let tail = &content[close_end..];
+    let after_newline = tail.strip_prefix('\n').unwrap_or(tail);
+    let div_open = after_newline.find("<div ")?;
+    if div_open > crate::anchor::SCAN_TOLERANCE {
+        return None;
+    }
+    let div_end = after_newline[div_open..].find('>')? + div_open;
+    let div_text = &after_newline[div_open..div_end];
+    let tag = crate::anchor::attr_value(div_text, "data-listing-tag")
+        .or_else(|| crate::anchor::attr_value(div_text, "data-listing-diff-right"))?;
+    manifest.find(&tag)
+}
+
+/// Locate `label`'s marker line in the listing's frozen file. The rendered
+/// block may be a slice or a diff, so the line within the block is not the
+/// line in the file; re-parsing the frozen source gives the position an
+/// author can jump to.
+fn marker_line_in_frozen(book_root: &Path, listing: &Listing, label: &str) -> Option<usize> {
+    let prefix = Path::new(&listing.frozen)
+        .extension()
+        .and_then(|e| e.to_str())
+        .and_then(comment_prefix_for_extension)?;
+    let content = fs::read_to_string(book_root.join(&listing.frozen)).ok()?;
+    parse_callouts(&content, prefix)
+        .into_iter()
+        .find(|c| c.label == label)
+        .map(|c| c.line)
+}
+
+/// Labels named by a `{{#callout <label>}}` directive in any chapter.
+/// Same fence policy as the splicer, so documentation examples (inside
+/// fenced blocks, inline backticks, or backslash-escaped) don't count.
+fn referenced_callout_labels(book_root: &Path) -> HashSet<String> {
+    let mut labels = HashSet::new();
+    for (_rel, content) in chapter_markdown(book_root) {
+        for occ in scan_directives(&content, "{{#callout ", FencePolicy::SkipInside) {
+            labels.insert(occ.args.trim().to_string());
+        }
+    }
+    labels
 }
 
 /// Top-level file names in `<book_root>/src/listings/` (no subdirectories).
@@ -660,6 +772,286 @@ mod tests {
         assert_eq!(report.findings.len(), 1, "got {:?}", report.findings);
         assert_eq!(report.findings[0].severity, Severity::Warning);
         assert!(report.findings[0].message.contains("orphan.rs"));
+    }
+
+    /// Build a book root whose frozen listing carries one inline
+    /// `# CALLOUT:` marker, returning the temp dir, root, and manifest.
+    fn book_with_marked_listing() -> (TempDir, PathBuf, Manifest) {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        fs::create_dir_all(root.join("src/listings")).unwrap();
+        let body = b"key: value\n# CALLOUT: greeting Says hello.\nfoo: bar\n";
+        fs::write(root.join("src/listings/demo-v1.yaml"), body).unwrap();
+        let manifest = manifest_with(vec![listing_for(
+            "demo-v1",
+            "src/listings/demo-v1.yaml",
+            body,
+        )]);
+        (tmp, root, manifest)
+    }
+
+    /// A fenced include of the fixture's marked listing.
+    const DEMO_INCLUDE: &str = "```yaml\n{{#include listings/demo-v1.yaml}}\n```\n";
+
+    /// Two frozen versions of a listing, for `{{#diff demo-v1 demo-v2}}`.
+    fn book_with_diffed_listings(v1: &[u8], v2: &[u8]) -> (TempDir, PathBuf, Manifest) {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        fs::create_dir_all(root.join("src/listings")).unwrap();
+        fs::write(root.join("src/listings/demo-v1.yaml"), v1).unwrap();
+        fs::write(root.join("src/listings/demo-v2.yaml"), v2).unwrap();
+        let manifest = manifest_with(vec![
+            listing_for("demo-v1", "src/listings/demo-v1.yaml", v1),
+            listing_for("demo-v2", "src/listings/demo-v2.yaml", v2),
+        ]);
+        (tmp, root, manifest)
+    }
+
+    #[test]
+    fn check_unreferenced_markers_warns_with_path_line_and_label() {
+        let (_t, root, manifest) = book_with_marked_listing();
+        fs::write(root.join("src/ch.md"), DEMO_INCLUDE).unwrap();
+
+        let mut report = VerifyReport::default();
+        check_unreferenced_markers(&root, &manifest, &mut report);
+        assert_eq!(report.error_count(), 0);
+        assert_eq!(report.findings.len(), 1, "got {:?}", report.findings);
+        assert_eq!(report.findings[0].severity, Severity::Warning);
+        let m = &report.findings[0].message;
+        assert!(m.contains("src/listings/demo-v1.yaml:2"), "got: {m}");
+        assert!(m.contains("`greeting`"), "got: {m}");
+        assert!(m.contains("{{#callout}}"), "got: {m}");
+    }
+
+    #[test]
+    fn check_unreferenced_markers_silent_when_a_directive_references_the_label() {
+        let (_t, root, manifest) = book_with_marked_listing();
+        fs::write(
+            root.join("src/ch.md"),
+            format!("{DEMO_INCLUDE}\nThe marker {{{{#callout greeting}}}} is picked up here.\n"),
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_unreferenced_markers(&root, &manifest, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_unreferenced_markers_silent_when_no_chapter_renders_the_listing() {
+        // A marker in a frozen file no chapter shows (an old version kept
+        // as diff history) renders no badge, so it must not warn.
+        let (_t, root, manifest) = book_with_marked_listing();
+        fs::write(root.join("src/ch.md"), "Prose without any listing.\n").unwrap();
+
+        let mut report = VerifyReport::default();
+        check_unreferenced_markers(&root, &manifest, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_unreferenced_markers_silent_when_slice_excludes_the_marker() {
+        let (_t, root, manifest) = book_with_marked_listing();
+        fs::write(
+            root.join("src/ch.md"),
+            "```yaml\n{{#include listings/demo-v1.yaml:1:1}}\n```\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_unreferenced_markers(&root, &manifest, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_unreferenced_markers_slice_covering_the_marker_reports_the_frozen_line() {
+        let (_t, root, manifest) = book_with_marked_listing();
+        fs::write(
+            root.join("src/ch.md"),
+            "```yaml\n{{#include listings/demo-v1.yaml:2:3}}\n```\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_unreferenced_markers(&root, &manifest, &mut report);
+        assert_eq!(report.findings.len(), 1, "got {:?}", report.findings);
+        // Line 2 of the FILE, not of the slice — the diagnostic must point
+        // where the author can jump to.
+        assert!(
+            report.findings[0]
+                .message
+                .contains("src/listings/demo-v1.yaml:2"),
+            "got: {}",
+            report.findings[0].message,
+        );
+    }
+
+    #[test]
+    fn check_unreferenced_markers_silent_on_a_diff_context_marker() {
+        // The marker is unchanged between the two versions, so the diff
+        // shows it as a context line — no badge renders.
+        let (_t, root, manifest) = book_with_diffed_listings(
+            b"a: 1\n# CALLOUT: ctx Unchanged note.\nb: 2\n",
+            b"a: 1\n# CALLOUT: ctx Unchanged note.\nb: 3\n",
+        );
+        fs::write(root.join("src/ch.md"), "{{#diff demo-v1 demo-v2}}\n").unwrap();
+
+        let mut report = VerifyReport::default();
+        check_unreferenced_markers(&root, &manifest, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_unreferenced_markers_warns_on_a_diff_added_marker() {
+        // The marker is new in the right operand, so the diff badges it;
+        // the diagnostic points into the right side's frozen file.
+        let (_t, root, manifest) =
+            book_with_diffed_listings(b"a: 1\n", b"a: 1\n# CALLOUT: added New note.\n");
+        fs::write(root.join("src/ch.md"), "{{#diff demo-v1 demo-v2}}\n").unwrap();
+
+        let mut report = VerifyReport::default();
+        check_unreferenced_markers(&root, &manifest, &mut report);
+        assert_eq!(report.findings.len(), 1, "got {:?}", report.findings);
+        let m = &report.findings[0].message;
+        assert!(m.contains("src/listings/demo-v2.yaml:2"), "got: {m}");
+        assert!(m.contains("`added`"), "got: {m}");
+    }
+
+    #[test]
+    fn block_listing_honors_the_anchor_scan_tolerance() {
+        // Same 64-byte boundary the callout pass enforces: an anchor at
+        // the tolerance is read, one byte past it is not.
+        let (_t, _root, manifest) = book_with_marked_listing();
+        let anchored = |pad: usize| {
+            format!(
+                "```yaml\nkey: value\n```\n{}<div data-listing-tag=\"demo-v1\" aria-hidden=\"true\"></div>\n",
+                "x".repeat(pad),
+            )
+        };
+        let at_64 = anchored(64);
+        let close_end = at_64.rfind("```\n").map(|i| i + 4).unwrap();
+        assert!(block_listing(&at_64, close_end, &manifest).is_some());
+        let at_65 = anchored(65);
+        let close_end = at_65.rfind("```\n").map(|i| i + 4).unwrap();
+        assert!(block_listing(&at_65, close_end, &manifest).is_none());
+    }
+
+    #[test]
+    fn check_unreferenced_markers_warns_once_for_a_listing_shown_in_two_chapters() {
+        let (_t, root, manifest) = book_with_marked_listing();
+        fs::write(root.join("src/ch01.md"), DEMO_INCLUDE).unwrap();
+        fs::write(root.join("src/ch02.md"), DEMO_INCLUDE).unwrap();
+
+        let mut report = VerifyReport::default();
+        check_unreferenced_markers(&root, &manifest, &mut report);
+        assert_eq!(report.findings.len(), 1, "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_unreferenced_markers_reference_may_live_in_any_chapter() {
+        // The prose that picks up a marker can sit in a different chapter
+        // than the one embedding the listing — references are book-global.
+        let (_t, root, manifest) = book_with_marked_listing();
+        fs::write(
+            root.join("src/ch01.md"),
+            "```yaml\n{{#include listings/demo-v1.yaml}}\n```\n",
+        )
+        .unwrap();
+        fs::write(root.join("src/ch02.md"), "See {{#callout greeting}}.\n").unwrap();
+
+        let mut report = VerifyReport::default();
+        check_unreferenced_markers(&root, &manifest, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_unreferenced_markers_ignores_documentation_example_references() {
+        // A directive inside a fenced block or inline backticks is a
+        // documentation example, not a pickup — the splicer leaves those
+        // literal, so verify must not count them as references.
+        let (_t, root, manifest) = book_with_marked_listing();
+        fs::write(
+            root.join("src/ch.md"),
+            format!(
+                "{DEMO_INCLUDE}\n```text\n{{{{#callout greeting}}}}\n```\n\n\
+                 Use `{{{{#callout greeting}}}}` to refer.\n"
+            ),
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_unreferenced_markers(&root, &manifest, &mut report);
+        assert_eq!(report.findings.len(), 1, "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_unreferenced_markers_skips_listings_without_comment_syntax() {
+        // A .css frozen file has no recognised single-line comment prefix,
+        // so nothing in it can be an inline marker even when rendered.
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        fs::create_dir_all(root.join("src/listings")).unwrap();
+        let body = b"/* CALLOUT: nope */\n.a { color: red; }\n";
+        fs::write(root.join("src/listings/style-v1.css"), body).unwrap();
+        let manifest = manifest_with(vec![listing_for(
+            "style-v1",
+            "src/listings/style-v1.css",
+            body,
+        )]);
+        fs::write(
+            root.join("src/ch.md"),
+            "```css\n{{#include listings/style-v1.css}}\n```\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_unreferenced_markers(&root, &manifest, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_unreferenced_markers_silent_on_missing_frozen_file() {
+        // A missing snapshot fails the include splice; that is the
+        // integrity pass's finding — this pass must not crash or report.
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        fs::create_dir_all(root.join("src/listings")).unwrap();
+        let manifest = manifest_with(vec![listing_for(
+            "gone-v1",
+            "src/listings/gone-v1.yaml",
+            b"x\n",
+        )]);
+        fs::write(
+            root.join("src/ch.md"),
+            "```yaml\n{{#include listings/gone-v1.yaml}}\n```\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_unreferenced_markers(&root, &manifest, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_unreferenced_markers_reports_every_orphan_marker() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        fs::create_dir_all(root.join("src/listings")).unwrap();
+        let body = b"# CALLOUT: one First.\nkey: value\n# CALLOUT: two Second.\n";
+        fs::write(root.join("src/listings/demo-v1.yaml"), body).unwrap();
+        let manifest = manifest_with(vec![listing_for(
+            "demo-v1",
+            "src/listings/demo-v1.yaml",
+            body,
+        )]);
+        fs::write(root.join("src/ch.md"), DEMO_INCLUDE).unwrap();
+
+        let mut report = VerifyReport::default();
+        check_unreferenced_markers(&root, &manifest, &mut report);
+        assert_eq!(report.findings.len(), 2, "got {:?}", report.findings);
+        let messages: Vec<&str> = report.findings.iter().map(|f| f.message.as_str()).collect();
+        assert!(messages.iter().any(|m| m.contains("`one`")), "{messages:?}");
+        assert!(messages.iter().any(|m| m.contains("`two`")), "{messages:?}");
     }
 
     #[test]

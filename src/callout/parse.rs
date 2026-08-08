@@ -174,7 +174,7 @@ fn extension_for_lang(lang: &str) -> Option<&'static str> {
 /// callout (an added marker line) carries a badge. An unchanged callout is
 /// already badged wherever the listing is `{{#include}}`-d in full, and a
 /// deleted one is gone in the post-diff state.
-pub(super) fn callouts_for_block(info: &str, block_text: &str) -> Vec<Callout> {
+pub(crate) fn callouts_for_block(info: &str, block_text: &str) -> Vec<Callout> {
     if info == "diff" {
         return callouts_from_diff_block(block_text);
     }

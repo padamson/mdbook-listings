@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **`verify` warns on a callout marker no prose picks up.** A `CALLOUT:`
+  marker whose badge renders in some chapter, but that no `{{#callout}}`
+  directive anywhere references, is reported as a warning naming the
+  frozen file and line. The reverse direction (a reference to a missing
+  marker) already failed the build; this covers the quieter slip, where
+  the marker is added while editing the source and the prose never gets
+  written. Only rendered markers are reported — a marker in a frozen
+  version no chapter shows, on a line outside every include's slice, or
+  on a context line of a diff produces no badge and stays silent. The
+  exit code is unchanged: annotation without prose still builds.
+
 ## [0.2.0] - 2026-08-04
 
 One authoring idiom for both directives, plus the dual license and a

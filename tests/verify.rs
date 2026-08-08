@@ -5,6 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use predicates::boolean::PredicateBooleanExt;
 use predicates::str::contains;
 use tempfile::TempDir;
 
@@ -228,6 +229,44 @@ fn verify_warns_on_an_orphan_frozen_file_but_succeeds() {
         .assert()
         .success()
         .stderr(contains("orphan"));
+}
+
+#[test]
+fn verify_warns_on_a_rendered_callout_marker_no_directive_references_but_succeeds() {
+    let book = FrozenFixtureBook::new();
+    book.freeze(
+        "marked-v1",
+        "key: value\n# CALLOUT: orphan-note Never picked up.\n",
+    );
+    book.write_chapter(
+        "ch",
+        "Shown here.\n\n```yaml\n{{#include listings/marked-v1.yaml}}\n```\n",
+    );
+
+    mdbook_listings()
+        .args(["verify", "--book-root"])
+        .arg(book.root())
+        .assert()
+        .success()
+        .stderr(contains("warning:"))
+        .stderr(contains("orphan-note"))
+        .stderr(contains("src/listings/marked-v1.yaml:2"));
+}
+
+#[test]
+fn verify_stays_silent_on_a_marker_in_a_listing_no_chapter_shows() {
+    let book = FrozenFixtureBook::new();
+    book.freeze(
+        "marked-v1",
+        "key: value\n# CALLOUT: orphan-note Never picked up.\n",
+    );
+
+    mdbook_listings()
+        .args(["verify", "--book-root"])
+        .arg(book.root())
+        .assert()
+        .success()
+        .stderr(contains("orphan-note").not());
 }
 
 #[test]

@@ -219,6 +219,12 @@ A reference to a label that no marker in the chapter defines **fails the build**
 with a diagnostic naming the missing label and the chapter. Adding or removing a
 marker renumbers badges visually but does not break label-based references.
 
+The reverse slip — a marker whose badge renders but that no `{{#callout}}`
+anywhere picks up — builds clean and is reported by `verify` as a warning
+naming the frozen file and line. Annotation without prose is allowed (the
+hover text stands on its own), but the warning is the reminder that the prose
+was never written.
+
 ## Numbering and the List of Listings
 
 All opt-in via `[preprocessor.listings]` in `book.toml`; with everything off,
