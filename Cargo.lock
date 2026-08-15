@@ -460,7 +460,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -668,12 +668,6 @@ dependencies = [
  "wasip3",
  "wasm-bindgen",
 ]
-
-[[package]]
-name = "glob"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "hashbrown"
@@ -1225,7 +1219,7 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 [[package]]
 name = "playwright-rs"
 version = "0.15.1"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#feeaf4aeb5d5e1a30988f0ba0d120d408465af84"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#08d7251963b1fe8bf422fc38ebe2184d5c4b7033"
 dependencies = [
  "async-trait",
  "base64",
@@ -1233,7 +1227,6 @@ dependencies = [
  "dirs",
  "flate2",
  "futures-util",
- "glob",
  "libc",
  "parking_lot",
  "playwright-rs-macros",
@@ -1254,7 +1247,7 @@ dependencies = [
 [[package]]
 name = "playwright-rs-macros"
 version = "0.1.1"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#feeaf4aeb5d5e1a30988f0ba0d120d408465af84"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#08d7251963b1fe8bf422fc38ebe2184d5c4b7033"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1264,7 +1257,7 @@ dependencies = [
 [[package]]
 name = "playwright-rs-trace"
 version = "0.1.2"
-source = "git+https://github.com/padamson/playwright-rust?branch=main#feeaf4aeb5d5e1a30988f0ba0d120d408465af84"
+source = "git+https://github.com/padamson/playwright-rust?branch=main#08d7251963b1fe8bf422fc38ebe2184d5c4b7033"
 dependencies = [
  "serde",
  "serde_json",
@@ -1471,7 +1464,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1789,7 +1782,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
