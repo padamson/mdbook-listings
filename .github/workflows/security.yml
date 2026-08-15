@@ -120,7 +120,7 @@ jobs:
       # overwrite without --force); the action handles the
       # already-installed case correctly and is ~10x faster anyway.
       - name: Install cargo-mutants
-        uses: taiki-e/install-action@v2.85.6
+        uses: taiki-e/install-action@v2.85.10
         with:
           tool: cargo-mutants
 
@@ -171,7 +171,7 @@ jobs:
         uses: taiki-e/install-action@nextest
 
       - name: Install cargo-mutants
-        uses: taiki-e/install-action@v2.85.6
+        uses: taiki-e/install-action@v2.85.10
         with:
           tool: cargo-mutants
 
@@ -194,7 +194,7 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install mdbook (prebuilt)
-        uses: taiki-e/install-action@v2.85.6
+        uses: taiki-e/install-action@v2.85.10
         with:
           tool: mdbook
 
