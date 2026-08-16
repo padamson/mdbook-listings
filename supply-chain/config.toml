@@ -22,6 +22,9 @@ url = "https://raw.githubusercontent.com/divviup/libprio-rs/main/supply-chain/au
 [imports.mozilla]
 url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 
+[imports.playwright-rust]
+url = "https://raw.githubusercontent.com/padamson/playwright-rust/main/supply-chain/audits.toml"
+
 [imports.zcash]
 url = "https://raw.githubusercontent.com/zcash/rust-ecosystem/main/supply-chain/audits.toml"
 
@@ -224,10 +227,6 @@ criteria = "safe-to-deploy"
 version = "1.2.2"
 criteria = "safe-to-deploy"
 
-[[exemptions.indexmap]]
-version = "2.14.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.js-sys]]
 version = "0.3.103"
 criteria = "safe-to-deploy"
@@ -366,10 +365,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.security-framework-sys]]
 version = "2.17.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.semver]]
-version = "1.0.28"
 criteria = "safe-to-deploy"
 
 [[exemptions.serde_core]]

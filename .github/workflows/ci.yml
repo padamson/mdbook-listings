@@ -210,7 +210,7 @@ jobs:
         # .../chromium_headless_shell-<old-rev>/...` because it expects
         # the rev it was built against. Bump this version in lockstep
         # with playwright-rs's PLAYWRIGHT_VERSION constant.
-        run: npx --yes playwright@1.61.1 install --with-deps chromium
+        run: npx --yes playwright@1.62.1 install --with-deps chromium
 
       - name: Run browser-based E2E tests
         run: cargo test --test e2e_callouts

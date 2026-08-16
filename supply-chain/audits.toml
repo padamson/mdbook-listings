@@ -1,6 +1,60 @@
 
 # cargo-vet audits file
 
+[[audits.futures]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-run"
+delta = "0.3.33 -> 0.3.34"
+notes = "Delta is release housekeeping: version bumps, a README branch rename, miri guards on the futures 0.1 compat tests, and #[inline(always)] on waker clone/drop paths. No unsafe changes, no new capabilities, no build script."
+
+[[audits.futures-channel]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.33 -> 0.3.34"
+notes = "Delta is release housekeeping: version bumps, a README branch rename, miri guards on the futures 0.1 compat tests, and #[inline(always)] on waker clone/drop paths. No unsafe changes, no new capabilities, no build script."
+
+[[audits.futures-core]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.33 -> 0.3.34"
+notes = "Delta is release housekeeping: version bumps, a README branch rename, miri guards on the futures 0.1 compat tests, and #[inline(always)] on waker clone/drop paths. No unsafe changes, no new capabilities, no build script."
+
+[[audits.futures-executor]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-run"
+delta = "0.3.33 -> 0.3.34"
+notes = "Delta is release housekeeping: version bumps, a README branch rename, miri guards on the futures 0.1 compat tests, and #[inline(always)] on waker clone/drop paths. No unsafe changes, no new capabilities, no build script."
+
+[[audits.futures-io]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.33 -> 0.3.34"
+notes = "Delta is release housekeeping: version bumps, a README branch rename, miri guards on the futures 0.1 compat tests, and #[inline(always)] on waker clone/drop paths. No unsafe changes, no new capabilities, no build script."
+
+[[audits.futures-macro]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.33 -> 0.3.34"
+notes = "Delta is a version bump plus the syn 2 -> 3 dependency bump; the proc-macro logic itself is unchanged. No unsafe, no new capabilities."
+
+[[audits.futures-sink]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.33 -> 0.3.34"
+notes = "Delta is release housekeeping: version bumps, a README branch rename, miri guards on the futures 0.1 compat tests, and #[inline(always)] on waker clone/drop paths. No unsafe changes, no new capabilities, no build script."
+
+[[audits.futures-task]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.33 -> 0.3.34"
+notes = "Delta is release housekeeping: version bumps, a README branch rename, miri guards on the futures 0.1 compat tests, and #[inline(always)] on waker clone/drop paths. No unsafe changes, no new capabilities, no build script."
+
+[[audits.futures-util]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.33 -> 0.3.34"
+notes = "Delta is release housekeeping: version bumps, a README branch rename, miri guards on the futures 0.1 compat tests, and #[inline(always)] on waker clone/drop paths. No unsafe changes, no new capabilities, no build script."
+
 [[audits.mdbook-core]]
 who = "Paul Adamson <paul.adamson.01@gmail.com>"
 criteria = "safe-to-deploy"
