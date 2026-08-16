@@ -69,8 +69,6 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
-    # Our own playwright-rust, tracked at main for dogfooding.
-    "https://github.com/padamson/playwright-rust",
     # pdf-extract fork carrying the per-page font-cache fix (jrmuizel/pdf-extract#152).
     "https://github.com/padamson/pdf-extract",
 ]

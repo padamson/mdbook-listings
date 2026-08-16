@@ -5,6 +5,20 @@ kept moving after the book closed, so this page lists the changes that
 postdate the prose. The chapters themselves are left as the v0.1.0 record
 and do not describe what follows.
 
+## Unreleased — e2e suite back on released playwright-rs
+
+The [v0.1.1 entry below](#v011--e2e-suite-tracks-playwright-rust-main)
+records the e2e suite moving onto `playwright-rust` main to dogfood
+unreleased changes there. That arrangement is over: the suite and the
+screenshot tool now build against the released `playwright-rs` on
+crates.io. A branch dependency re-resolves on every upstream commit, so
+each commit to the fork opened dependency-update PRs here (two at a
+time, the trace crate moving in lockstep) for changes no test in this
+repo exercised. Releases still dogfood the fork — we cut them — and CI
+now derives its browser install from the crate itself rather than a
+separately pinned Playwright version, so a version bump moves the crate,
+its driver, and the browsers together.
+
 ## Unreleased — two new verify warnings for callout slips
 
 A `\{{#callout}}` directive that names no marker fails the build

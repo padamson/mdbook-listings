@@ -155,6 +155,12 @@ user-id = 1
 user-login = "alexcrichton"
 user-name = "Alex Crichton"
 
+[[publisher.glob]]
+version = "0.3.4"
+when = "2026-07-21"
+user-id = 55123
+user-login = "rust-lang-owner"
+
 [[publisher.http]]
 version = "1.4.0"
 when = "2025-11-24"
@@ -220,6 +226,21 @@ when = "2025-10-21"
 user-id = 6743
 user-login = "epage"
 user-name = "Ed Page"
+
+[[publisher.playwright-rs]]
+version = "0.15.1"
+when = "2026-08-02"
+trusted-publisher = "github:padamson/playwright-rust"
+
+[[publisher.playwright-rs-macros]]
+version = "0.1.1"
+when = "2026-08-02"
+trusted-publisher = "github:padamson/playwright-rust"
+
+[[publisher.playwright-rs-trace]]
+version = "0.1.2"
+when = "2026-08-02"
+trusted-publisher = "github:padamson/playwright-rust"
 
 [[publisher.potential_utf]]
 version = "0.1.5"
@@ -1895,11 +1916,7 @@ delta = "0.5.2 -> 0.6.3"
 notes = "New unsafe code mostly deals with lining up things for newly-supported processor intrinsics."
 aggregated-from = "https://hg.mozilla.org/mozilla-central/raw-file/tip/supply-chain/audits.toml"
 
-[[audits.playwright-rust.audits.base64]]
-who = "Paul Adamson <paul@seekingeta.ai>"
-criteria = "safe-to-deploy"
-delta = "0.22.1 -> 0.23.1"
-notes = "Delta is edition/MSRV housekeeping plus the new simd-unsafe feature (on by default): AVX2/NEON base64 kernels (Mula-Lemire algorithm) selected via runtime CPU feature detection. All unsafe is confined to src/engine/simd.rs intrinsics with loop-guard bounds checks before every load/store; invalid input falls back to the scalar decoder for exact error reporting. No new dependencies, no build script, no fs/net/process/env access. SIMD engines run the same property-test suite as the scalar engine."
+[audits.playwright-rust.audits]
 
 [[audits.zcash.audits.block-buffer]]
 who = "Jack Grigg <jack@electriccoin.co>"

@@ -68,8 +68,8 @@ enum Command {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    // playwright-rs (unreleased v0.13.0 from `padamson/playwright-rust` main)
-    // adds `#[tracing::instrument]` spans across its public async surface;
+    // playwright-rs (0.13+) carries `#[tracing::instrument]` spans across
+    // its public async surface;
     // wiring up tracing_subscriber here makes every `goto`, `evaluate_value`,
     // `screenshot`, `browser.close`, etc. log a structured span. Default
     // filter `info` keeps the top-level operations visible without

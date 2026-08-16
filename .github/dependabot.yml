@@ -20,6 +20,14 @@ updates:
       semver-major-days: 14
       semver-minor-days: 7
       semver-patch-days: 3
+      # Our own crates are exempt: the cooldown exists to let upstream vet
+      # audits land first, and our supply-chain already trusts these the
+      # moment they publish (trusted-publisher entries in
+      # supply-chain/audits.toml). Waiting would only delay dogfooding our
+      # own releases. Pattern rather than names so future siblings from
+      # the playwright-rust workspace inherit the exemption.
+      exclude:
+        - "playwright-rs*"
     groups:
       minor-and-patch:
         patterns:

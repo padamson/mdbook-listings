@@ -8,7 +8,7 @@ description = "Managed code listings for mdbook: inline callouts, freezing, and 
 repository = "https://github.com/padamson/mdbook-listings"
 categories = ["command-line-utilities", "text-processing"]
 keywords = ["mdbook", "preprocessor", "documentation", "code-listing"]
-exclude = ["book/", ".claude-plugin/", "skills/", ".claude/"]
+exclude = ["book/", ".claude-plugin/", "skills/", ".claude/", "examples/"]
 
 [dependencies]
 anyhow = "1"
@@ -31,7 +31,7 @@ futures = "0.3"
 # with the fix. Tracked in #31.
 pdf-extract = { git = "https://github.com/padamson/pdf-extract", branch = "fix/per-page-font-cache" }
 playwright-rs = { workspace = true }
-playwright-rs-trace = { git = "https://github.com/padamson/playwright-rust", branch = "main" }
+playwright-rs-trace = "0.1.2"
 predicates = "3"
 tempfile = "3"
 tokio = { workspace = true }
@@ -44,8 +44,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 members = ["tools/capture-screenshots"]
 
 # Shared by the crate and the capture-screenshots workspace tool.
-# playwright-rs tracks our own playwright-rust main to dogfood unreleased
-# changes; pin back to a crates.io version if that ever gets in the way.
+# Tracks crates.io releases rather than playwright-rust's `main`: a branch
+# dependency re-resolves on every upstream commit, so dependabot opened a PR
+# per commit (two at a time, since the trace crate moves with it) and the
+# lockfile churned for changes no test here exercised. Releases still
+# dogfood the fork — we cut them. Browser install follows the crate; see
+# examples/install-browsers.rs.
 [workspace.dependencies]
-playwright-rs = { git = "https://github.com/padamson/playwright-rust", branch = "main" }
+playwright-rs = "0.15.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

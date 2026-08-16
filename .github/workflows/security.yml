@@ -189,7 +189,7 @@ jobs:
           path: |
             ~/.cache/ms-playwright/
             drivers/
-          key: ${{ runner.os }}-playwright-${{ hashFiles('Cargo.lock', '.github/workflows/ci.yml') }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('Cargo.lock', '.github/workflows/ci.yml', 'examples/install-browsers.rs') }}
           restore-keys: |
             ${{ runner.os }}-playwright-
 
@@ -232,15 +232,10 @@ jobs:
       - name: Build book (so e2e tests find book/build/html/)
         run: mdbook build book/
 
-      - name: Set up Node (for Playwright driver)
-        uses: actions/setup-node@v7
-        with:
-          node-version: '20'
-
-      - name: Install Playwright driver + Chromium
-        # Pinned to playwright-rs's bundled PLAYWRIGHT_VERSION; see
-        # ci.yml's matching step for the full rationale.
-        run: npx --yes playwright@1.61.1 install --with-deps chromium
+      - name: Install Chromium for the bundled Playwright driver
+        # Mirrors ci.yml's matching step; the version deliberately comes
+        # from playwright-rs itself — see examples/install-browsers.rs.
+        run: cargo run --example install-browsers
 
       # Compute the right diff base for this trigger.
       # - pull_request: merge base against the PR target branch

@@ -34,15 +34,6 @@ audit-as-crates-io = false
 [policy.pdf-extract]
 audit-as-crates-io = true
 
-[policy.playwright-rs]
-audit-as-crates-io = false
-
-[policy.playwright-rs-macros]
-audit-as-crates-io = false
-
-[policy.playwright-rs-trace]
-audit-as-crates-io = false
-
 [[exemptions.adobe-cmap-parser]]
 version = "0.4.1"
 criteria = "safe-to-run"

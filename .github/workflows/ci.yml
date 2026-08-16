@@ -129,7 +129,7 @@ jobs:
           path: |
             ~/.cache/ms-playwright/
             drivers/
-          key: ${{ runner.os }}-playwright-${{ hashFiles('Cargo.lock', '.github/workflows/ci.yml') }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('Cargo.lock', '.github/workflows/ci.yml', 'examples/install-browsers.rs') }}
           restore-keys: |
             ${{ runner.os }}-playwright-
 
@@ -193,24 +193,12 @@ jobs:
       - name: Build book (HTML + PDF)
         run: mdbook build book/
 
-      - name: Set up Node (for Playwright driver)
-        uses: actions/setup-node@v7
-        with:
-          node-version: '20'
-
-      - name: Install Playwright driver + Chromium
-        # Pinned to playwright-rs's bundled PLAYWRIGHT_VERSION (see
-        # crates/playwright/build.rs in padamson/playwright-rust, which
-        # Cargo.toml tracks at branch main). Without
-        # the pin, npx resolves the latest playwright on npm, which bumps
-        # the chromium browser revision faster than playwright-rs's driver
-        # tracks it — `npx playwright install` removes the cached older
-        # chromium and downloads the newer one, then the driver fails at
-        # launch with `BrowserNotInstalled: Executable doesn't exist at
-        # .../chromium_headless_shell-<old-rev>/...` because it expects
-        # the rev it was built against. Bump this version in lockstep
-        # with playwright-rs's PLAYWRIGHT_VERSION constant.
-        run: npx --yes playwright@1.62.1 install --with-deps chromium
+      - name: Install Chromium for the bundled Playwright driver
+        # No Playwright version and no Node setup here on purpose — the
+        # browser revision follows the crate and the driver ships its own
+        # Node. Rationale lives in examples/install-browsers.rs; do not
+        # reintroduce a version pin in this step.
+        run: cargo run --example install-browsers
 
       - name: Run browser-based E2E tests
         run: cargo test --test e2e_callouts
