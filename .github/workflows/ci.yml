@@ -64,7 +64,7 @@ jobs:
           shared-key: test
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.85.11
+        uses: taiki-e/install-action@v2.86.1
         with:
           tool: cargo-nextest
 
@@ -134,7 +134,7 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install mdbook (prebuilt)
-        uses: taiki-e/install-action@v2.85.11
+        uses: taiki-e/install-action@v2.86.1
         with:
           tool: mdbook
 
@@ -284,7 +284,7 @@ jobs:
           shared-key: release-${{ matrix.target }}
 
       - name: Install parse-changelog
-        uses: taiki-e/install-action@v2.85.11
+        uses: taiki-e/install-action@v2.86.1
         with:
           tool: parse-changelog
 
