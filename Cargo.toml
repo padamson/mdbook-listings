@@ -51,5 +51,5 @@ members = ["tools/capture-screenshots"]
 # dogfood the fork — we cut them. Browser install follows the crate; see
 # examples/install-browsers.rs.
 [workspace.dependencies]
-playwright-rs = "0.15.1"
+playwright-rs = "0.16.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
