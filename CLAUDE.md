@@ -25,6 +25,25 @@ must bump the `plugin.json` version, because that version is the update gate
 for installed consumers — without a bump, `/plugin update` reports "already at
 the latest version" and the edit never reaches anyone.
 
+## playwright-rs skill is installed, not vendored
+
+The e2e suite and `tools/capture-screenshots` use playwright-rs, and
+upstream ships an authoring skill for it. Install it once per clone:
+
+```bash
+npx skills add padamson/playwright-rust -s playwright-rs-usage -a claude-code -y
+npx skills update    # refresh later
+```
+
+`skills-lock.json` (tracked) records the source; the install itself lands
+at `.claude/skills/playwright-rs-usage/` (gitignored). Do not commit a
+copy: a tracked copy drifts against the crate and — because the skills CLI
+scans `.claude/skills/` — gets republished stale to anyone running
+`npx skills add padamson/mdbook-listings`. The install tracks upstream
+main while Cargo.toml pins crates.io releases; that skew stays small
+because releases land here within days of publish, and it beats a
+tag-pinned install that `skills update` would freeze forever.
+
 ## Pre-commit hooks
 
 ```bash
