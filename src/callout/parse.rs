@@ -186,14 +186,19 @@ pub(crate) fn callouts_for_block(info: &str, block_text: &str) -> Vec<Callout> {
 
 pub(super) const ALL_COMMENT_PREFIXES: &[&str] = &["//", "#", "--"];
 
+/// Whether a diff-block line is unified-diff metadata (file headers, hunk
+/// headers, the no-newline marker) rather than a content line.
+pub(super) fn is_diff_metadata(line: &str) -> bool {
+    line.starts_with("---")
+        || line.starts_with("+++")
+        || line.starts_with("@@")
+        || line.starts_with('\\')
+}
+
 fn callouts_from_diff_block(block_text: &str) -> Vec<Callout> {
     let mut out = Vec::new();
     for (idx, raw_line) in block_text.lines().enumerate() {
-        if raw_line.starts_with("---")
-            || raw_line.starts_with("+++")
-            || raw_line.starts_with("@@")
-            || raw_line.starts_with('\\')
-        {
+        if is_diff_metadata(raw_line) {
             continue;
         }
         let Some(stripped) = raw_line.strip_prefix('+') else {
@@ -217,6 +222,30 @@ fn callouts_from_diff_block(block_text: &str) -> Vec<Callout> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn is_diff_metadata_recognizes_each_form_and_rejects_content_lines() {
+        for line in [
+            "--- a-tag",
+            "+++ b-tag",
+            "@@ -1,2 +1,2 @@",
+            "\\ No newline at end of file",
+        ] {
+            assert!(is_diff_metadata(line), "should be metadata: {line}");
+        }
+        for line in ["+# CALLOUT: x Body", "-removed", " context", "plain", ""] {
+            assert!(!is_diff_metadata(line), "should be content: {line}");
+        }
+    }
+
+    #[test]
+    fn diff_block_callout_records_its_block_line_number() {
+        let block = " context\n+// CALLOUT: added New note.\n";
+        let got = callouts_for_block("diff", block);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].label, "added");
+        assert_eq!(got[0].line, 2, "1-based line within the block");
+    }
 
     #[test]
     fn parses_label_with_body_for_hash_prefix() {

@@ -332,6 +332,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn pathdiff_walks_up_from_base_to_a_sibling_and_descends_within_it() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let base = tmp.path().join("book");
+        let sibling = tmp.path().join("src");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+        let target = sibling.join("main.rs");
+        std::fs::write(&target, "x").unwrap();
+        assert_eq!(
+            pathdiff(&target, &base),
+            Some(PathBuf::from("../src/main.rs")),
+        );
+
+        let inside = base.join("inner.rs");
+        std::fs::write(&inside, "y").unwrap();
+        assert_eq!(pathdiff(&inside, &base), Some(PathBuf::from("inner.rs")));
+    }
+
+    #[test]
     fn hex_sha256_matches_known_vector() {
         // Well-known sha256("") per FIPS 180-4.
         assert_eq!(

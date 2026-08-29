@@ -61,7 +61,8 @@ impl LineRange {
         let total = text.lines().count();
         let start_1 = self.start.unwrap_or(1).max(1);
         let end_1 = self.end.unwrap_or(total).min(total);
-        if start_1 > end_1 || total == 0 {
+        // Also covers empty text: end_1 clamps to 0 there, below any start.
+        if start_1 > end_1 {
             return "";
         }
         // Find byte offsets for line `start_1` and `end_1 + 1` (or EOF).
@@ -897,6 +898,76 @@ mod tests {
     use crate::manifest::{MANIFEST_VERSION, Manifest};
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn shift_hunk_headers_shifts_when_only_one_offset_is_nonzero() {
+        assert_eq!(
+            shift_hunk_headers("@@ -1,2 +1,2 @@\n", 5, 0),
+            "@@ -6,2 +1,2 @@\n",
+        );
+        assert_eq!(
+            shift_hunk_headers("@@ -1,2 +1,2 @@\n", 0, 5),
+            "@@ -1,2 +6,2 @@\n",
+        );
+    }
+
+    #[test]
+    fn resolve_error_source_carries_io_cause_only_for_a_missing_file() {
+        use std::error::Error;
+        let (tmp, manifest, mut directive) = fixture(b"a\n", b"b\n");
+        fs::remove_file(tmp.path().join("src/listings/right-tag.txt")).unwrap();
+        let err = resolve(&directive, &manifest, tmp.path(), tmp.path()).unwrap_err();
+        assert!(
+            err.source().is_some(),
+            "missing file should expose io cause"
+        );
+
+        directive.right = "ghost-tag".into();
+        let err = resolve(&directive, &manifest, tmp.path(), tmp.path()).unwrap_err();
+        assert!(
+            err.source().is_none(),
+            "unknown tag has no underlying cause"
+        );
+    }
+
+    #[test]
+    fn splice_error_source_exposes_the_resolve_cause() {
+        use std::error::Error;
+        let (tmp, manifest, _d) = fixture(b"a\n", b"b\n");
+        let err = splice_chapter(
+            "{{#diff left-tag ghost}}\n",
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+        )
+        .unwrap_err();
+        assert!(
+            err.source()
+                .and_then(|s| s.downcast_ref::<ResolveError>())
+                .is_some(),
+            "splice error should chain to the resolve failure",
+        );
+    }
+
+    #[test]
+    fn ranged_diff_shifts_hunks_to_each_operands_absolute_lines() {
+        // Left slice starts at line 3, right at line 4; the hunk header
+        // must carry those absolute positions, not the slice-relative 1.
+        let (tmp, manifest, _d) = fixture(b"l1\nl2\nA\nl4\n", b"r1\nr2\nr3\nB\nl4\n");
+        let out = splice_chapter(
+            "{{#diff left-tag right-tag 3:4 4:5}}\n",
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+        )
+        .unwrap();
+        assert!(
+            out.contains("@@ -3,2 +4,2 @@"),
+            "expected absolute hunk header; got:\n{out}",
+        );
+    }
 
     /// Build a tempdir book root with two frozen files plus an in-memory
     /// manifest pointing at them. `span` is unused by the resolver, so the

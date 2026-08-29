@@ -1,7 +1,9 @@
 use std::path::Path;
 
 use super::SpliceError;
-use super::parse::{ALL_COMMENT_PREFIXES, comment_prefix_for_language, parse_line};
+use super::parse::{
+    ALL_COMMENT_PREFIXES, comment_prefix_for_language, is_diff_metadata, parse_line,
+};
 
 /// Result of one `strip_marker_lines*` pass.
 #[derive(Debug)]
@@ -65,11 +67,7 @@ pub(super) fn strip_marker_lines_diff(block_text: &str) -> StripResult {
     for (idx, raw_line) in lines.iter().enumerate() {
         let line_no_newline = raw_line.strip_suffix('\n').unwrap_or(raw_line);
         // Diff metadata lines pass through unchanged.
-        if line_no_newline.starts_with("---")
-            || line_no_newline.starts_with("+++")
-            || line_no_newline.starts_with("@@")
-            || line_no_newline.starts_with('\\')
-        {
+        if is_diff_metadata(line_no_newline) {
             out.push_str(raw_line);
             emitted_count += 1;
             continue;
@@ -225,6 +223,36 @@ pub(super) fn translate_sidecar_line_to_post_strip(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strip_records_the_post_strip_line_the_badge_lands_on() {
+        let got = strip_marker_lines("key: value\n# CALLOUT: x Note.\nfoo: bar\n", "yaml");
+        // One line emitted before the marker, so the badge lands on the
+        // NEXT emitted line: post-strip line 2.
+        assert_eq!(got.post_strip_lines, vec![2]);
+        assert_eq!(got.stripped_source_lines, vec![2]);
+        assert_eq!(got.total_lines, 2);
+        assert_eq!(got.body, "key: value\nfoo: bar\n");
+    }
+
+    #[test]
+    fn diff_strip_counts_metadata_lines_toward_badge_position() {
+        // Three metadata lines pass through and count as emitted, so the
+        // added marker's badge lands on post-strip line 4.
+        let got = strip_marker_lines_diff("--- a\n+++ b\n@@ -1 +1 @@\n+# CALLOUT: x New.\n ctx\n");
+        assert_eq!(got.post_strip_lines, vec![4]);
+        assert_eq!(got.stripped_source_lines, vec![4]);
+        assert_eq!(got.total_lines, 4);
+        assert_eq!(got.body, "--- a\n+++ b\n@@ -1 +1 @@\n ctx\n");
+    }
+
+    #[test]
+    fn diff_strip_counts_content_lines_toward_badge_position() {
+        let got = strip_marker_lines_diff(" ctx\n+// CALLOUT: y B\n more\n");
+        assert_eq!(got.post_strip_lines, vec![2]);
+        assert_eq!(got.total_lines, 2);
+        assert_eq!(got.body, " ctx\n more\n");
+    }
 
     #[test]
     fn listing_tag_after_fence_finds_anchor_immediately_after_fence() {

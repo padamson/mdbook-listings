@@ -1,0 +1,48 @@
+# cargo-mutants configuration
+# Docs: https://mutants.rs/
+#
+# Location matters: cargo-mutants reads `.cargo/mutants.toml` and nothing
+# else, silently. This file lived at the repo root as `.mutants.toml`
+# (the rust-project-template convention) until 2026-08-29, and was never
+# read — every run to that date used the defaults: `cargo test`, the full
+# test suite per mutant, no exclusions.
+
+# Use nextest — much faster than `cargo test`.
+test_tool = "nextest"
+
+# Skip the browser-driven (e2e_callouts) and PDF-extraction
+# (pdf_callouts) integration binaries: they need a built book,
+# Playwright browsers, and typst-pdf fonts, none of which the mutation
+# CI job sets up. The same filter CI's test job uses. Everything else —
+# including the assert_cmd CLI tests — stays in the kill set, so
+# CLI-surface mutants don't become instant debt.
+additional_cargo_test_args = [
+    "-E",
+    "not binary(e2e_callouts) and not binary(pdf_callouts)",
+]
+
+# Keep the untested workspace tools out of the mutant set. Expressed as
+# an exclusion, not `examine_globs`: since cargo-mutants 27, CLI `-f`
+# filters COMBINE with config globs, so a config-side examine list would
+# turn every targeted `-f` run into a full sweep. Exclusions compose.
+exclude_globs = ["tools/**"]
+
+# Truly-equivalent mutants: observationally identical under every input
+# that reaches them, so no test can distinguish them without breaking a
+# public contract. Excluded rather than logged as debt.
+#
+# - SidecarCallouts::empty() is literally Self::default(); the mutation
+#   swaps one spelling for the other. The helper exists for readability.
+# - In translate_sidecar_line_to_post_strip, `<` vs `<=` differs only
+#   when block_line is itself a stripped marker line, and that case
+#   errors out at the contains() guard earlier in the same function.
+# - LineRange::slice's two `< bytes.len()` bounds only differ from `<=`
+#   when a scan cursor sits at end-of-text, and every such state either
+#   already returned via the start>end guard (ranges clamp to the line
+#   count) or produces the same empty/truncated slice through the
+#   find-None arm. Defensive bounds, unreachable difference.
+exclude_re = [
+    "replace SidecarCallouts::empty -> Self with Default::default",
+    "replace < with <= in translate_sidecar_line_to_post_strip",
+    "replace < with <= in LineRange::slice",
+]

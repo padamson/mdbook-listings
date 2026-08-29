@@ -306,6 +306,65 @@ mod tests {
     use super::*;
 
     #[test]
+    fn from_renderer_name_maps_both_supported_renderers_and_rejects_others() {
+        assert_eq!(
+            SupportedRenderer::from_renderer_name("html"),
+            Some(SupportedRenderer::Html)
+        );
+        assert_eq!(
+            SupportedRenderer::from_renderer_name("typst-pdf"),
+            Some(SupportedRenderer::TypstPdf)
+        );
+        assert_eq!(SupportedRenderer::from_renderer_name("epub"), None);
+    }
+
+    #[test]
+    fn align_option_renders_data_attr_only_for_left_and_right() {
+        let content = concat!(
+            "```rust\n",
+            "// CALLOUT: l --align=left L.\n",
+            "// CALLOUT: r --align=right R.\n",
+            "// CALLOUT: c --align=center C.\n",
+            "fn x() {}\n",
+            "```\n",
+        );
+        let out = splice_chapter(content, SupportedRenderer::Html, &SidecarCallouts::empty())
+            .expect("splice");
+        assert!(out.contains(r#"data-callout-align="left""#), "got:\n{out}");
+        assert!(out.contains(r#"data-callout-align="right""#), "got:\n{out}");
+        assert_eq!(
+            out.matches("data-callout-align").count(),
+            2,
+            "unrecognised align values must render no attribute; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn pdf_callout_list_separates_entries_only_between_them() {
+        let one = splice_chapter(
+            "```rust\n// CALLOUT: a A.\nfn x() {}\n```\n",
+            SupportedRenderer::TypstPdf,
+            &SidecarCallouts::empty(),
+        )
+        .expect("splice");
+        assert!(
+            !one.contains("> \n"),
+            "single callout has no separator line; got:\n{one}",
+        );
+        let two = splice_chapter(
+            "```rust\n// CALLOUT: a A.\n// CALLOUT: b B.\nfn x() {}\n```\n",
+            SupportedRenderer::TypstPdf,
+            &SidecarCallouts::empty(),
+        )
+        .expect("splice");
+        assert_eq!(
+            two.matches("> \n").count(),
+            1,
+            "exactly one separator, between the two entries; got:\n{two}",
+        );
+    }
+
+    #[test]
     fn splice_chapter_html_cross_ref_to_context_only_diff_label_resolves_to_include() {
         // A callout that appears only on a context line in a diff (no badge
         // there) but also in a full listing still resolves a prose

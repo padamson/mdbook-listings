@@ -71,10 +71,17 @@ in `security.yml`). The full-codebase job (`mutation-testing`) is
 manual-only via `workflow_dispatch` — use it for occasional audits or
 big refactors, never on a schedule.
 
-Scope the baseline with `.mutants.toml` (test_tool = nextest, --lib
-only, examine_globs = src/). Surviving `MISSED` mutations are logged
-in [`MUTATION_DEBT.md`](MUTATION_DEBT.md); add new findings there
-when they surface and cross them out as tests close the gaps.
+Configuration lives in `.cargo/mutants.toml` — that exact path;
+cargo-mutants reads no other location and won't complain about a file
+elsewhere. It sets nextest, skips the browser/PDF integration binaries
+(the same filter CI's test job uses), and lists the known-equivalent
+mutants under `exclude_re` with the proof for each.
+
+A surviving `MISSED` mutation is a missing test: write the test in the
+same commit, or if it's provably equivalent under all reachable inputs,
+add it to `exclude_re` with the reasoning. CI's `mutation-testing-diff`
+job exits non-zero on any MISSED, so per-diff findings can't be
+deferred.
 
 ## Building the book locally
 
