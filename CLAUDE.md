@@ -81,7 +81,9 @@ A surviving `MISSED` mutation is a missing test: write the test in the
 same commit, or if it's provably equivalent under all reachable inputs,
 add it to `exclude_re` with the reasoning. CI's `mutation-testing-diff`
 job exits non-zero on any MISSED, so per-diff findings can't be
-deferred.
+deferred. TIMEOUT outcomes pass (a mutant that hangs the tests is
+detected, just not by an assertion); the script and workflow both
+verify `missed.txt` is empty before treating exit 3 as success.
 
 ## Building the book locally
 

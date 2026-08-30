@@ -126,10 +126,19 @@ jobs:
 
       # `.cargo/mutants.toml` scopes the run: nextest, browser/PDF test
       # binaries filtered out, known-equivalent mutants excluded.
+      # Exit 3 (timeouts, none missed) passes: a hung mutant is a
+      # detection — see the matching logic in scripts/mutants.sh.
       - name: Run mutation testing
         env:
           PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: 1
-        run: cargo mutants
+        run: |
+          rc=0
+          cargo mutants || rc=$?
+          if [ "$rc" -eq 3 ] && [ ! -s mutants.out/missed.txt ]; then
+            echo "timeouts only — treating as pass"
+            rc=0
+          fi
+          exit $rc
 
       - name: Upload mutation report
         if: always()

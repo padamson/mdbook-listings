@@ -261,17 +261,15 @@ fn ensure_gitignore_is_noop_when_complete() {
 }
 
 // ---------------------------------------------------------------------
-// Targeted regression tests that close out MUTATION_DEBT.md entries
-// from `scripts/mutants.sh 6e07b6a~1`. Each one pins a boolean path
-// the prior tests left ambiguous, so the corresponding mutation in
-// src/install.rs is now CAUGHT.
+// Targeted regression tests from mutation testing. Each one pins a
+// boolean path the prior tests left ambiguous, so the corresponding
+// mutation in src/install.rs is caught.
 // ---------------------------------------------------------------------
 
 /// `ensure_assets_fresh` returns `true` when only ONE asset was stale.
 /// Without this test, the return expression `!css_already_correct ||
 /// !js_already_correct` could be mutated to `&&` and survive — the
 /// existing tests only exercise both-stale or both-correct.
-/// Closes MUTATION_DEBT.md src/install.rs L57:29.
 #[test]
 fn ensure_assets_fresh_reports_write_when_only_one_asset_is_stale() {
     let tmp = TempDir::new().expect("tempdir");
@@ -291,7 +289,7 @@ fn ensure_assets_fresh_reports_write_when_only_one_asset_is_stale() {
 /// content lacks a trailing one. Without this test, the
 /// `!new_contents.ends_with('\n')` check could be mutated (delete `!`
 /// or swap `&&` for `||`) and the entries would be jammed onto the
-/// previous line. Closes MUTATION_DEBT.md src/install.rs L77:8 and
+/// previous line.
 /// L77:36 (both `delete !` mutations on the same line).
 #[test]
 fn ensure_gitignore_inserts_separator_when_existing_file_lacks_trailing_newline() {
@@ -312,8 +310,7 @@ fn ensure_gitignore_inserts_separator_when_existing_file_lacks_trailing_newline(
 /// `ensure_gitignore` does NOT insert a second newline when the
 /// existing content already ends with one. Without this test, the
 /// `&&` in the separator-insert guard could be mutated to `||` and
-/// produce a stray blank line. Closes MUTATION_DEBT.md src/install.rs
-/// L77:33 (`replace && with ||`).
+/// produce a stray blank line.
 #[test]
 fn ensure_gitignore_does_not_double_newline_when_existing_file_ends_with_newline() {
     let tmp = TempDir::new().expect("tempdir");
@@ -332,8 +329,7 @@ fn ensure_gitignore_does_not_double_newline_when_existing_file_ends_with_newline
 /// `install` reports `Installed` when only `book.toml` needed
 /// rewriting (assets already match bundled bytes, `.gitignore`
 /// already complete). Catches the `||` → `&&` mutation on the first
-/// operand in the install-outcome decision. Closes
-/// MUTATION_DEBT.md src/install.rs L119:24.
+/// operand in the install-outcome decision.
 #[test]
 fn install_reports_installed_when_only_book_toml_needs_change() {
     let book = MinimalFixtureBook::new();
@@ -359,8 +355,7 @@ fn install_reports_installed_when_only_book_toml_needs_change() {
 /// `install` reports `Installed` when only the asset bytes needed
 /// refreshing (book.toml + `.gitignore` already correct). Catches the
 /// `||` → `&&` mutation on the second-operand pair in the
-/// install-outcome decision. Closes MUTATION_DEBT.md src/install.rs
-/// L119:42.
+/// install-outcome decision.
 #[test]
 fn install_reports_installed_when_only_assets_need_change() {
     let book = MinimalFixtureBook::new();
@@ -386,8 +381,7 @@ fn install_reports_installed_when_only_assets_need_change() {
 /// error so the author isn't told to re-init when the real problem is
 /// e.g. unreadable bytes). Without this test, the `match` guard
 /// `e.kind() == ErrorKind::NotFound` could be mutated to `true` and
-/// every IO error would silently route to the NotFound bail. Closes
-/// MUTATION_DEBT.md src/install.rs L94:19.
+/// every IO error would silently route to the NotFound bail.
 #[test]
 fn install_routes_non_notfound_io_errors_to_the_generic_arm() {
     let book = MinimalFixtureBook::new();

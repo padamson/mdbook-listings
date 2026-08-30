@@ -61,4 +61,16 @@ if [[ ! -s "$DIFF" ]]; then
 fi
 
 echo "mutating changes in ${BASE}..HEAD ($(wc -l < "$DIFF") diff lines)"
-exec cargo mutants --in-diff "$DIFF" "$@"
+rc=0
+cargo mutants --in-diff "$DIFF" "$@" || rc=$?
+
+# Exit 3 means some mutants timed out and none were missed. A timeout
+# here is a detection: the known cases are FencedBlocks::next cursor
+# mutations that turn the iterator into an infinite loop, which no
+# assertion can catch faster than the harness's timeout. Only treat it
+# as a pass when missed.txt confirms nothing actually survived.
+if [[ $rc -eq 3 && ! -s mutants.out/missed.txt ]]; then
+  echo "timeouts only (hung mutants are detections, not gaps) — treating as pass"
+  rc=0
+fi
+exit $rc
