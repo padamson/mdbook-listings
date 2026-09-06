@@ -106,6 +106,20 @@ With `number-listings` on (see [Numbering](#numbering-and-the-list-of-listings)
 below), the caption renders as `Listing N.M — caption`; with numbering off, a
 captioned listing still gets its caption line, just unnumbered.
 
+Inline markdown renders inside a caption — backticks become code, and
+emphasis and links work — in the caption line, the List of Listings, and the
+PDF. Naming an identifier in code font is the common case:
+
+````markdown
+{{#include listings/foo.rs caption="Adding `toml_edit` as a runtime dependency"}}
+````
+
+A caption is inline content only: one that happens to open with a block
+marker (`1.`, `- `, `# `, `> `) stays literal text rather than turning into a
+list or heading. Raw HTML is escaped to visible text rather than passed
+through. The value is still delimited by the first `"`, so a caption cannot
+contain a double quote.
+
 That covers the mechanics. For what to write in one — length, head word,
 the anti-patterns, and the house choices a book has to make once — see
 [captions.md](captions.md).

@@ -208,7 +208,14 @@ fn render_caption(
     // text instead of a standalone block above the <pre>.
     match renderer {
         SupportedRenderer::Html => {
-            let caption = caption_escaped.map(str::to_string);
+            // The caption div is a raw HTML block, so CommonMark never looks
+            // inside it -- backticks an author wrote would render as literal
+            // backticks. Render the inline markdown here instead, the way the
+            // markdown-emitting index and the PDF backend already get for
+            // free. Unescape first: the caption round-trips through an anchor
+            // attribute, and re-escaping an already-escaped entity would
+            // double it.
+            let caption = caption_escaped.map(crate::callout::render_caption_markdown);
             let text = label_text(number, caption.as_deref());
             // A numbered listing carries an id so the List-of-Listings index
             // can link to it; an unnumbered caption has no link target.
@@ -218,7 +225,7 @@ fn render_caption(
             ))
         }
         SupportedRenderer::TypstPdf => {
-            let caption = caption_escaped.map(html_unescape);
+            let caption = caption_escaped.map(crate::callout::html_unescape);
             let text = label_text(number, caption.as_deref());
             Some(format!("**{text}**\n\n"))
         }
@@ -279,12 +286,12 @@ fn render_provenance(
         SupportedRenderer::TypstPdf => {
             let tags = tags
                 .iter()
-                .map(|t| format!("`{}`", html_unescape(t)))
+                .map(|t| format!("`{}`", crate::callout::html_unescape(t)))
                 .collect::<Vec<_>>()
                 .join(" → ");
             let line = match (source, tags.is_empty()) {
-                (Some(s), false) => format!("`{}` ({tags})", html_unescape(s)),
-                (Some(s), true) => format!("`{}`", html_unescape(s)),
+                (Some(s), false) => format!("`{}` ({tags})", crate::callout::html_unescape(s)),
+                (Some(s), true) => format!("`{}`", crate::callout::html_unescape(s)),
                 (None, _) => tags,
             };
             Some(format!("{line}\n\n"))
@@ -361,16 +368,6 @@ fn join_sources(left: Option<String>, right: Option<String>) -> Option<String> {
 fn opener_line_start(content: &str, body_start: usize) -> usize {
     let newline = body_start.saturating_sub(1);
     content[..newline].rfind('\n').map(|i| i + 1).unwrap_or(0)
-}
-
-/// Reverse [`crate::callout::html_escape`]'s five entities. `&amp;` last so a
-/// value that escaped to e.g. `&amp;lt;` restores to `&lt;`, not `<`.
-fn html_unescape(s: &str) -> String {
-    s.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#123;", "{")
-        .replace("&amp;", "&")
 }
 
 #[cfg(test)]
@@ -613,6 +610,101 @@ mod tests {
     }
 
     #[test]
+    fn html_caption_renders_inline_markdown() {
+        // The caption div is a raw HTML block, so without explicit rendering
+        // an author's backticks reach the reader as literal backticks. The
+        // guidance in the plugin skill tells authors to name identifiers in
+        // code font, so the tool has to honour it.
+        let content = include_block("a", Some("Adding `toml_edit` as a dependency"));
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
+        assert!(
+            out.contains("Listing 5.1 — Adding <code>toml_edit</code> as a dependency"),
+            "backticks must become code, not survive literally; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn html_caption_does_not_double_escape_an_entity() {
+        // Captions round-trip through an anchor attribute HTML-escaped, so
+        // rendering markdown over the escaped form would turn `&lt;` into
+        // `&amp;lt;` and show the entity to the reader.
+        let content = include_block("a", Some("Handling &lt;T&gt; bounds"));
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
+        assert!(
+            out.contains("Handling &lt;T&gt; bounds"),
+            "entity must survive one round of escaping, not two; got:\n{out}"
+        );
+        assert!(!out.contains("&amp;lt;"), "double-escaped; got:\n{out}");
+    }
+
+    #[test]
+    fn html_caption_neutralises_raw_html() {
+        // Escaped the way the include splicer stores it on the anchor, so the
+        // test exercises the real unescape-then-render round trip.
+        let escaped = crate::callout::html_escape("A <script>alert(1)</script> caption");
+        let content = include_block("a", Some(&escaped));
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
+        let div = out
+            .split("<div class=\"listing-caption\"")
+            .nth(1)
+            .and_then(|s| s.split("</div>").next())
+            .expect("caption div");
+        assert!(
+            !div.contains("<script>"),
+            "raw html in a caption must not reach the page; got:\n{div}"
+        );
+        assert!(
+            div.contains("&lt;script&gt;"),
+            "it should render as visible text instead; got:\n{div}"
+        );
+    }
+
+    #[test]
+    fn a_caption_that_looks_like_a_block_stays_literal_text() {
+        // A caption is one quoted string the author cannot restructure, so a
+        // caption that happens to open with a block marker must not become a
+        // list, heading or blockquote inside the caption element.
+        for (caption, forbidden) in [
+            ("1. Setup step", "<ol"),
+            ("- and + operators", "<ul"),
+            ("# Not a heading", "<h1"),
+            ("> redirect", "<blockquote"),
+        ] {
+            // Escaped as the splicer stores it: `anchor_after_fence` bounds
+            // its attribute scan at the first `>`, so a caption carrying one
+            // only survives the round trip because it arrives escaped.
+            let escaped = crate::callout::html_escape(caption);
+            let content = include_block("a", Some(&escaped));
+            let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
+            let div = out
+                .split("<div class=\"listing-caption\"")
+                .nth(1)
+                .and_then(|s| s.split("</div>").next())
+                .expect("caption div");
+            assert!(
+                !div.contains(forbidden),
+                "caption {caption:?} must stay literal, got:\n{div}"
+            );
+            assert!(
+                div.contains(&escaped),
+                "caption {caption:?} text must survive, got:\n{div}"
+            );
+        }
+    }
+
+    #[test]
+    fn inline_markdown_still_renders_alongside_the_block_guard() {
+        // The guard must not be so eager that ordinary inline markup stops
+        // working -- emphasis and links are inline content.
+        let content = include_block("a", Some("Using *emphasis* and `code`"));
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
+        assert!(
+            out.contains("Using <em>emphasis</em> and <code>code</code>"),
+            "got:\n{out}"
+        );
+    }
+
+    #[test]
     fn subsection_number_prefixes_listing() {
         let content = include_block("a", None);
         let (out, _) = splice_chapter(&content, Some("5.2"), true, false, Html);
@@ -747,7 +839,9 @@ mod tests {
 
     #[test]
     fn html_keeps_caption_escaped() {
-        // Caption arrives HTML-escaped on the anchor; HTML text wants it as-is.
+        // Caption arrives HTML-escaped on the anchor and is unescaped before
+        // the markdown pass re-escapes it, so entities must come out the
+        // far side unchanged rather than doubled.
         let content = include_block("a", Some("A &amp; B &lt;t&gt;"));
         let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
         assert!(
@@ -769,7 +863,10 @@ mod tests {
 
     #[test]
     fn html_unescape_reverses_all_five_entities() {
-        assert_eq!(html_unescape("&amp;&lt;&gt;&quot;&#123;"), "&<>\"{");
+        assert_eq!(
+            crate::callout::html_unescape("&amp;&lt;&gt;&quot;&#123;"),
+            "&<>\"{"
+        );
     }
 
     #[test]

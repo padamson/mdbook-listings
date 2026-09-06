@@ -60,7 +60,22 @@ impl SidebarMode {
 struct ManifestChapter<'a> {
     name: &'a str,
     path: String,
-    listings: &'a [ListingRef],
+    listings: Vec<ManifestListing<'a>>,
+}
+
+/// One listing as the sidebar's JSON sees it. Distinct from [`ListingRef`]
+/// for one reason: the sidebar builds its label with `innerHTML`, so its
+/// caption has to arrive as rendered HTML, while the index below emits
+/// markdown and wants the author's source. Rendering once here keeps the
+/// caption line, the index and the sidebar showing the same thing.
+#[derive(serde::Serialize)]
+struct ManifestListing<'a> {
+    number: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    caption: Option<String>,
+    id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label: Option<&'a str>,
 }
 
 /// Rewrite a chapter's source path to its rendered page: `ch03.md` ->
@@ -94,7 +109,19 @@ pub fn render_manifest(chapters: &[ChapterListings], mode: SidebarMode) -> Strin
         .map(|ch| ManifestChapter {
             name: &ch.name,
             path: html_path(&ch.path),
-            listings: &ch.listings,
+            listings: ch
+                .listings
+                .iter()
+                .map(|l| ManifestListing {
+                    number: &l.number,
+                    caption: l
+                        .caption
+                        .as_deref()
+                        .map(crate::callout::render_caption_markdown),
+                    id: &l.id,
+                    label: l.label.as_deref(),
+                })
+                .collect(),
         })
         .collect();
     if view.is_empty() {
@@ -311,6 +338,23 @@ mod tests {
         let p3 = out.find("Freeze a listing").unwrap();
         let p5 = out.find("Render callouts").unwrap();
         assert!(p3 < p5, "groups in document order; got:\n{out}");
+    }
+
+    #[test]
+    fn manifest_caption_is_rendered_html_for_the_sidebar() {
+        // The append sidebar builds its label with innerHTML, so the caption
+        // has to arrive rendered -- otherwise one caption renders three
+        // different ways across the caption line, the index and the sidebar.
+        let chapters = vec![ChapterListings {
+            name: "Ch".into(),
+            path: "ch.md".into(),
+            listings: vec![listing("1.1", Some("Adding `toml_edit`"), "listing-1-1")],
+        }];
+        let out = render_manifest(&chapters, SidebarMode::Append);
+        assert!(
+            out.contains(r#""caption":"Adding <code>toml_edit</code>""#),
+            "sidebar caption must be rendered HTML; got:\n{out}"
+        );
     }
 
     #[test]

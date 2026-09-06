@@ -367,7 +367,7 @@ The JS recalcs on `DOMContentLoaded` and on `requestAnimationFrame`
 after every `resize` event, so dragging the window edge updates
 the side/clamp choice live.
 
-The full JS file (frozen as `listings-js-v1`):
+The full JS file:
 
 ```js
 {{#include listings/listings-js-v1.js}}

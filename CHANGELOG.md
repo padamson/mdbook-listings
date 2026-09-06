@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- **A caption's inline markdown now renders in HTML.** ``caption="Adding
+  `toml_edit` as a dependency"`` reached the reader with literal backticks,
+  because the caption is emitted inside a raw HTML block that CommonMark
+  never looks into. The List of Listings (which is emitted as markdown) and
+  the PDF backend already rendered it, so the surfaces disagreed; the
+  sidebar's `"append"` rung, which builds its label from a JSON manifest,
+  disagreed with both. Backticks, emphasis and links now render the same way
+  in all four. A caption that happens to open with a block marker (`1.`,
+  `- `, `# `, `> `) stays literal text rather than becoming a list or heading
+  inside the caption, and raw HTML is neutralised to visible text, the same
+  rule callout bodies already follow.
+
 ### Added
 - **Listings can show where they came from.** With
   `[preprocessor.listings] show-listing-provenance`, each listing renders a

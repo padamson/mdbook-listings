@@ -15,7 +15,7 @@ mod strip;
 pub(crate) use parse::{
     Callout, callouts_for_block, comment_prefix_for_extension, lang_for_extension, parse_callouts,
 };
-pub(crate) use render_html::html_escape;
+pub(crate) use render_html::{html_escape, html_unescape, render_caption_markdown};
 pub(crate) use sidecar::SidecarCallouts;
 
 use parse::is_valid_label;

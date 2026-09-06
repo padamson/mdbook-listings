@@ -712,8 +712,7 @@ already dedup'd via the existing `emitted_anchor: HashSet<String>`,
 but the body div's id was not. Fix in `src/callout.rs`: lockstep
 dedup of the body div's `id` and the button's `aria-describedby`
 against the same `is_first_occurrence` boolean — callout
-{{#callout body-id-dedup}}. The diff against `src/callout.rs`
-(v5 → v6) shows the splicer change:
+{{#callout body-id-dedup}}. The splicer change:
 
 {{#diff callout-v5 callout-v6}}
 

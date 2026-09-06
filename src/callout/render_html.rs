@@ -193,6 +193,73 @@ pub(crate) fn html_escape(s: &str) -> String {
         .replace('{', "&#123;")
 }
 
+/// Reverse [`html_escape`]'s five entities. `&amp;` last so a
+/// value that escaped to e.g. `&amp;lt;` restores to `&lt;`, not `<`.
+pub(crate) fn html_unescape(s: &str) -> String {
+    s.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#123;", "{")
+        .replace("&amp;", "&")
+}
+
+/// Render a caption's markdown, but only when the caption is inline content.
+///
+/// A caption is one quoted string an author cannot restructure, so a caption
+/// that happens to open with a block marker — `1. Setup step`, `- and +
+/// operators`, `# Not a heading`, `> redirect` — must stay literal text
+/// rather than become a list, heading or blockquote inside the caption
+/// element. Anything that is genuinely inline (code spans, emphasis, links)
+/// renders.
+pub(crate) fn render_caption_markdown(caption_escaped: &str) -> String {
+    // Captions round-trip through an anchor attribute HTML-escaped. Undo that
+    // first so the markdown parser sees the author's source and re-escapes it
+    // exactly once; rendering over the escaped form would double every entity.
+    let source = html_unescape(caption_escaped);
+    if is_inline_only(&source) {
+        render_inline_markdown(&source)
+    } else {
+        html_escape(&source)
+    }
+}
+
+/// Whether `s` parses as a single paragraph of inline content. Allow-list
+/// rather than block-list: a markdown construct this doesn't know about is
+/// treated as block-level and falls back to literal text, which is the safe
+/// direction for a caption.
+fn is_inline_only(s: &str) -> bool {
+    use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+    let mut paragraphs = 0;
+    for event in Parser::new(s) {
+        match event {
+            Event::Start(Tag::Paragraph) => paragraphs += 1,
+            Event::Start(
+                Tag::Emphasis
+                | Tag::Strong
+                | Tag::Strikethrough
+                | Tag::Link { .. }
+                | Tag::Image { .. },
+            )
+            | Event::End(
+                TagEnd::Paragraph
+                | TagEnd::Emphasis
+                | TagEnd::Strong
+                | TagEnd::Strikethrough
+                | TagEnd::Link
+                | TagEnd::Image,
+            )
+            | Event::Text(_)
+            | Event::Code(_)
+            | Event::Html(_)
+            | Event::InlineHtml(_)
+            | Event::SoftBreak
+            | Event::HardBreak => {}
+            _ => return false,
+        }
+    }
+    paragraphs <= 1
+}
+
 // Render `body` as inline markdown (backticks → <code>, *em*, **strong**,
 // [text](url)) for emission into the callout overlay popover.
 fn render_inline_markdown(body: &str) -> String {
@@ -218,6 +285,24 @@ fn render_inline_markdown(body: &str) -> String {
 mod tests {
     use super::*;
     use crate::callout::{SupportedRenderer, splice_chapter};
+
+    #[test]
+    fn a_multi_paragraph_caption_stays_literal() {
+        // A directive's closing braces may sit on a later line, so a caption
+        // can carry a blank line. Two paragraphs are not inline content, and
+        // rendering them would put block markup inside the caption element.
+        let out = render_caption_markdown("First para\n\nSecond para");
+        assert!(!out.contains("<p>"), "no paragraph markup; got: {out}");
+        assert_eq!(out, "First para\n\nSecond para");
+    }
+
+    #[test]
+    fn a_single_paragraph_caption_still_renders_its_inline_markup() {
+        assert_eq!(
+            render_caption_markdown("Adding `toml_edit`"),
+            "Adding <code>toml_edit</code>"
+        );
+    }
 
     #[test]
     fn splice_chapter_html_strips_markers_and_emits_overlay_with_badges() {
