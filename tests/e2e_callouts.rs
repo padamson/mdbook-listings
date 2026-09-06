@@ -1240,7 +1240,7 @@ async fn callout_badges_place_correctly_under_safari_boundary_rect_semantics() {
 async fn listing_ref_renders_as_link_to_current_number() {
     with_traced_chapter(
         "listing_ref_renders_as_link_to_current_number",
-        "changes-since-0.1.0",
+        "reading-this-book",
         |page| async move {
             let verdict: String = page
                 .evaluate_value(

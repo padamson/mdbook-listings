@@ -74,7 +74,7 @@ primitive) plus a wrap-up chore:
 | 6 | `live:<path>` operand (initial AC 7). Recognised in either operand position; the resolver reads the live file from disk relative to `book_root`. |
 | 7 (refactor) | Remove `parse_escapes`, the escape branch in `splice_chapter`, and the matching tests — dead code in the real mdbook pipeline. Tidy duplication that emerged across slices 2–6. |
 | 8 | Tighten ACs 6 and 7 in response to dogfooding. Inline code spans (`` `…` ``) join fenced blocks as a directive-skip context (AC 6) — `\{{#diff a b}}` in inline backticks no longer crashes the build. `live:<path>` resolution moves from book-root-relative to chapter-source-relative (AC 7), matching mdbook's `\{{#include}}` convention. Both come from real friction points hit while writing this very chapter. |
-| wrap-up | Update [`ROADMAP.md`](https://github.com/padamson/mdbook-listings/blob/main/ROADMAP.md) to mark the diff primitive shipped. |
+| wrap-up | Update `ROADMAP.md` to mark the diff primitive shipped. |
 
 ## Outside-in narrative
 
@@ -514,7 +514,7 @@ reads on its own.
 ```admonish note title="Since v0.1.0: context window"
 The `context=N` argument is a v0.1.1 addition, used on the diff just below.
 It sets the unified-diff context radius (default 3). See
-[Changes since v0.1.0](changes-since-0.1.0.md).
+[Reading this book](reading-this-book.md).
 ```
 
 {{#diff main-v4 main-v5 context=6}}

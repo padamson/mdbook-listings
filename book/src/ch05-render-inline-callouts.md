@@ -15,7 +15,7 @@ document, before v0.1.1 added listing numbers. On the current build
 every listing carries a `Listing N.M` label and each callout badge is
 scoped to it (`5.3.1`), so the live render above each image shows scoped
 badges while the image still shows bare ordinals. See
-[Changes since v0.1.0](changes-since-0.1.0.md).
+[Reading this book](reading-this-book.md).
 ```
 
 ## Story

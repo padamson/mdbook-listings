@@ -27,28 +27,33 @@ before = ["admonish", "links"]
 # Dogfood the v0.1.1 numbering feature: every listing gets a "Listing N.M"
 # label and callout badges scope to it (5.3.1). The prose and the captured
 # screenshots predate this and still describe bare ordinals; see the
-# "Changes since v0.1.0" errata.
+# "Reading this book" page.
 number-listings = true
 # Dogfood the List-of-Listings index: the `{{#list-of-listings}}` marker on
 # the back-matter page collects every numbered listing book-wide into a linked
-# index. Post-v0.1.0; see the "Changes since v0.1.0" errata.
+# index. Post-v0.1.0; see the "Reading this book" page.
 list-of-listings = true
 # Dogfood the sidebar variant: "nested" injects each listing into mdbook's
 # nav tree, under the chapter it belongs to (built client-side from an inline
 # manifest). "append" is the theme-independent fallback rung. Post-v0.1.0;
-# see the "Changes since v0.1.0" errata.
+# see the "Reading this book" page.
 list-of-listings-sidebar = "nested"
 # Dogfood the provenance line: each listing names the `source` path from
 # listings.toml, then its tag as a pill, on a muted line under the caption. This book is the
 # case the feature was filed for -- it freezes ../src/main.rs sixteen times
 # and ../tests/e2e_callouts.rs twelve, so until now nothing on the page said
 # which file, or which iteration of it, a reader was looking at. Post-v0.1.0;
-# see the "Changes since v0.1.0" errata.
+# see the "Reading this book" page.
 show-listing-provenance = true
 
 [output.html]
 additional-css = ["./mdbook-admonish.css", "./mdbook-listings.css"]
 additional-js = ["./mdbook-listings.js"]
+
+# The errata page was renamed when it stopped being a second changelog. The
+# old URL is public and linked from elsewhere, so it keeps resolving.
+[output.html.redirect]
+"/changes-since-0.1.0.html" = "reading-this-book.html"
 
 # Requires `cargo install mdbook-typst-pdf`. `pdf = true` makes it actually
 # compile to PDF; without it, the renderer is a no-op (it only emits a `.typ`

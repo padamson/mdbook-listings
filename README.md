@@ -41,7 +41,8 @@ mdbook-listings --help
 
 Full documentation at <https://padamson.github.io/mdbook-listings/>.
 
-What's planned beyond what's shipped: see [ROADMAP.md](ROADMAP.md).
+What's planned beyond what's shipped: see
+[Future Work](https://padamson.github.io/mdbook-listings/ch09-future-work.html).
 
 ## Claude Code plugin
 
