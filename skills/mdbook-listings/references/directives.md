@@ -154,6 +154,9 @@ change:
 A malformed value (`context=x`) falls back to the default rather than dropping
 the directive.
 
+`{{#diff}}` also accepts `show-provenance="true|false"`, as `{{#include}}`
+does — see [`show-listing-provenance`](#show-listing-provenance).
+
 ### `live:` operand
 
 Either operand may be `live:<path>` to diff a frozen listing against a file on
@@ -258,6 +261,67 @@ badges scope to the listing number, as described above.
 mdbook hands suffix chapters no section number. Badges scope to `A.1.1`,
 and the index and `{{#listing-ref}}` pick the letter up. Other suffix
 chapters (Introduction, this index page) stay unnumbered.
+
+### `show-listing-provenance`
+
+```toml
+[preprocessor.listings]
+show-listing-provenance = true
+```
+
+Renders a muted line beneath each listing's caption naming where its bytes
+**came from** and what the listing **is**:
+
+```
+Listing 1.1 — Pairing nine questions with the records their answers must reach
+../data/combustion-benchmark.yaml  (combustion-benchmark-v1)
+```
+
+The path comes first, and is the manifest's `source` field — the file a
+reader can go and open, not the frozen copy under `src/listings/`, which is
+freezing's bookkeeping. Leading with it follows every comparable toolchain:
+the Rust Book prints `Filename: src/main.rs` above the code, and Docusaurus
+and Material for MkDocs put the filename in the code block's title bar.
+
+The tag follows, rendered as a pill. It is the manifest's primary key and the
+tool's own derived name (`<basename>-v<N>`), so it carries the artifact *and*
+which iteration this is. No documentation toolchain has a precedent for
+showing a snapshot revision beside a listing, so it is styled as metadata
+about the path rather than as a second path.
+
+Without this, the caption is the only place a listing's identity can live, so
+a book that freezes one file once per authoring step ends up spending its
+captions on saying which artifact each listing is. See
+[captions.md](captions.md) for what that frees the caption to do instead.
+
+A `{{#diff}}` renders both operands as two pills (`(b-v1) → (b-v2)`) and
+collapses the path to one when both tags were frozen from the same file,
+which is the usual case:
+
+```
+../src/callout.rs  (callout-v9) → (callout-v10)
+```
+
+A `live:<path>` operand contributes the live path itself. A tag the manifest
+does not carry contributes no path, and the line shows the tag alone.
+
+The PDF backend has no pill, so it parenthesises the tag instead:
+`` `../data/combustion-benchmark.yaml` (`combustion-benchmark-v1`) ``.
+
+The List-of-Listings index stays caption-only — its entries are the one place
+a caption has to stand alone, and paths there would bury it.
+
+**Per-directive override.** `show-provenance="false"` suppresses the line for
+one listing in a book that shows them; `show-provenance="true"` turns it on
+for one listing in a book that does not:
+
+````markdown
+{{#include listings/scratch-v1.rs show-provenance="false"}}
+{{#diff schema-v2 schema-v3 show-provenance="true"}}
+````
+
+A value that is neither `true` nor `false` is ignored, leaving the book-level
+setting to decide.
 
 ### `{{#list-of-listings}}` — book-wide index
 

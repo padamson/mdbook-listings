@@ -22,6 +22,14 @@ struct Anchor {
     /// The `data-listing-label` value — the listing's stable cross-reference
     /// name, still HTML-escaped as stored on the anchor.
     label: Option<String>,
+    /// What the listing *is*: its tag, or both tags for a diff. Frees the
+    /// caption from carrying identity. Empty when the anchor names none.
+    tags: Vec<String>,
+    /// Where the bytes came from: the manifest `source` path, or both paths
+    /// when a diff's operands disagree. Still HTML-escaped.
+    source: Option<String>,
+    /// `show-provenance="..."` on the directive, overriding the book flag.
+    show_provenance: Option<bool>,
 }
 
 /// A numbered listing, surfaced for the book-wide List-of-Listings index.
@@ -59,6 +67,7 @@ pub fn splice_chapter(
     content: &str,
     prefix: Option<&str>,
     number_listings: bool,
+    show_listing_provenance: bool,
     renderer: SupportedRenderer,
 ) -> (String, Vec<ListingRef>) {
     // (opener_start, anchor) for each block immediately followed by a locator
@@ -89,13 +98,23 @@ pub fn splice_chapter(
             _ => None,
         };
         let id = number.as_deref().map(listing_id);
-        if let Some(element) = render_caption(
+        // Caption, then provenance, then the bytes -- the order a reader
+        // meets them: what this shows, what it is and where it lives, the code.
+        let mut chrome = render_caption(
             number.as_deref(),
             id.as_deref(),
             anchor.caption.as_deref(),
             renderer,
-        ) {
-            edits.push((*opener_start, element));
+        )
+        .unwrap_or_default();
+        if anchor.show_provenance.unwrap_or(show_listing_provenance)
+            && let Some(element) =
+                render_provenance(anchor.source.as_deref(), &anchor.tags, renderer)
+        {
+            chrome.push_str(&element);
+        }
+        if !chrome.is_empty() {
+            edits.push((*opener_start, chrome));
         }
         if let Some(n) = number {
             edits.push((
@@ -218,6 +237,61 @@ pub(crate) fn label_text(number: Option<&str>, caption: Option<&str>) -> String 
     }
 }
 
+/// The muted line naming where the listing came from and what it is, or
+/// `None` when the anchor carries neither. Rendered beneath the caption and
+/// above the block; the List-of-Listings index stays caption-only, because
+/// its entries are the one place a caption has to stand alone.
+///
+/// The path leads because that is what every comparable toolchain shows and
+/// what a reader recognises — the Rust Book labels it `Filename:`, Docusaurus
+/// and Material for MkDocs give it the block's title bar. The tag trails as a
+/// pill: no toolchain has a precedent for a snapshot revision, so it has to
+/// read as metadata about the path rather than as a second path.
+fn render_provenance(
+    source: Option<&str>,
+    tags: &[String],
+    renderer: SupportedRenderer,
+) -> Option<String> {
+    if source.is_none() && tags.is_empty() {
+        return None;
+    }
+    match renderer {
+        SupportedRenderer::Html => {
+            let mut parts: Vec<String> = Vec::new();
+            if let Some(source) = source {
+                parts.push(format!("<code>{source}</code>"));
+            }
+            if !tags.is_empty() {
+                parts.push(
+                    tags.iter()
+                        .map(|t| format!("<span class=\"listing-tag\">{t}</span>"))
+                        .collect::<Vec<_>>()
+                        .join(" → "),
+                );
+            }
+            Some(format!(
+                "<div class=\"listing-provenance\">{}</div>\n\n",
+                parts.join(" ")
+            ))
+        }
+        // No pill in the PDF backend, which cannot take a raw span, so the
+        // parenthesis carries the same "this qualifies the path" reading.
+        SupportedRenderer::TypstPdf => {
+            let tags = tags
+                .iter()
+                .map(|t| format!("`{}`", html_unescape(t)))
+                .collect::<Vec<_>>()
+                .join(" → ");
+            let line = match (source, tags.is_empty()) {
+                (Some(s), false) => format!("`{}` ({tags})", html_unescape(s)),
+                (Some(s), true) => format!("`{}`", html_unescape(s)),
+                (None, _) => tags,
+            };
+            Some(format!("{line}\n\n"))
+        }
+    }
+}
+
 /// Find the locator anchor the include or diff splicer drops immediately past
 /// a listing's closing fence. `None` for any other block. Tolerates the one
 /// optional newline the splicers may place between the fence and the anchor.
@@ -233,11 +307,53 @@ fn anchor_after_fence(content: &str, close_end: usize) -> Option<Anchor> {
     // The whole anchor element is one line; bound the attribute search at the
     // `>` that closes the opening tag.
     let div_text = &tail[..tail.find('>')?];
+    let attr = |name: &str| crate::anchor::attr_value(div_text, name);
+    // An include anchor names one tag and one source; a diff anchor names a
+    // pair of each. A diff whose operands share a source shows it once —
+    // two versions of one file is the common case, and repeating the path
+    // would say nothing.
+    let (tags, source) = match attr("data-listing-tag") {
+        Some(tag) => (vec![tag], attr("data-listing-source")),
+        None => (
+            collapse_equal(
+                attr("data-listing-diff-left"),
+                attr("data-listing-diff-right"),
+            ),
+            join_sources(
+                attr("data-listing-diff-left-source"),
+                attr("data-listing-diff-right-source"),
+            ),
+        ),
+    };
     Some(Anchor {
         div_start,
-        caption: crate::anchor::attr_value(div_text, "data-listing-caption"),
-        label: crate::anchor::attr_value(div_text, "data-listing-label"),
+        caption: attr("data-listing-caption"),
+        label: attr("data-listing-label"),
+        tags,
+        source,
+        show_provenance: attr("data-listing-show-provenance").and_then(|v| v.parse::<bool>().ok()),
     })
+}
+
+/// A diff's two tags, as the pills to render: one when both operands name the
+/// same tag, and only the present one when the anchor carries a single side.
+fn collapse_equal(left: Option<String>, right: Option<String>) -> Vec<String> {
+    match (left, right) {
+        (Some(l), Some(r)) if l == r => vec![l],
+        (Some(l), Some(r)) => vec![l, r],
+        (one, None) | (None, one) => one.into_iter().collect(),
+    }
+}
+
+/// A diff's two source paths as one string: collapsed when its operands were
+/// frozen from the same file (the usual case — two versions of one thing),
+/// and `a → b` when they genuinely differ.
+fn join_sources(left: Option<String>, right: Option<String>) -> Option<String> {
+    match (left, right) {
+        (Some(l), Some(r)) if l == r => Some(l),
+        (Some(l), Some(r)) => Some(format!("{l} → {r}")),
+        (one, None) | (None, one) => one,
+    }
 }
 
 /// Byte offset of the first character of the opener fence's line. `body_start`
@@ -288,7 +404,7 @@ mod tests {
             include_block("a", None),
             include_block("b", None)
         );
-        let (out, _) = splice_chapter(&content, Some("5"), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
         assert!(
             out.contains(r#"<div class="listing-caption" id="listing-5-1">Listing 5.1</div>"#),
             "{out}"
@@ -302,7 +418,7 @@ mod tests {
     #[test]
     fn interleaves_include_and_diff_anchors_in_one_sequence() {
         let content = format!("{}\n\n{}\n", include_block("a", None), diff_block("a", "b"));
-        let (out, _) = splice_chapter(&content, Some("5"), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
         assert!(out.contains("Listing 5.1"), "include is 5.1; got:\n{out}");
         assert!(out.contains("Listing 5.2"), "diff is 5.2; got:\n{out}");
         // Both anchors carry the machine-readable number for the callout pass,
@@ -317,17 +433,196 @@ mod tests {
         );
     }
 
+    /// An include block whose anchor carries a manifest source, as the
+    /// include splicer emits it once the tag resolves.
+    fn sourced_include_block(tag: &str, source: &str, caption: Option<&str>) -> String {
+        let cap = caption
+            .map(|c| format!(" data-listing-caption=\"{c}\""))
+            .unwrap_or_default();
+        format!(
+            "```rust\nfn {tag}() {{}}\n```\n<div data-listing-tag=\"{tag}\" \
+             data-listing-source=\"{source}\"{cap} aria-hidden=\"true\"></div>\n"
+        )
+    }
+
+    fn sourced_diff_block(
+        left: &str,
+        right: &str,
+        left_source: &str,
+        right_source: &str,
+    ) -> String {
+        format!(
+            "```diff\n--- {left}\n+++ {right}\n-old\n+new\n```\n\
+             <div data-listing-diff-left=\"{left}\" data-listing-diff-right=\"{right}\" \
+             data-listing-diff-left-source=\"{left_source}\" \
+             data-listing-diff-right-source=\"{right_source}\" aria-hidden=\"true\"></div>"
+        )
+    }
+
+    #[test]
+    fn provenance_line_is_off_unless_the_book_asks_for_it() {
+        let content = sourced_include_block("bench-v1", "../data/bench.yaml", Some("Cap"));
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
+        assert!(out.contains("Listing 5.1 — Cap"), "got:\n{out}");
+        assert!(
+            !out.contains("listing-provenance"),
+            "the flag is off, so no chrome; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn provenance_line_names_the_source_then_the_tag() {
+        let content = sourced_include_block("bench-v1", "../data/bench.yaml", Some("Cap"));
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html);
+        assert!(
+            out.contains(
+                "<div class=\"listing-provenance\"><code>../data/bench.yaml</code> \
+                 <span class=\"listing-tag\">bench-v1</span></div>"
+            ),
+            "the path leads and the tag trails as a pill; got:\n{out}"
+        );
+        let caption_at = out.find("listing-caption").expect("caption");
+        let provenance_at = out.find("listing-provenance").expect("provenance");
+        let fence_at = out.find("```rust").expect("fence");
+        assert!(
+            caption_at < provenance_at && provenance_at < fence_at,
+            "reading order is caption, provenance, then the bytes; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn provenance_line_renders_without_a_caption_or_number() {
+        let content = sourced_include_block("bench-v1", "../data/bench.yaml", None);
+        let (out, _) = splice_chapter(&content, None, false, true, Html);
+        assert!(
+            out.contains("listing-provenance"),
+            "provenance is chrome in its own right, not a caption decoration; got:\n{out}"
+        );
+        assert!(
+            !out.contains("listing-caption"),
+            "nothing to caption; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn provenance_falls_back_to_the_tag_when_the_manifest_has_no_source() {
+        let content = include_block("bench-v1", None);
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html);
+        assert!(
+            out.contains(
+                "<div class=\"listing-provenance\"><span class=\"listing-tag\">\
+                 bench-v1</span></div>"
+            ),
+            "the tag alone still identifies the listing; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_diff_shows_one_source_when_both_operands_share_it() {
+        let content = sourced_diff_block("b-v1", "b-v2", "../data/b.yaml", "../data/b.yaml");
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html);
+        assert!(
+            out.contains(
+                "<code>../data/b.yaml</code> <span class=\"listing-tag\">b-v1</span> → \
+                 <span class=\"listing-tag\">b-v2</span>"
+            ),
+            "two versions of one file name the path once, then both tags; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_diff_of_one_tag_against_itself_shows_a_single_pill() {
+        // Degenerate but legal: `{{#diff a a}}` renders the "no changes"
+        // notice, and its two operands are one listing, so the line must not
+        // claim a transition from a thing to itself.
+        let content = sourced_diff_block("b-v1", "b-v1", "../data/b.yaml", "../data/b.yaml");
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html);
+        assert!(
+            out.contains(
+                "<div class=\"listing-provenance\"><code>../data/b.yaml</code> \
+                 <span class=\"listing-tag\">b-v1</span></div>"
+            ),
+            "one operand, so one pill and no arrow; got:\n{out}"
+        );
+        assert!(!out.contains("→"), "nothing transitions; got:\n{out}");
+    }
+
+    #[test]
+    fn a_diff_shows_both_sources_when_the_operands_disagree() {
+        let content = sourced_diff_block("a-v1", "b-v1", "../data/a.yaml", "../data/b.yaml");
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html);
+        assert!(
+            out.contains(
+                "<code>../data/a.yaml → ../data/b.yaml</code> \
+                 <span class=\"listing-tag\">a-v1</span> → \
+                 <span class=\"listing-tag\">b-v1</span>"
+            ),
+            "different files name both paths; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_directive_override_wins_over_the_book_flag_in_both_directions() {
+        let off = sourced_include_block("bench-v1", "../data/bench.yaml", None).replace(
+            "aria-hidden",
+            "data-listing-show-provenance=\"false\" aria-hidden",
+        );
+        let (out, _) = splice_chapter(&off, Some("5"), true, true, Html);
+        assert!(
+            !out.contains("listing-provenance"),
+            "the directive suppressed it despite the book flag; got:\n{out}"
+        );
+
+        let on = sourced_include_block("bench-v1", "../data/bench.yaml", None).replace(
+            "aria-hidden",
+            "data-listing-show-provenance=\"true\" aria-hidden",
+        );
+        let (out, _) = splice_chapter(&on, Some("5"), true, false, Html);
+        assert!(
+            out.contains("listing-provenance"),
+            "the directive asked for it despite the book flag; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn typst_renders_provenance_as_inline_code_not_a_div() {
+        let content = sourced_include_block("bench-v1", "../data/bench.yaml", Some("Cap"));
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, TypstPdf);
+        assert!(
+            out.contains("`../data/bench.yaml` (`bench-v1`)"),
+            "the PDF backend has no pill, so a parenthesis carries the same \
+             qualifying reading; got:\n{out}"
+        );
+        // The locator anchor is a raw div in every renderer; what must not
+        // appear is a div for the provenance line itself.
+        assert!(
+            !out.contains("listing-provenance"),
+            "no raw html for the provenance line; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn provenance_is_absent_from_the_index_entries() {
+        let content = sourced_include_block("bench-v1", "../data/bench.yaml", Some("Cap"));
+        let (_, refs) = splice_chapter(&content, Some("5"), true, true, Html);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].caption.as_deref(), Some("Cap"));
+        // The List of Listings is the one place a caption stands alone, so
+        // paths must not crowd it.
+        assert_eq!(refs[0].number, "5.1");
+    }
+
     #[test]
     fn subsection_number_prefixes_listing() {
         let content = include_block("a", None);
-        let (out, _) = splice_chapter(&content, Some("5.2"), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5.2"), true, false, Html);
         assert!(out.contains("Listing 5.2.1"), "got:\n{out}");
     }
 
     #[test]
     fn number_and_caption_join_with_em_dash() {
         let content = include_block("a", Some("The claim layer"));
-        let (out, _) = splice_chapter(&content, Some("5"), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
         assert!(
             out.contains(
                 r#"<div class="listing-caption" id="listing-5-1">Listing 5.1 — The claim layer</div>"#
@@ -339,7 +634,7 @@ mod tests {
     #[test]
     fn flag_off_renders_caption_only_without_number_or_attribute() {
         let content = include_block("a", Some("Just a caption"));
-        let (out, _) = splice_chapter(&content, Some("5"), false, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), false, false, Html);
         assert!(
             out.contains(r#"<div class="listing-caption">Just a caption</div>"#),
             "caption renders with the flag off; got:\n{out}",
@@ -357,7 +652,7 @@ mod tests {
     #[test]
     fn flag_off_without_caption_is_byte_identical() {
         let content = include_block("a", None);
-        let (out, _) = splice_chapter(&content, Some("5"), false, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), false, false, Html);
         assert_eq!(
             out, content,
             "flag off + no caption must pass through unchanged"
@@ -379,9 +674,12 @@ mod tests {
             "```rust\nlet plain = 1;\n```\n\n",
             "Tail.\n",
         );
-        assert_eq!(splice_chapter(content, Some("5"), false, Html).0, content);
         assert_eq!(
-            splice_chapter(content, Some("5"), false, TypstPdf).0,
+            splice_chapter(content, Some("5"), false, false, Html).0,
+            content
+        );
+        assert_eq!(
+            splice_chapter(content, Some("5"), false, false, TypstPdf).0,
             content
         );
     }
@@ -389,7 +687,7 @@ mod tests {
     #[test]
     fn unnumbered_chapter_renders_caption_only() {
         let content = include_block("a", Some("Caption"));
-        let (out, _) = splice_chapter(&content, None, true, Html);
+        let (out, _) = splice_chapter(&content, None, true, false, Html);
         assert!(
             out.contains(r#"<div class="listing-caption">Caption</div>"#),
             "got:\n{out}"
@@ -404,14 +702,14 @@ mod tests {
     #[test]
     fn unnumbered_chapter_without_caption_is_byte_identical() {
         let content = include_block("a", None);
-        let (out, _) = splice_chapter(&content, None, true, Html);
+        let (out, _) = splice_chapter(&content, None, true, false, Html);
         assert_eq!(out, content);
     }
 
     #[test]
     fn plain_code_block_without_anchor_is_byte_identical() {
         let content = "```rust\nlet x = 1;\n```\n".to_string();
-        let (out, _) = splice_chapter(&content, Some("5"), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
         assert_eq!(
             out, content,
             "a block with no locator anchor is not a listing"
@@ -424,7 +722,7 @@ mod tests {
         // preceding prose (not jump to the start of the chapter) and sit
         // immediately before the opening fence (not a line early).
         let content = format!("intro\n\n{}", include_block("a", None));
-        let (out, _) = splice_chapter(&content, Some("5"), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
         assert!(
             out.contains(
                 "intro\n\n<div class=\"listing-caption\" id=\"listing-5-1\">Listing 5.1</div>\n\n```rust"
@@ -439,7 +737,7 @@ mod tests {
         // and the anchor; a numbered listing must still be recognized.
         let content =
             "```rust\nfn a() {}\n```\n\n<div data-listing-tag=\"a\" aria-hidden=\"true\"></div>\n";
-        let (out, _) = splice_chapter(content, Some("5"), true, Html);
+        let (out, _) = splice_chapter(content, Some("5"), true, false, Html);
         assert!(out.contains("Listing 5.1"), "got:\n{out}");
         assert!(
             out.contains(r#"<div data-listing-number="5.1" data-listing-tag="a""#),
@@ -451,7 +749,7 @@ mod tests {
     fn html_keeps_caption_escaped() {
         // Caption arrives HTML-escaped on the anchor; HTML text wants it as-is.
         let content = include_block("a", Some("A &amp; B &lt;t&gt;"));
-        let (out, _) = splice_chapter(&content, Some("5"), true, Html);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
         assert!(
             out.contains("Listing 5.1 — A &amp; B &lt;t&gt;"),
             "got:\n{out}"
@@ -461,7 +759,7 @@ mod tests {
     #[test]
     fn pdf_renders_bold_markdown_and_unescapes_caption() {
         let content = include_block("a", Some("A &amp; B &lt;t&gt;"));
-        let (out, _) = splice_chapter(&content, Some("5"), true, TypstPdf);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, TypstPdf);
         assert!(out.contains("**Listing 5.1 — A & B <t>**"), "got:\n{out}");
         assert!(
             !out.contains(r#"class="listing-caption""#),

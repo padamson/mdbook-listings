@@ -113,9 +113,13 @@ cd book && mdbook serve
 # After editing src/*.rs, the installed preprocessor is stale. Reinstall:
 cargo install --path . --locked --force
 
-# After editing assets/mdbook-listings.css, the CSS embedded in the binary is stale.
-# To see changes without a full recompile, bypass the binary and copy directly:
-cp assets/mdbook-listings.css book/mdbook-listings.css
+# After editing assets/mdbook-listings.css, reinstall too. The preprocessor
+# rewrites book/mdbook-listings.css from the copy embedded in the binary on
+# every build, so copying the asset over by hand does nothing -- the next
+# `mdbook build` overwrites it with the stale embedded bytes. book.toml runs
+# `command = "mdbook-listings"` off PATH, so it is the *installed* binary that
+# matters, not target/debug.
+cargo install --path . --locked --force
 ```
 
 ## Release process

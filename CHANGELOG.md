@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Listings can show where they came from.** With
+  `[preprocessor.listings] show-listing-provenance`, each listing renders a
+  muted line beneath its caption naming the `source` path the manifest
+  recorded, followed by its tag as a pill —
+  `../data/combustion-benchmark.yaml` `(combustion-benchmark-v1)`. The path
+  leads because that is what comparable toolchains show and what a reader
+  recognises: the Rust Book labels it `Filename:`, Docusaurus and Material
+  for MkDocs give it the code block's title bar. Nothing has a precedent for
+  showing a snapshot revision beside a listing, so the tag trails as
+  metadata about the path rather than as a second path.
+  Until now nothing on the page said which file a listing was, so books
+  that freeze one file once per authoring step had to spend the caption on
+  identity; the reader met seven listings of the same file distinguished
+  only by whatever the author remembered to write. The tag is what the
+  tool derives and the manifest keys on, so it names the artifact *and*
+  its iteration; the path is the file a reader can open, which is why it
+  comes from `source` rather than from the frozen copy under
+  `src/listings/`. A `{{#diff}}` names both operands, collapsing the path
+  to one when its two tags were frozen from the same file. The
+  List-of-Listings index stays caption-only. Off by default; a
+  `show-provenance="true|false"` argument on `{{#include}}` or `{{#diff}}`
+  overrides the book setting in either direction.
 - **`verify` warns on a callout marker no prose picks up.** A `CALLOUT:`
   marker whose badge renders in some chapter, but that no `{{#callout}}`
   directive anywhere references, is reported as a warning naming the

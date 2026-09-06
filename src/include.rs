@@ -25,6 +25,9 @@ pub struct IncludeDirective {
     /// extension implies. Only consulted for the self-contained form —
     /// inside an author's fence, the fence's own info string wins.
     pub lang: Option<String>,
+    /// `show-provenance="true|false"`, overriding the book-level flag for
+    /// this one listing. `None` when unset.
+    pub show_provenance: Option<bool>,
     pub span: Range<usize>,
     pub fence_close_end: Option<usize>,
 }
@@ -72,6 +75,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
         let (args, caption) = crate::directive::split_caption(occ.args);
         let (args, label) = crate::directive::split_label(&args);
         let (args, lang) = crate::directive::split_lang(&args);
+        let (args, show_provenance) = crate::directive::split_show_provenance(&args);
         let raw = args.trim();
         // CALLOUT: snippets-intercept Two prefixes are intercepted: `listings/` (frozen tags — emit anchor) and `snippets/` (no anchor; we expand to give the callout splicer a shot at any CALLOUT markers in the snippet source). Other forms fall through to mdbook's built-in `links` preprocessor.
         let intercepted = raw.starts_with("listings/") || raw.starts_with("snippets/");
@@ -110,6 +114,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
             caption,
             label,
             lang,
+            show_provenance,
             span: occ.span,
             fence_close_end: occ.fence_close_end,
         });
@@ -186,6 +191,7 @@ pub fn splice_chapter(
     content: &str,
     src_dir: &Path,
     chapter_path: Option<&Path>,
+    manifest: &crate::manifest::Manifest,
 ) -> Result<String, SpliceError> {
     let directives = parse_listing_includes(content);
     if directives.is_empty() {
@@ -262,12 +268,22 @@ pub fn splice_chapter(
             }
         }
         if let Some(tag) = &d.tag {
+            // The manifest's `source` is the path a reader can go and open;
+            // `rel_path` points at the frozen copy, which is freezing's own
+            // bookkeeping. An include whose tag is not in the manifest still
+            // gets an anchor -- verify reports the mismatch -- just without a
+            // source to show.
+            let source = manifest.find(tag).map(|l| l.source.as_str());
             // CALLOUT: include-anchor-emit One `<div data-listing-tag="...">` per `listings/` include, dropped just past the closing fence so the screenshot tool can find the rendered `<pre>` via `previousElementSibling`.
             out.push_str(&crate::anchor::include_anchor(
                 tag,
+                source,
                 d.range.as_ref(),
-                d.caption.as_deref(),
-                d.label.as_deref(),
+                &crate::anchor::AnchorMeta {
+                    caption: d.caption.as_deref(),
+                    label: d.label.as_deref(),
+                    show_provenance: d.show_provenance,
+                },
             ));
         }
     }
@@ -278,7 +294,30 @@ pub fn splice_chapter(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::manifest::{MANIFEST_VERSION, Manifest};
     use tempfile::TempDir;
+
+    /// Most include tests predate the manifest lookup and only care about
+    /// the expansion, so they splice against an empty one: no tag resolves,
+    /// and the anchor carries no source.
+    fn no_manifest() -> Manifest {
+        Manifest {
+            version: MANIFEST_VERSION,
+            listings: Vec::new(),
+        }
+    }
+
+    fn manifest_with(tag: &str, source: &str) -> Manifest {
+        Manifest {
+            version: MANIFEST_VERSION,
+            listings: vec![crate::manifest::Listing {
+                tag: tag.to_string(),
+                source: source.to_string(),
+                frozen: format!("src/listings/{tag}.rs"),
+                sha256: "0".to_string(),
+            }],
+        }
+    }
 
     #[test]
     fn parse_listing_includes_extracts_well_formed_directive() {
@@ -422,13 +461,60 @@ mod tests {
     }
 
     #[test]
+    fn parse_listing_includes_lifts_show_provenance_override() {
+        let content = "{{#include listings/foo.rs show-provenance=\"false\"}}\n";
+        let got = parse_listing_includes(content);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].show_provenance, Some(false));
+        assert_eq!(got[0].rel_path, "listings/foo.rs");
+    }
+
+    #[test]
+    fn splice_chapter_puts_the_manifest_source_on_the_anchor() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path();
+        std::fs::create_dir_all(src.join("listings")).unwrap();
+        std::fs::write(src.join("listings/foo.rs"), "fn body() {}\n").unwrap();
+        let manifest = manifest_with("foo", "../src/foo.rs");
+        let out =
+            splice_chapter("{{#include listings/foo.rs}}\n", src, None, &manifest).expect("splice");
+        assert!(
+            out.contains("data-listing-source=\"../src/foo.rs\""),
+            "the anchor carries the path a reader can open, not the frozen \
+             copy; got:\n{out}"
+        );
+        assert!(
+            !out.contains("data-listing-source=\"listings/foo.rs\""),
+            "the frozen path is freezing's bookkeeping, not provenance; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn splice_chapter_omits_source_for_a_tag_the_manifest_lacks() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path();
+        std::fs::create_dir_all(src.join("listings")).unwrap();
+        std::fs::write(src.join("listings/foo.rs"), "fn body() {}\n").unwrap();
+        let out = splice_chapter("{{#include listings/foo.rs}}\n", src, None, &no_manifest())
+            .expect("splice");
+        assert!(
+            out.contains("data-listing-tag=\"foo\""),
+            "the anchor is still emitted; got:\n{out}"
+        );
+        assert!(
+            !out.contains("data-listing-source"),
+            "nothing to show, so no attribute; got:\n{out}"
+        );
+    }
+
+    #[test]
     fn splice_chapter_replaces_directive_with_file_contents_and_emits_anchor() {
         let tmp = TempDir::new().unwrap();
         let src = tmp.path();
         std::fs::create_dir_all(src.join("listings")).unwrap();
         std::fs::write(src.join("listings/foo.rs"), "fn body() {}\n").unwrap();
         let content = "```rust\n{{#include listings/foo.rs}}\n```\n";
-        let out = splice_chapter(content, src, None).expect("splice");
+        let out = splice_chapter(content, src, None, &no_manifest()).expect("splice");
         assert!(out.contains("fn body() {}"), "got:\n{out}");
         assert!(!out.contains("{{#include"), "got:\n{out}");
         assert!(out.contains("data-listing-tag=\"foo\""), "got:\n{out}");
@@ -441,7 +527,7 @@ mod tests {
         std::fs::create_dir_all(src.join("listings")).unwrap();
         std::fs::write(src.join("listings/foo.rs"), "fn body() {}\n").unwrap();
         let content = "```rust\n{{#include listings/foo.rs}}\n```\n";
-        let out = splice_chapter(content, src, None).expect("splice");
+        let out = splice_chapter(content, src, None, &no_manifest()).expect("splice");
         let anchor_pos = out.find("data-listing-tag").expect("anchor present");
         let close_fence_pos = out
             .find("```\n")
@@ -455,7 +541,8 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let chapter = std::path::Path::new("ch99-foo.md");
         let content = "intro\n\n```rust\n{{#include listings/missing-tag.rs}}\n```\n";
-        let err = splice_chapter(content, tmp.path(), Some(chapter)).expect_err("should fail");
+        let err = splice_chapter(content, tmp.path(), Some(chapter), &no_manifest())
+            .expect_err("should fail");
         match err {
             SpliceError::ListingFileMissing {
                 tag,
@@ -503,7 +590,8 @@ mod tests {
         let chapter = std::path::Path::new("ch99-foo.md");
         let content = "Mid-paragraph: {{#include listings/foo.rs}} bare directive.\n";
         let tmp = TempDir::new().unwrap();
-        let err = splice_chapter(content, tmp.path(), Some(chapter)).expect_err("should fail");
+        let err = splice_chapter(content, tmp.path(), Some(chapter), &no_manifest())
+            .expect_err("should fail");
         match err {
             SpliceError::ListingIncludeMidLine {
                 tag,
@@ -525,7 +613,7 @@ mod tests {
         let path = src.join(file);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, bytes).unwrap();
-        splice_chapter(chapter, src, None).expect("splice")
+        splice_chapter(chapter, src, None, &no_manifest()).expect("splice")
     }
 
     #[test]
@@ -682,8 +770,13 @@ mod tests {
         // Four spaces would make the emitted fence an indented code block
         // rather than a fence, so this is not a rendering we can produce.
         let tmp = TempDir::new().unwrap();
-        let err = splice_chapter("    {{#include listings/foo.rs}}\n", tmp.path(), None)
-            .expect_err("four spaces of indent should be rejected");
+        let err = splice_chapter(
+            "    {{#include listings/foo.rs}}\n",
+            tmp.path(),
+            None,
+            &no_manifest(),
+        )
+        .expect_err("four spaces of indent should be rejected");
         assert!(matches!(err, SpliceError::ListingIncludeMidLine { .. }));
     }
 
@@ -692,8 +785,13 @@ mod tests {
         // Short enough to pass an indent-length check on its own; the
         // characters still have to be blanks.
         let tmp = TempDir::new().unwrap();
-        let err = splice_chapter("ab {{#include listings/foo.rs}}\n", tmp.path(), None)
-            .expect_err("prose before the directive should be rejected");
+        let err = splice_chapter(
+            "ab {{#include listings/foo.rs}}\n",
+            tmp.path(),
+            None,
+            &no_manifest(),
+        )
+        .expect_err("prose before the directive should be rejected");
         assert!(matches!(err, SpliceError::ListingIncludeMidLine { .. }));
     }
 
@@ -720,7 +818,7 @@ mod tests {
             "{{#include snippets/foo.rs:anchor-name}}\n",
             "```\n",
         );
-        let out = splice_chapter(content, tmp.path(), None).expect("splice");
+        let out = splice_chapter(content, tmp.path(), None, &no_manifest()).expect("splice");
         assert_eq!(out, content, "got:\n{out}");
     }
 
@@ -735,7 +833,7 @@ mod tests {
         )
         .unwrap();
         let content = "```rust\n{{#include listings/sample.rs:2:4}}\n```\n";
-        let out = splice_chapter(content, src, None).expect("splice");
+        let out = splice_chapter(content, src, None, &no_manifest()).expect("splice");
         assert!(
             out.contains("line2\nline3\nline4"),
             "expected sliced lines 2-4 to be inlined; got:\n{out}",
@@ -761,7 +859,7 @@ mod tests {
         std::fs::create_dir_all(src.join("listings")).unwrap();
         std::fs::write(src.join("listings/sample.rs"), "fn body() {}\n").unwrap();
         let content = "```rust\n{{#include listings/sample.rs}}\n```\n";
-        let out = splice_chapter(content, src, None).expect("splice");
+        let out = splice_chapter(content, src, None, &no_manifest()).expect("splice");
         assert!(
             !out.contains("data-listing-tag-range"),
             "no range attr expected without :start:end suffix; got:\n{out}",
@@ -775,7 +873,7 @@ mod tests {
         std::fs::create_dir_all(src.join("listings")).unwrap();
         std::fs::write(src.join("listings/foo.rs"), "fn body() {}\n").unwrap();
         let content = "```rust\n{{#include listings/foo.rs caption=\"The claim layer\"}}\n```\n";
-        let out = splice_chapter(content, src, None).expect("splice");
+        let out = splice_chapter(content, src, None, &no_manifest()).expect("splice");
         assert!(
             out.contains(r#"data-listing-caption="The claim layer""#),
             "expected caption attribute on anchor; got:\n{out}",
@@ -789,7 +887,7 @@ mod tests {
         std::fs::create_dir_all(src.join("listings")).unwrap();
         std::fs::write(src.join("listings/foo.rs"), "fn body() {}\n").unwrap();
         let content = "```rust\n{{#include listings/foo.rs}}\n```\n";
-        let out = splice_chapter(content, src, None).expect("splice");
+        let out = splice_chapter(content, src, None, &no_manifest()).expect("splice");
         assert!(
             !out.contains("data-listing-caption"),
             "no caption attr expected without caption=; got:\n{out}",
@@ -805,7 +903,7 @@ mod tests {
         // `&` and `<` must be entity-escaped so the attribute stays
         // well-formed HTML.
         let content = "```rust\n{{#include listings/foo.rs caption=\"A & B <tag>\"}}\n```\n";
-        let out = splice_chapter(content, src, None).expect("splice");
+        let out = splice_chapter(content, src, None, &no_manifest()).expect("splice");
         assert!(
             out.contains(r#"data-listing-caption="A &amp; B &lt;tag&gt;""#),
             "caption attribute should be HTML-escaped; got:\n{out}",
@@ -819,7 +917,7 @@ mod tests {
         std::fs::create_dir_all(src.join("snippets")).unwrap();
         std::fs::write(src.join("snippets/excerpt.rs"), "fn snippet_body() {}\n").unwrap();
         let content = "```rust\n{{#include snippets/excerpt.rs}}\n```\n";
-        let out = splice_chapter(content, src, None).expect("splice");
+        let out = splice_chapter(content, src, None, &no_manifest()).expect("splice");
         assert!(out.contains("fn snippet_body() {}"), "got:\n{out}");
         assert!(!out.contains("data-listing-tag"), "got:\n{out}");
         assert!(!out.contains("{{#include"), "got:\n{out}");
@@ -840,7 +938,7 @@ mod tests {
             "{{#include listings/bar.rs}}\n",
             "```\n",
         );
-        let out = splice_chapter(content, src, None).expect("splice");
+        let out = splice_chapter(content, src, None, &no_manifest()).expect("splice");
         assert!(out.contains("fn body_one() {}"));
         assert!(out.contains("fn body_two() {}"));
         assert!(out.contains("data-listing-tag=\"foo\""));
@@ -854,7 +952,7 @@ mod tests {
         std::fs::create_dir_all(src.join("listings")).unwrap();
         std::fs::write(src.join("listings/foo.rs"), "fn body() {}").unwrap();
         let content = "```rust\n{{#include listings/foo.rs}}\n```\n";
-        let out = splice_chapter(content, src, None).expect("splice");
+        let out = splice_chapter(content, src, None, &no_manifest()).expect("splice");
         assert!(out.contains("fn body() {}\n```"), "got:\n{out}");
     }
 
@@ -874,7 +972,7 @@ mod tests {
         )
         .unwrap();
         let content = "```rust\n{{#include listings/foo.rs}}\n```\n";
-        let out = splice_chapter(content, src, None).expect("splice");
+        let out = splice_chapter(content, src, None, &no_manifest()).expect("splice");
         assert!(
             out.contains("\"\\{{#include listings/bar.rs}}\""),
             "expected `{{` in included body to be escaped to `\\{{`; got:\n{out}",

@@ -131,6 +131,16 @@ pub(crate) fn split_lang(args: &str) -> (String, Option<String>) {
     split_quoted_kv(args, "lang=\"")
 }
 
+/// Lift a `show-provenance="true|false"` token off a directive's args —
+/// the per-directive override for the book-level `show-listing-provenance`
+/// flag, in either direction. Same grammar as `caption=`; a value that is
+/// neither `true` nor `false` is dropped along with the token, leaving the
+/// book-level flag to decide rather than failing the build.
+pub(crate) fn split_show_provenance(args: &str) -> (String, Option<bool>) {
+    let (rest, value) = split_quoted_kv(args, "show-provenance=\"");
+    (rest, value.and_then(|v| v.parse::<bool>().ok()))
+}
+
 /// Shared lifter for `key="value"` directive arguments. The first `"` ends
 /// the value; an unterminated value leaves the args untouched rather than
 /// guess. The key may sit anywhere among the args; the surrounding tokens
@@ -312,6 +322,34 @@ mod tests {
         let (rest, cap) = split_caption("a b 1:2 1:3");
         assert_eq!(rest, "a b 1:2 1:3");
         assert_eq!(cap, None);
+    }
+
+    #[test]
+    fn split_show_provenance_lifts_both_boolean_values() {
+        let (rest, show) = split_show_provenance("listings/foo.rs show-provenance=\"false\"");
+        assert_eq!(rest, "listings/foo.rs");
+        assert_eq!(show, Some(false));
+
+        let (rest, show) = split_show_provenance("a b show-provenance=\"true\"");
+        assert_eq!(rest, "a b");
+        assert_eq!(show, Some(true));
+    }
+
+    #[test]
+    fn split_show_provenance_none_when_absent() {
+        let (rest, show) = split_show_provenance("a b 1:2");
+        assert_eq!(rest, "a b 1:2");
+        assert_eq!(show, None);
+    }
+
+    #[test]
+    fn split_show_provenance_drops_a_non_boolean_value() {
+        // The token is consumed but yields no override, so the book-level
+        // flag decides. Failing the build over a typo in an opt-in display
+        // argument would be a harsher response than the feature warrants.
+        let (rest, show) = split_show_provenance("a b show-provenance=\"yes\"");
+        assert_eq!(rest, "a b");
+        assert_eq!(show, None);
     }
 
     #[test]

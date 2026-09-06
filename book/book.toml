@@ -38,6 +38,13 @@ list-of-listings = true
 # manifest). "append" is the theme-independent fallback rung. Post-v0.1.0;
 # see the "Changes since v0.1.0" errata.
 list-of-listings-sidebar = "nested"
+# Dogfood the provenance line: each listing names the `source` path from
+# listings.toml, then its tag as a pill, on a muted line under the caption. This book is the
+# case the feature was filed for -- it freezes ../src/main.rs sixteen times
+# and ../tests/e2e_callouts.rs twelve, so until now nothing on the page said
+# which file, or which iteration of it, a reader was looking at. Post-v0.1.0;
+# see the "Changes since v0.1.0" errata.
+show-listing-provenance = true
 
 [output.html]
 additional-css = ["./mdbook-admonish.css", "./mdbook-listings.css"]

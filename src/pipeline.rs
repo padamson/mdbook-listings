@@ -37,6 +37,9 @@ pub struct PipelineOptions {
     pub number_listings: bool,
     pub list_of_listings: bool,
     pub sidebar_mode: SidebarMode,
+    /// Render each listing's tag and manifest `source` on a muted line
+    /// beneath its caption, so the caption no longer has to carry identity.
+    pub show_listing_provenance: bool,
 }
 
 impl PipelineOptions {
@@ -44,6 +47,7 @@ impl PipelineOptions {
         let flag = |key: &str| config.get::<bool>(key).ok().flatten().unwrap_or(false);
         Self {
             number_listings: flag("preprocessor.listings.number-listings"),
+            show_listing_provenance: flag("preprocessor.listings.show-listing-provenance"),
             list_of_listings: flag("preprocessor.listings.list-of-listings"),
             sidebar_mode: config
                 .get::<String>("preprocessor.listings.list-of-listings-sidebar")
@@ -84,53 +88,54 @@ pub fn process_book(
                 .and_then(|p| p.parent())
                 .map(|d| src_dir.join(d))
                 .unwrap_or_else(|| src_dir.to_path_buf());
-            match splice_includes(&chapter.content, src_dir, chapter.source_path.as_deref())
-                .map_err(|e| {
-                    anyhow::Error::new(e).context("expanding {{#include listings/...}} failed")
-                })
-                .and_then(|new_content| {
-                    splice_diffs(
-                        &new_content,
-                        manifest,
-                        book_root,
-                        chapter.source_path.as_deref(),
-                        &chapter_dir,
-                    )
-                    .map_err(|e| {
-                        anyhow::Error::new(e).context("rendering {{#diff}} directive failed")
-                    })
-                })
-                .map(|new_content| {
-                    let (numbered, refs) = splice_numbers(
-                        &new_content,
-                        listing_prefix(
-                            chapter.number.as_ref().map(|n| n.as_slice()),
-                            &chapter.name,
-                        )
+            match splice_includes(
+                &chapter.content,
+                src_dir,
+                chapter.source_path.as_deref(),
+                manifest,
+            )
+            .map_err(|e| {
+                anyhow::Error::new(e).context("expanding {{#include listings/...}} failed")
+            })
+            .and_then(|new_content| {
+                splice_diffs(
+                    &new_content,
+                    manifest,
+                    book_root,
+                    chapter.source_path.as_deref(),
+                    &chapter_dir,
+                )
+                .map_err(|e| anyhow::Error::new(e).context("rendering {{#diff}} directive failed"))
+            })
+            .map(|new_content| {
+                let (numbered, refs) = splice_numbers(
+                    &new_content,
+                    listing_prefix(chapter.number.as_ref().map(|n| n.as_slice()), &chapter.name)
                         .as_deref(),
-                        opts.number_listings,
-                        renderer,
-                    );
-                    // Record this chapter's listings for the book-wide
-                    // passes. The link path is the chapter file relative to
-                    // the book src root (the index page is assumed
-                    // top-level). Chapters with no listings are still
-                    // recorded; render_index and the label index skip them.
-                    collected.push(ChapterListings {
-                        name: chapter.name.clone(),
-                        path: chapter
-                            .path
-                            .as_ref()
-                            .map(|p| p.to_string_lossy().replace('\\', "/"))
-                            .unwrap_or_default(),
-                        listings: refs,
-                    });
-                    numbered
-                })
-                .and_then(|new_content| {
-                    splice_callouts(&new_content, renderer, sidecars)
-                        .map_err(|e| anyhow::Error::new(e).context("rendering callouts failed"))
-                }) {
+                    opts.number_listings,
+                    opts.show_listing_provenance,
+                    renderer,
+                );
+                // Record this chapter's listings for the book-wide
+                // passes. The link path is the chapter file relative to
+                // the book src root (the index page is assumed
+                // top-level). Chapters with no listings are still
+                // recorded; render_index and the label index skip them.
+                collected.push(ChapterListings {
+                    name: chapter.name.clone(),
+                    path: chapter
+                        .path
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().replace('\\', "/"))
+                        .unwrap_or_default(),
+                    listings: refs,
+                });
+                numbered
+            })
+            .and_then(|new_content| {
+                splice_callouts(&new_content, renderer, sidecars)
+                    .map_err(|e| anyhow::Error::new(e).context("rendering callouts failed"))
+            }) {
                 Ok(new_content) => chapter.content = new_content,
                 Err(e) => splice_err = Some(e),
             }
@@ -260,6 +265,7 @@ mod tests {
             "```rust\n{{#include listings/sample.rs caption=\"S\"}}\n```\n",
             &PipelineOptions {
                 number_listings: true,
+                show_listing_provenance: false,
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
             },
@@ -289,6 +295,7 @@ mod tests {
             number_listings: true,
             list_of_listings: false,
             sidebar_mode: SidebarMode::Off,
+            show_listing_provenance: false,
         };
         let bare = run("{{#include listings/sample.rs caption=\"S\"}}\n", &opts);
         let fenced = run(
@@ -309,6 +316,70 @@ mod tests {
     }
 
     #[test]
+    fn provenance_reaches_the_page_from_the_manifest() {
+        // End to end: the flag is read, the include splicer looks the tag up
+        // in listings.toml, and the numbering pass renders what it found.
+        let out = run(
+            "{{#include listings/sample.rs caption=\"S\"}}\n",
+            &PipelineOptions {
+                number_listings: true,
+                list_of_listings: false,
+                sidebar_mode: SidebarMode::Off,
+                show_listing_provenance: true,
+            },
+        );
+        assert!(
+            out.contains(
+                "<div class=\"listing-provenance\"><code>../sample.rs</code> \
+                 <span class=\"listing-tag\">sample</span></div>"
+            ),
+            "the source comes from the manifest, not the frozen path; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_directive_can_suppress_provenance_the_book_turns_on() {
+        let out = run(
+            "{{#include listings/sample.rs caption=\"S\" show-provenance=\"false\"}}\n",
+            &PipelineOptions {
+                number_listings: true,
+                list_of_listings: false,
+                sidebar_mode: SidebarMode::Off,
+                show_listing_provenance: true,
+            },
+        );
+        assert!(
+            out.contains("Listing 5.1 — S"),
+            "still captioned; got:\n{out}"
+        );
+        assert!(
+            !out.contains("listing-provenance"),
+            "the directive opted out; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_diff_names_both_sources_when_its_operands_came_from_different_files() {
+        let out = run(
+            "{{#diff sample other caption=\"D\"}}\n",
+            &PipelineOptions {
+                number_listings: true,
+                list_of_listings: false,
+                sidebar_mode: SidebarMode::Off,
+                show_listing_provenance: true,
+            },
+        );
+        assert!(
+            out.contains(
+                "<code>../sample.rs → ../other.rs</code> \
+                 <span class=\"listing-tag\">sample</span> → \
+                 <span class=\"listing-tag\">other</span>"
+            ),
+            "these two fixtures have different sources, so both show; got:\n{out}"
+        );
+    }
+
+    #[test]
     fn numbering_counts_diff_and_include_anchors_in_one_stream() {
         // A diff above an include: M counts across both anchor kinds in
         // document order, which only works if numbering runs after BOTH
@@ -318,6 +389,7 @@ mod tests {
              ```rust\n{{#include listings/other.rs caption=\"I\"}}\n```\n",
             &PipelineOptions {
                 number_listings: true,
+                show_listing_provenance: false,
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
             },

@@ -5,6 +5,28 @@ kept moving after the book closed, so this page lists the changes that
 postdate the prose. The chapters themselves are left as the v0.1.0 record
 and do not describe what follows.
 
+## Unreleased — listings show where they came from
+
+Every listing on these pages now carries a muted line under its caption
+naming the file it was frozen from and the tag it was frozen under —
+`../src/main.rs (main-v1)`. Nothing on the page said either before, which
+this book demonstrates the cost of better than any argument: it freezes
+`../src/main.rs` sixteen times and `../tests/e2e_callouts.rs` twelve, so a
+reader meeting the eleventh version of `install.rs` had no way to tell it
+apart from the tenth except by reading the code.
+
+The path leads because that is what a reader recognises, and it is the
+`source` recorded in `listings.toml` — the file in the repository, not the
+frozen copy under `src/listings/`, which is the tool's own bookkeeping. The
+tag follows in a pill: it is the manifest's key and the tool's derived name,
+so it carries both the artifact and which iteration this is. A diff shows
+both tags and names the file once when its two versions came from the same
+one.
+
+The chapters were written before any of this existed, so the prose still
+spends words identifying listings that now identify themselves, and the
+captured screenshots show neither line.
+
 ## Unreleased — e2e suite back on released playwright-rs
 
 The [v0.1.1 entry below](#v011--e2e-suite-tracks-playwright-rust-main)

@@ -52,19 +52,43 @@ pub(crate) fn ranged_include_header(rel_path: &str, range: &LineRange) -> String
     )
 }
 
+/// One operand of a rendered diff: the tag (or `live:<path>`), the manifest
+/// `source` it was frozen from, and the slice shown.
+pub(crate) struct DiffOperand<'a> {
+    pub(crate) tag: &'a str,
+    pub(crate) source: Option<&'a str>,
+    pub(crate) range: Option<&'a LineRange>,
+}
+
+/// The author-supplied metadata an anchor carries alongside its operands.
+/// Grouped because both emitters take all of it and neither varies it.
+pub(crate) struct AnchorMeta<'a> {
+    pub(crate) caption: Option<&'a str>,
+    pub(crate) label: Option<&'a str>,
+    /// `show-provenance="true|false"` on the directive, overriding the
+    /// book-level flag in either direction. `None` when unset.
+    pub(crate) show_provenance: Option<bool>,
+}
+
 /// The locator anchor for a frozen-listing include. Trailing newline
 /// included — the anchor is a line of its own after the closing fence.
 pub(crate) fn include_anchor(
     tag: &str,
+    source: Option<&str>,
     range: Option<&LineRange>,
-    caption: Option<&str>,
-    label: Option<&str>,
+    meta: &AnchorMeta,
 ) -> String {
     let mut anchor = format!("<div data-listing-tag=\"{tag}\"");
+    if let Some(source) = source {
+        anchor.push_str(&format!(
+            " data-listing-source=\"{}\"",
+            crate::callout::html_escape(source)
+        ));
+    }
     if let Some(range) = range {
         anchor.push_str(&format!(" data-listing-tag-range=\"{}\"", range.render()));
     }
-    push_caption_and_label(&mut anchor, caption, label);
+    push_meta(&mut anchor, meta);
     anchor.push_str(" aria-hidden=\"true\"></div>\n");
     anchor
 }
@@ -73,42 +97,47 @@ pub(crate) fn include_anchor(
 /// attributes so a diff block is addressable by its (LEFT, RIGHT) pair —
 /// unique even when multiple diffs share a RIGHT tag, and unambiguous
 /// against include anchors.
-pub(crate) fn diff_anchor(
-    left: &str,
-    right: &str,
-    left_range: Option<&LineRange>,
-    right_range: Option<&LineRange>,
-    caption: Option<&str>,
-    label: Option<&str>,
-) -> String {
-    let mut anchor =
-        format!("<div data-listing-diff-left=\"{left}\" data-listing-diff-right=\"{right}\"");
-    if let Some(r) = left_range {
-        anchor.push_str(&format!(" data-listing-diff-left-range=\"{}\"", r.render()));
+pub(crate) fn diff_anchor(left: &DiffOperand, right: &DiffOperand, meta: &AnchorMeta) -> String {
+    let mut anchor = format!(
+        "<div data-listing-diff-left=\"{}\" data-listing-diff-right=\"{}\"",
+        left.tag, right.tag
+    );
+    for (side, operand) in [("left", left), ("right", right)] {
+        if let Some(source) = operand.source {
+            anchor.push_str(&format!(
+                " data-listing-diff-{side}-source=\"{}\"",
+                crate::callout::html_escape(source)
+            ));
+        }
     }
-    if let Some(r) = right_range {
-        anchor.push_str(&format!(
-            " data-listing-diff-right-range=\"{}\"",
-            r.render()
-        ));
+    for (side, operand) in [("left", left), ("right", right)] {
+        if let Some(r) = operand.range {
+            anchor.push_str(&format!(
+                " data-listing-diff-{side}-range=\"{}\"",
+                r.render()
+            ));
+        }
     }
-    push_caption_and_label(&mut anchor, caption, label);
+    push_meta(&mut anchor, meta);
     anchor.push_str(" aria-hidden=\"true\"></div>");
     anchor
 }
 
-fn push_caption_and_label(anchor: &mut String, caption: Option<&str>, label: Option<&str>) {
-    if let Some(caption) = caption {
+fn push_meta(anchor: &mut String, meta: &AnchorMeta) {
+    if let Some(caption) = meta.caption {
         anchor.push_str(&format!(
             " data-listing-caption=\"{}\"",
             crate::callout::html_escape(caption)
         ));
     }
-    if let Some(label) = label {
+    if let Some(label) = meta.label {
         anchor.push_str(&format!(
             " data-listing-label=\"{}\"",
             crate::callout::html_escape(label)
         ));
+    }
+    if let Some(show) = meta.show_provenance {
+        anchor.push_str(&format!(" data-listing-show-provenance=\"{show}\""));
     }
 }
 
@@ -136,13 +165,42 @@ mod tests {
         assert_eq!(header.lines().count(), RANGED_INCLUDE_HEADER_LINES);
     }
 
+    fn meta<'a>(
+        caption: Option<&'a str>,
+        label: Option<&'a str>,
+        show_provenance: Option<bool>,
+    ) -> AnchorMeta<'a> {
+        AnchorMeta {
+            caption,
+            label,
+            show_provenance,
+        }
+    }
+
+    fn operand<'a>(tag: &'a str, source: Option<&'a str>) -> DiffOperand<'a> {
+        DiffOperand {
+            tag,
+            source,
+            range: None,
+        }
+    }
+
     #[test]
     fn include_anchor_round_trips_through_attr_value() {
         let range = parse_line_range("1:30").expect("range");
-        let anchor = include_anchor("foo-v1", Some(&range), Some("Cap"), Some("lbl"));
+        let anchor = include_anchor(
+            "foo-v1",
+            Some("../src/foo.rs"),
+            Some(&range),
+            &meta(Some("Cap"), Some("lbl"), None),
+        );
         assert_eq!(
             attr_value(&anchor, "data-listing-tag").as_deref(),
             Some("foo-v1")
+        );
+        assert_eq!(
+            attr_value(&anchor, "data-listing-source").as_deref(),
+            Some("../src/foo.rs")
         );
         assert_eq!(
             attr_value(&anchor, "data-listing-tag-range").as_deref(),
@@ -160,8 +218,18 @@ mod tests {
     }
 
     #[test]
+    fn include_anchor_omits_source_when_the_manifest_has_none() {
+        let anchor = include_anchor("foo-v1", None, None, &meta(None, None, None));
+        assert_eq!(attr_value(&anchor, "data-listing-source"), None);
+    }
+
+    #[test]
     fn diff_anchor_round_trips_through_attr_value() {
-        let anchor = diff_anchor("a-v1", "a-v2", None, None, Some("Cap"), None);
+        let anchor = diff_anchor(
+            &operand("a-v1", Some("../a.rs")),
+            &operand("a-v2", Some("../a.rs")),
+            &meta(Some("Cap"), None, None),
+        );
         assert_eq!(
             attr_value(&anchor, "data-listing-diff-left").as_deref(),
             Some("a-v1")
@@ -171,10 +239,55 @@ mod tests {
             Some("a-v2")
         );
         assert_eq!(
+            attr_value(&anchor, "data-listing-diff-left-source").as_deref(),
+            Some("../a.rs")
+        );
+        assert_eq!(
+            attr_value(&anchor, "data-listing-diff-right-source").as_deref(),
+            Some("../a.rs")
+        );
+        assert_eq!(
             attr_value(&anchor, "data-listing-caption").as_deref(),
             Some("Cap")
         );
         assert_eq!(attr_value(&anchor, "data-listing-label"), None);
+    }
+
+    #[test]
+    fn anchors_carry_the_per_directive_provenance_override() {
+        let off = include_anchor("foo-v1", None, None, &meta(None, None, Some(false)));
+        assert_eq!(
+            attr_value(&off, "data-listing-show-provenance").as_deref(),
+            Some("false")
+        );
+        let on = diff_anchor(
+            &operand("a-v1", None),
+            &operand("a-v2", None),
+            &meta(None, None, Some(true)),
+        );
+        assert_eq!(
+            attr_value(&on, "data-listing-show-provenance").as_deref(),
+            Some("true")
+        );
+        let unset = include_anchor("foo-v1", None, None, &meta(None, None, None));
+        assert_eq!(attr_value(&unset, "data-listing-show-provenance"), None);
+    }
+
+    #[test]
+    fn diff_anchor_keeps_left_and_right_sources_distinct() {
+        let anchor = diff_anchor(
+            &operand("a-v1", Some("../a.rs")),
+            &operand("b-v1", Some("../b.rs")),
+            &meta(None, None, None),
+        );
+        assert_eq!(
+            attr_value(&anchor, "data-listing-diff-left-source").as_deref(),
+            Some("../a.rs")
+        );
+        assert_eq!(
+            attr_value(&anchor, "data-listing-diff-right-source").as_deref(),
+            Some("../b.rs")
+        );
     }
 
     #[test]

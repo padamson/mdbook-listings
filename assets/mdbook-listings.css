@@ -20,7 +20,7 @@
  * pre-script behaviour for any environment where JS doesn't run.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes are
- * the expected build-time asset: mdbook-listings-css-v11
+ * the expected build-time asset: mdbook-listings-css-v12
  */
 
 /* Listing caption line, emitted by the numbering pass immediately before a
@@ -31,6 +31,47 @@
   font-size: 0.9em;
   font-weight: 600;
   color: var(--fg, #333);
+}
+
+/* Muted line beneath the caption naming what the listing is (its tag) and
+ * where the bytes came from (the manifest source), so the caption does not
+ * have to spend words on identity. Emitted only under
+ * [preprocessor.listings] show-listing-provenance. */
+.listing-provenance {
+  margin: 0.75em 0 -0.5em;
+  font-size: 0.8em;
+  color: var(--fg, #333);
+  opacity: 0.65;
+}
+
+.listing-provenance code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* The tag reads as metadata *about* the path, not as a second path, so it
+ * takes the same stadium pill the callout badges use rather than the
+ * monospace treatment the source path gets. No doc toolchain has a
+ * precedent for showing a snapshot revision beside a listing -- the path
+ * leads because that is the part a reader recognises. */
+.listing-tag {
+  display: inline-block;
+  padding: 0 0.5em;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.95em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* The path is monospace and the pill carries its own border, so the single
+ * space in the markup reads as too tight -- the pill looks welded to the
+ * filename. Only the pill directly following the path needs this; the arrow
+ * between a diff's two pills already separates them. */
+.listing-provenance code + .listing-tag {
+  margin-left: 0.4em;
 }
 
 .callout-overlay {

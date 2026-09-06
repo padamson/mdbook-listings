@@ -120,6 +120,7 @@ With none of them on, output is unchanged — existing books are unaffected.
 number-listings = true            # "Listing N.M" labels + scoped badges
 list-of-listings = true           # enables the {{#list-of-listings}} marker
 list-of-listings-sidebar = "nested"  # "off" (default) | "append" | "nested"
+show-listing-provenance = true    # muted "<source> (<tag>)" line under the caption
 ```
 
 - **`number-listings`** — every listing gets a `Listing N.M` label (`N` =
@@ -131,6 +132,13 @@ list-of-listings-sidebar = "nested"  # "off" (default) | "append" | "nested"
   caption is the only text the List of Listings carries, so a weak one makes
   that index useless. [references/captions.md](references/captions.md) covers
   what to write.
+- **`show-listing-provenance`** — each listing gains a muted line beneath its
+  caption naming the `source` path from `listings.toml` followed by its tag
+  as a pill, so the caption does not have to say which artifact this is. A `{{#diff}}` shows
+  both tags and collapses the path to one when its operands were frozen from
+  the same file. The List-of-Listings index stays caption-only.
+  `show-provenance="true"` / `show-provenance="false"` on an individual
+  `{{#include}}` or `{{#diff}}` overrides it either way.
 - **`list-of-listings`** — the `{{#list-of-listings}}` marker renders the
   index; link the hosting page from `SUMMARY.md`.
 - **`list-of-listings-sidebar`** — a browser-built sidebar view (HTML only).

@@ -281,7 +281,7 @@ fn check_unreferenced_markers(book_root: &Path, manifest: &Manifest, report: &mu
             .unwrap_or_else(|| src_dir.clone());
         // A chapter the splicers reject is skipped: whatever is broken
         // there is the reference or integrity pass's finding.
-        let Ok(expanded) = splice_includes(&content, &src_dir, chapter_path) else {
+        let Ok(expanded) = splice_includes(&content, &src_dir, chapter_path, manifest) else {
             continue;
         };
         let Ok(expanded) = splice_diffs(&expanded, manifest, book_root, chapter_path, &chapter_dir)

@@ -30,6 +30,9 @@ pub struct DiffDirective {
     /// number of unchanged lines shown around each hunk. `None` falls back to
     /// [`DEFAULT_CONTEXT_RADIUS`].
     pub context: Option<usize>,
+    /// `show-provenance="true|false"`, overriding the book-level flag for
+    /// this one diff. `None` when unset.
+    pub show_provenance: Option<bool>,
     pub span: Range<usize>,
 }
 
@@ -129,6 +132,7 @@ pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
     for occ in scan_directives(content, "{{#diff", FencePolicy::SkipInside) {
         let (args, caption) = crate::directive::split_caption(occ.args);
         let (args, label) = crate::directive::split_label(&args);
+        let (args, show_provenance) = crate::directive::split_show_provenance(&args);
         // Lift an optional `context=N` token out of the operands. A malformed
         // value (`context=x`) is ignored — it falls back to the default
         // context window rather than skipping the directive, since the window
@@ -163,6 +167,7 @@ pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
                 caption,
                 label,
                 context,
+                show_provenance,
                 span: occ.span,
             });
         }
@@ -292,6 +297,75 @@ fn resolve_operand(
         },
     })?;
     Ok((operand.to_string(), bytes))
+}
+
+/// The path a reader can go and open for one diff operand, always expressed
+/// relative to the book root so the two sides are comparable. A frozen tag
+/// contributes the manifest's `source`, which is already book-root-relative;
+/// a `live:` operand's path is written relative to the *chapter*, so it is
+/// rebased. Without that, one file diffed against its own live copy renders
+/// as two unrelated paths and never collapses. `None` for a tag the manifest
+/// does not carry.
+fn operand_source(
+    operand: &str,
+    manifest: &Manifest,
+    book_root: &Path,
+    live_base: &Path,
+) -> Option<String> {
+    match operand.strip_prefix("live:") {
+        Some(rel_path) => Some(relative_to(&live_base.join(rel_path), book_root)),
+        None => manifest.find(operand).map(|l| l.source.clone()),
+    }
+}
+
+/// What the identity pill shows for one operand. A `live:` operand names no
+/// frozen snapshot, so the pill says `live` rather than repeating the path
+/// the provenance line already prints beside it.
+fn operand_tag(operand: &str) -> &str {
+    if operand.starts_with("live:") {
+        "live"
+    } else {
+        operand
+    }
+}
+
+/// `path` expressed relative to `base`, with `/` separators for display.
+/// Both are normalised lexically rather than through the filesystem: the
+/// result is what an author reading the path would compute, it does not
+/// depend on what exists on disk, and it stays stable across machines.
+fn relative_to(path: &Path, base: &Path) -> String {
+    let path = lexical_normalize(path);
+    let base = lexical_normalize(base);
+    let mut p = path.components().peekable();
+    let mut b = base.components().peekable();
+    while p.peek().is_some() && p.peek() == b.peek() {
+        p.next();
+        b.next();
+    }
+    let mut parts = vec!["..".to_string(); b.count()];
+    parts.extend(p.map(|c| c.as_os_str().to_string_lossy().into_owned()));
+    if parts.is_empty() {
+        ".".to_string()
+    } else {
+        parts.join("/")
+    }
+}
+
+/// Collapse `.` and `..` textually. `..` past the start is dropped rather
+/// than escaping above the root, which cannot happen for the absolute paths
+/// the splicer passes.
+fn lexical_normalize(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
 }
 
 /// Identical inputs return a one-line notice rather than the empty string
@@ -459,16 +533,27 @@ pub fn splice_chapter(
             .map(|n| n - 1)
             .unwrap_or(0);
         let body = shift_hunk_headers(&body, left_offset, right_offset);
+        let left_source = operand_source(&d.left, manifest, book_root, chapter_dir);
+        let right_source = operand_source(&d.right, manifest, book_root, chapter_dir);
         out.push_str(&content[cursor..d.span.start]);
         out.push_str(&crate::fence::render_block("diff", &body));
         // CALLOUT: diff-anchor-dual Locator anchor for the capture-screenshots tool. Both operands are emitted as separate data-attributes so the tool can locate a diff block by its (LEFT, RIGHT) pair — unique even when multiple diffs share the same RIGHT tag, and unambiguous against the include splicer's `data-listing-tag` anchors.
         out.push_str(&crate::anchor::diff_anchor(
-            &d.left,
-            &d.right,
-            d.left_range.as_ref(),
-            d.right_range.as_ref(),
-            d.caption.as_deref(),
-            d.label.as_deref(),
+            &crate::anchor::DiffOperand {
+                tag: operand_tag(&d.left),
+                source: left_source.as_deref(),
+                range: d.left_range.as_ref(),
+            },
+            &crate::anchor::DiffOperand {
+                tag: operand_tag(&d.right),
+                source: right_source.as_deref(),
+                range: d.right_range.as_ref(),
+            },
+            &crate::anchor::AnchorMeta {
+                caption: d.caption.as_deref(),
+                label: d.label.as_deref(),
+                show_provenance: d.show_provenance,
+            },
         ));
         cursor = d.span.end;
     }
@@ -1005,10 +1090,50 @@ mod tests {
             right_range: None,
             caption: None,
             context: None,
+            show_provenance: None,
             span: 0..0,
         };
 
         (tmp, manifest, directive)
+    }
+
+    #[test]
+    fn operand_source_rebases_a_live_path_onto_the_book_root() {
+        // The book's own ch04 diffs `diff-v5` against `live:../../src/diff.rs`
+        // from `book/src/`. Both name one file, so both must render as the
+        // one book-root-relative path the manifest already stores -- else the
+        // line claims a transition between two unrelated files.
+        let (_tmp, manifest, _d) = fixture(b"a\n", b"b\n");
+        let book_root = Path::new("/repo/book");
+        let chapter_dir = Path::new("/repo/book/src");
+        assert_eq!(
+            operand_source("live:../../src/diff.rs", &manifest, book_root, chapter_dir).as_deref(),
+            Some("../src/diff.rs"),
+        );
+    }
+
+    #[test]
+    fn operand_tag_names_a_live_operand_live_not_its_path() {
+        // The path is already printed beside the pill; repeating it there
+        // says nothing and doubles the line's width.
+        assert_eq!(operand_tag("live:../../src/diff.rs"), "live");
+        assert_eq!(operand_tag("diff-v5"), "diff-v5");
+    }
+
+    #[test]
+    fn relative_to_walks_up_out_of_the_base() {
+        assert_eq!(
+            relative_to(Path::new("/repo/src/diff.rs"), Path::new("/repo/book")),
+            "../src/diff.rs"
+        );
+        assert_eq!(
+            relative_to(Path::new("/repo/book/src/x.rs"), Path::new("/repo/book")),
+            "src/x.rs"
+        );
+        assert_eq!(
+            relative_to(Path::new("/repo/book"), Path::new("/repo/book")),
+            "."
+        );
     }
 
     #[test]
