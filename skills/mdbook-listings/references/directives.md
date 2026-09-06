@@ -106,6 +106,10 @@ With `number-listings` on (see [Numbering](#numbering-and-the-list-of-listings)
 below), the caption renders as `Listing N.M — caption`; with numbering off, a
 captioned listing still gets its caption line, just unnumbered.
 
+That covers the mechanics. For what to write in one — length, head word,
+the anti-patterns, and the house choices a book has to make once — see
+[captions.md](captions.md).
+
 ## `{{#diff}}` — difference between two frozen slices
 
 Render the line-by-line difference between an older and a newer **frozen**

@@ -127,7 +127,10 @@ list-of-listings-sidebar = "nested"  # "off" (default) | "append" | "nested"
   scope to it: a badge reads `5.3.1` instead of a bare `1`, in the listing
   and in prose cross-references.
 - **Captions** — `caption="..."` on `{{#include}}` or `{{#diff}}` renders as
-  `Listing N.M — caption` (or just the caption when numbering is off).
+  `Listing N.M — caption` (or just the caption when numbering is off). The
+  caption is the only text the List of Listings carries, so a weak one makes
+  that index useless. [references/captions.md](references/captions.md) covers
+  what to write.
 - **`list-of-listings`** — the `{{#list-of-listings}}` marker renders the
   index; link the hosting page from `SUMMARY.md`.
 - **`list-of-listings-sidebar`** — a browser-built sidebar view (HTML only).
@@ -155,5 +158,6 @@ mdbook-listings --help
 mdbook-listings <subcommand> --help
 ```
 
-For depth beyond what's here, read [references/cli.md](references/cli.md) and
-[references/directives.md](references/directives.md).
+For depth beyond what's here, read [references/cli.md](references/cli.md),
+[references/directives.md](references/directives.md), and
+[references/captions.md](references/captions.md).
