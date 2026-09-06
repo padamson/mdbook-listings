@@ -222,8 +222,8 @@ user-login = "epage"
 user-name = "Ed Page"
 
 [[publisher.playwright-rs]]
-version = "0.16.0"
-when = "2026-08-18"
+version = "0.17.0"
+when = "2026-08-29"
 trusted-publisher = "github:padamson/playwright-rust"
 
 [[publisher.playwright-rs-macros]]
