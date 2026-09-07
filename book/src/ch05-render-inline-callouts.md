@@ -131,7 +131,7 @@ assertion, then commits.
 `Cargo.toml` gains two `[dev-dependencies]`: `playwright-rs` (the
 Rust bindings) and `tokio` (the async runtime the test uses).
 
-{{#diff cargo-toml-v3 cargo-toml-v4}}
+{{#diff cargo-toml-v3 cargo-toml-v4 caption="Adding `playwright-rs` and `tokio` for the browser-driven test tier"}}
 
 The new test file is `tests/e2e_callouts.rs`. The naming
 parallels the other story-scoped integration test files
@@ -140,7 +140,7 @@ parallels the other story-scoped integration test files
 expect assert_cmd-style assertions from it.
 
 ```rust
-{{#include listings/e2e-callouts-v1.rs}}
+{{#include listings/e2e-callouts-v1.rs caption="Opening a browser-driven tier the `assert_cmd` suites cannot reach"}}
 ```
 
 The test file is frozen as `e2e-callouts-v1` per the per-slice
@@ -166,7 +166,7 @@ languages (CSS, plain Markdown) take callouts via the sidecar
 form instead and return `None` from this lookup.
 
 ```rust
-{{#include listings/callout-v1.rs}}
+{{#include listings/callout-v1.rs caption="Mapping a file extension to its single-line comment prefix"}}
 ```
 
 The marker grammar:
@@ -188,7 +188,7 @@ markers in one listing).
 
 `src/lib.rs` gains `pub mod callout;`.
 
-{{#diff lib-v3 lib-v4}}
+{{#diff lib-v3 lib-v4 caption="Registering the `callout` module beside the diff and freeze splicers"}}
 
 The slice-1 integration test is still `#[ignore]`'d. The parser
 is plumbing — slice 3 wires it into the preprocessor and emits
@@ -204,7 +204,7 @@ append a `<dl class="callouts">` after the closing fence with one
 per marker that has a body. Per-listing ordinal numbering (AC 5)
 falls out naturally — each fenced block walks its own marker list.
 
-{{#diff callout-v1 callout-v2}}
+{{#diff callout-v1 callout-v2 caption="Rendering each marker as a badge, numbered per listing"}}
 
 Three things are happening in the diff above. First, the
 `comment_prefix_for_language` helper normalises fence info strings
@@ -233,7 +233,7 @@ input shape, here is the source of the screenshot tool — a small
 `playwright-rs` script with one CALLOUT marker:
 
 ```rust
-{{#include listings/capture-screenshots-v1.rs}}
+{{#include listings/capture-screenshots-v1.rs caption="Exercising the include path on a `playwright-rs` script carrying one marker"}}
 ```
 
 The `<dl>` directly below this listing is what the splicer
@@ -263,14 +263,14 @@ match in a particular chapter.
 into `callout::splice_chapter`, so `\{{#diff}}` resolution and
 callout rendering both apply to every chapter.
 
-{{#diff main-v5 main-v6}}
+{{#diff main-v5 main-v6 caption="Chaining the callout splicer after the diff splicer in `preprocess`"}}
 
 `tests/e2e_callouts.rs` drops its `#[ignore]`. The Playwright
 test now runs against the just-built ch. 5 HTML, finds the
 `[data-callout-badge]` elements emitted by the splicer above,
 and goes green — closing AC 1 end-to-end.
 
-{{#diff e2e-callouts-v1 e2e-callouts-v2}}
+{{#diff e2e-callouts-v1 e2e-callouts-v2 caption="Dropping the `#[ignore]` once badges appear in the rendered DOM"}}
 
 ### Slice 4 — label-only inline form
 
@@ -288,7 +288,7 @@ The new marker is on the `cli` parse line in the screenshot
 tool's source — a label-only callout, ready for slice 5's
 `\{{#callout cli-parse}}` directive to point at:
 
-{{#diff capture-screenshots-v1 capture-screenshots-v2}}
+{{#diff capture-screenshots-v1 capture-screenshots-v2 caption="Adding a label-only marker for a later prose reference to point at"}}
 
 Snapshot (slice 4) of the dl that the splicer now emits below the
 screenshot tool's rendered source — two entries this slice
@@ -302,7 +302,7 @@ A new e2e test queries the post-render DOM for the
 is **not** a `<dd>` — i.e., the label-only form really does
 produce a bare badge:
 
-{{#diff e2e-callouts-v2 e2e-callouts-v3}}
+{{#diff e2e-callouts-v2 e2e-callouts-v3 caption="Asserting a label-only marker renders a badge with no body"}}
 
 Same caveat as slice 3's snapshot: if you're reading this on a
 build after a later slice, the live render above will show
@@ -332,7 +332,7 @@ functions (`replace_callout_refs` and `render_callout_ref`), so
 the dl that the splicer renders below the diff has fresh anchors
 that this slice's prose then points back at:
 
-{{#diff callout-v2 callout-v3}}
+{{#diff callout-v2 callout-v3 caption="Resolving prose references to their listing-side badge anchors"}}
 
 Snapshot (slice 5) of the dl rendered below the diff above. The
 v2→v3 diff's context window picks up `splice-entry` (carried over
@@ -347,14 +347,14 @@ brand-new markers from this slice, `cross-ref-replace` and
 chapter that contains the offending reference instead of silently
 emitting a broken anchor:
 
-{{#diff main-v6 main-v7}}
+{{#diff main-v6 main-v7 caption="Failing the build at the chapter whose reference does not resolve"}}
 
 The new e2e test queries the prose-side anchor by its
 `data-callout-ref` attribute, asserts its `href` matches the
 listing-side dt id, and confirms the target dt actually exists in
 the rendered DOM:
 
-{{#diff e2e-callouts-v3 e2e-callouts-v4}}
+{{#diff e2e-callouts-v3 e2e-callouts-v4 caption="Asserting a prose anchor's `href` reaches the badge it names"}}
 
 To dogfood the directive in this very chapter: the next sentence's
 badge is a `\{{#callout cross-ref-emit}}` directive that this
@@ -429,7 +429,7 @@ shipped:
 `src/main.rs`'s `preprocess` resolves the renderer once and passes
 it through:
 
-{{#diff main-v7 main-v8}}
+{{#diff main-v7 main-v8 caption="Resolving the renderer once and threading it to the splicer"}}
 
 A new dev-dep, [`pdf-extract`](https://crates.io/crates/pdf-extract)
 (pure-Rust, no system deps), drives the PDF integration test —
@@ -444,7 +444,7 @@ built book.
 entry — kept narrow because the test only needs the crate's
 `extract_text_from_mem` function:
 
-{{#diff cargo-toml-v4 cargo-toml-v5}}
+{{#diff cargo-toml-v4 cargo-toml-v5 caption="Adding `pdf-extract` to assert on text pulled from the built PDF"}}
 
 The new test file is `tests/pdf_callouts.rs`, mirroring the
 naming convention of the other story-scoped integration test
@@ -455,7 +455,7 @@ asserts that two known callout body fragments — `splice-entry`'s
 prose-side anchor" — appear in the extracted text:
 
 ```rust
-{{#include listings/pdf-callouts-v1.rs}}
+{{#include listings/pdf-callouts-v1.rs caption="Asserting two callout bodies survive into the extracted PDF text"}}
 ```
 
 Snapshot (slice 6) of one PDF page that renders the slice 5
@@ -523,7 +523,7 @@ as well. The `// CALLOUT: cli-parse` line is stripped from the
 rendered listing; in its place the splicer's overlay div holds a
 bare badge button on the `Cli::parse()` line:
 ```rust
-{{#include listings/capture-screenshots-v2.rs}}
+{{#include listings/capture-screenshots-v2.rs caption="Stripping the marker line and badging `Cli::parse` in its place"}}
 ```
 
 `src/callout.rs` gains the new `splice_callout_lists_html`
@@ -594,7 +594,7 @@ include-splice-entry}}; the line that drops the locator anchor is
 at callout {{#callout include-anchor-emit}}:
 
 ```rust
-{{#include listings/include-v1.rs}}
+{{#include listings/include-v1.rs caption="Intercepting the include directive before mdbook's `links` preprocessor expands it"}}
 ```
 
 `\{{#include snippets/...}}` paths are also intercepted (callout
@@ -617,7 +617,7 @@ are dropped silently with no badge — the callout is gone in the
 new state, so neither the comment nor a marker for it appears in
 the rendered diff:
 
-{{#diff diff-v7 diff-v8}}
+{{#diff diff-v7 diff-v8 caption="Badging markers inside a diff, and dropping the ones a hunk removes"}}
 
 The preprocessor wires the new include splicer into `preprocess()`
 as the first stage of a three-stage chain — includes → diffs →
@@ -625,7 +625,7 @@ callouts (callout {{#callout preprocessor-chain}}). Order matters:
 the callout splicer needs included source bytes inline so it can
 parse `CALLOUT:` markers from them.
 
-{{#diff main-v8 main-v9}}
+{{#diff main-v8 main-v9 caption="Ordering the three splices so callouts see the included bytes"}}
 
 Five integration tests in `tests/includes.rs` exercise the new
 splicer end-to-end through the JSON envelope: directive replacement,
@@ -634,7 +634,7 @@ include and diff anchors emitted from one chapter, and the
 missing-file error path:
 
 ```rust
-{{#include listings/includes-tests-v1.rs}}
+{{#include listings/includes-tests-v1.rs caption="Driving directive replacement and anchor placement through the JSON envelope"}}
 ```
 
 **Tool — subcommand redesign.** `tools/capture-screenshots/` becomes
@@ -653,7 +653,7 @@ shapes now. Default output paths are
 `book/src/images/<LEFT>__to__<RIGHT>.png`. The subcommand is
 dispatched at callout {{#callout subcommand-dispatch}}:
 
-{{#diff capture-screenshots-v2 capture-screenshots-v3}}
+{{#diff capture-screenshots-v2 capture-screenshots-v3 caption="Adding an include and diff subcommand pair with derived output paths"}}
 
 The tool also dogfoods the unreleased v0.13.0 work in the
 [`padamson/playwright-rust`](https://github.com/padamson/playwright-rust)
@@ -665,7 +665,7 @@ the tool wires up `tracing_subscriber` so playwright-rs's new
 instrumentation merges. Local debugging gets richer for free with
 no per-callsite logging.
 
-{{#diff cargo-toml-v5 cargo-toml-v6}}
+{{#diff cargo-toml-v5 cargo-toml-v6 caption="Picking up `tracing` spans from the upstream browser bindings"}}
 
 ### Refactor (e2e migration) — `locator!()` macro and the assertion API
 
@@ -700,7 +700,7 @@ every JS-blob `evaluate_value` call replaced with a typed
 assertion (or a `Locator::nth(i)` iteration when the test sweeps
 multiple matches):
 
-{{#diff e2e-callouts-v5 e2e-callouts-v6}}
+{{#diff e2e-callouts-v5 e2e-callouts-v6 caption="Replacing JavaScript blobs with typed locators and `expect` assertions"}}
 
 The migration surfaced a real slice-8 splicer bug. playwright-rs's
 strict-mode locator refused to resolve `#callout-body-cross-ref-emit`
@@ -714,7 +714,7 @@ dedup of the body div's `id` and the button's `aria-describedby`
 against the same `is_first_occurrence` boolean — callout
 {{#callout body-id-dedup}}. The splicer change:
 
-{{#diff callout-v5 callout-v6}}
+{{#diff callout-v5 callout-v6 caption="Deduplicating the body `id` and `aria-describedby` in lockstep"}}
 
 The fix is small but the lesson is bigger: the JS-blob sweeps
 silently ignored the duplicate-id violation because `document.
@@ -761,7 +761,7 @@ CH05, |page| async move { ... }).await` call — the per-test
 and `browser.close()` move into the harness, and the test body
 inherits a `Page` already navigated to the chapter HTML.
 
-{{#diff e2e-callouts-v6 e2e-callouts-v7}}
+{{#diff e2e-callouts-v6 e2e-callouts-v7 caption="Moving the browser lifecycle into a harness the tests inherit"}}
 
 Three strategically placed callout markers anchor the long diff
 above: the harness import (callout {{#callout harness-import}}), the
@@ -839,7 +839,7 @@ badge's bounding box lies within its sibling pre's, so this can't
 silently regress. The diff against `tests/e2e_callouts.rs` (v7 →
 v8) shows the new test:
 
-{{#diff e2e-callouts-v7 e2e-callouts-v8}}
+{{#diff e2e-callouts-v7 e2e-callouts-v8 caption="Pinning each badge's bounding box inside its own listing"}}
 
 ### Slice 9 — line-range support for `\{{#diff}}` and `\{{#include}}`
 
@@ -907,7 +907,7 @@ and its `slice()` / `render()` helpers live, shows the new types
 landing as a pure addition between the existing `DiffDirective`
 struct and the parser:
 
-{{#diff diff-v8 diff-v9 1:30 1:113}}
+{{#diff diff-v8 diff-v9 1:30 1:113 caption="Adding the range type and its `slice` and `render` helpers"}}
 
 The directive parser grows from a single 2-token shape to a
 3-armed match that accepts `2` tokens (whole-file, today's shape)
@@ -917,7 +917,7 @@ directive, same shape as today's wrong-arity handling, so authors
 who fat-finger a range get a literal `\{{#diff …}}` in the
 rendered chapter rather than an opaque silent failure:
 
-{{#diff diff-v8 diff-v9 56:75 146:175}}
+{{#diff diff-v8 diff-v9 56:75 146:175 caption="Skipping a directive whose range is malformed, rather than failing opaquely"}}
 
 The splicer applies the slice between the byte-load and the diff
 render, branching on `Option<LineRange>` so the no-range case
@@ -926,7 +926,7 @@ intermediate copy. The locator anchor's data attributes pick up
 the new `data-listing-diff-{left,right}-range` keys when ranges
 are present:
 
-{{#diff diff-v8 diff-v9 263:295 435:495}}
+{{#diff diff-v8 diff-v9 263:295 435:495 caption="Slicing both operands and recording the ranges on the locator anchor"}}
 
 The include splicer mirrors the diff splicer's shape. Its parser
 splits the directive's path on the first `:` to peel off any
@@ -935,13 +935,13 @@ splits the directive's path on the first `:` to peel off any
 like `:setup`) so authors who already use those keep their
 expected behaviour:
 
-{{#diff include-v1 include-v2 50:90 55:105}}
+{{#diff include-v1 include-v2 50:90 55:105 caption="Splitting a `:start:end` suffix, leaving anchor-name forms to mdbook"}}
 
 The splicer slices the file body before the inline expansion and
 emits a `data-listing-tag-range` attribute on the locator anchor
 when a range is set:
 
-{{#diff include-v1 include-v2 159:215 181:240}}
+{{#diff include-v1 include-v2 159:215 181:240 caption="Slicing the body before expansion and recording the range"}}
 
 Both call sites use the same `slice()` method and `render()`
 formatter from `src/diff.rs`, so range semantics stay consistent
@@ -979,7 +979,7 @@ self-locating against the unsliced file.
 Doc comment + imports + harness use:
 
 ```rust
-{{#include listings/include-line-ranges-v1.rs:1:17}}
+{{#include listings/include-line-ranges-v1.rs:1:17 caption="Opening the range test file with its imports and harness"}}
 ```
 
 The first test asserts the basic slicing contract — lines outside
@@ -987,7 +987,7 @@ the requested range never appear in the rendered chapter
 (callout {{#callout include-range-slices}}):
 
 ```rust
-{{#include listings/include-line-ranges-v1.rs:19:32}}
+{{#include listings/include-line-ranges-v1.rs:19:32 caption="Asserting lines outside the requested range never reach the page"}}
 ```
 
 The header-line test pins the contract that the rendered slice is
@@ -995,7 +995,7 @@ prefixed with a two-line `// basename\n// @@ start,end @@` banner
 (callout {{#callout include-range-header}}):
 
 ```rust
-{{#include listings/include-line-ranges-v1.rs:34:49}}
+{{#include listings/include-line-ranges-v1.rs:34:49 caption="Pinning the two-line banner a sliced include prepends"}}
 ```
 
 The header's comment prefix is language-aware — Rust gets `//`,
@@ -1005,7 +1005,7 @@ case, so the contract is explicit (callout
 {{#callout include-range-header-language-aware}}):
 
 ```rust
-{{#include listings/include-line-ranges-v1.rs:51:93}}
+{{#include listings/include-line-ranges-v1.rs:51:93 caption="Covering the comment prefix each language gets on that banner"}}
 ```
 
 The data-attribute test pins the locator-anchor contract — the
@@ -1014,7 +1014,7 @@ screenshot tool can address the sliced include via
 {{#callout include-range-anchor}}):
 
 ```rust
-{{#include listings/include-line-ranges-v1.rs:95:105}}
+{{#include listings/include-line-ranges-v1.rs:95:105 caption="Addressing a sliced include from the screenshot tool by its range"}}
 ```
 
 The callout-composition test verifies that a `// CALLOUT:` marker
@@ -1025,7 +1025,7 @@ whole-file includes do (callout
 {{#callout include-range-callout-composes}}):
 
 ```rust
-{{#include listings/include-line-ranges-v1.rs:107:131}}
+{{#include listings/include-line-ranges-v1.rs:107:131 caption="Composing a marker inside a slice into a rendered badge"}}
 ```
 
 The cross-reference test pins the half of the contract you've
@@ -1036,13 +1036,13 @@ include, and the directive resolves to the same
 {{#callout include-range-cross-ref-resolves}}):
 
 ```rust
-{{#include listings/include-line-ranges-v1.rs:133:160}}
+{{#include listings/include-line-ranges-v1.rs:133:160 caption="Resolving a prose reference into a sliced include"}}
 ```
 
 And the harness, completing the file:
 
 ```rust
-{{#include listings/include-line-ranges-v1.rs:162:210}}
+{{#include listings/include-line-ranges-v1.rs:162:210 caption="Closing the file with the fixture harness these tests share"}}
 ```
 
 A future refactor could extract the test-infra refactor's
