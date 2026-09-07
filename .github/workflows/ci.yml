@@ -354,19 +354,13 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
-      - name: Check if token is set
-        id: check_token
-        run: |
-          if [ -z "${{ secrets.CARGO_REGISTRY_TOKEN }}" ]; then
-            echo "skip=true" >> $GITHUB_OUTPUT
-            echo "CARGO_REGISTRY_TOKEN not set, skipping crates.io publishing"
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-          fi
-
+      # No soft guard and no continue-on-error, deliberately. Both were here
+      # and both turned a release that published nothing into a green run:
+      # a missing secret skipped the step and reported success, and a failed
+      # `cargo publish` was swallowed. A tag that does not reach crates.io
+      # must fail loudly -- consumers pin the registry version, so a silent
+      # skip is indistinguishable from a release to everyone downstream.
       - name: Publish to crates.io
-        if: steps.check_token.outputs.skip == 'false'
         run: cargo publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        continue-on-error: true
