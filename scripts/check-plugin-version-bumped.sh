@@ -18,6 +18,15 @@ manifest=.claude-plugin/plugin.json
 # Initial commit: nothing to compare against.
 git rev-parse -q --verify HEAD >/dev/null 2>&1 || exit 0
 
+# prek selects this hook when its `files:` pattern matches anything in the
+# run set, which under `--all-files` is every tracked file -- so the hook
+# fires on runs that change no plugin content at all and reports a bump
+# that isn't owed. Ask git what is actually being committed instead of
+# trusting the selection.
+if [ -z "$(git diff --cached --name-only -- skills/ .claude-plugin/)" ]; then
+  exit 0
+fi
+
 read_version() {
   python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))'
 }
