@@ -81,6 +81,10 @@ Warnings (reported on stderr, exit stays 0):
   in a frozen version no chapter shows, on a line outside every include's
   slice, or on a context line of a diff produces no badge and is not
   reported.
+- A `caption=`, `label=` or `show-provenance=` argument on a `snippets/`
+  include. Snippets emit no locator anchor, so they are never numbered and
+  none of the three renders. A label is the worst of them: nothing shows it,
+  and a `{{#listing-ref}}` aimed at it fails the build from another file.
 - A sliced include whose end line is a `CALLOUT:` marker. The marker
   annotates the line after it, which the slice excludes, so the badge
   attaches to nothing. Applies to `listings/` and `snippets/` includes; a

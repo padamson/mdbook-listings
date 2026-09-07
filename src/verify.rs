@@ -77,6 +77,7 @@ pub fn verify(book_root: &Path) -> Result<VerifyReport> {
     check_unreferenced_markers(book_root, &manifest, &mut report);
     check_slice_ends_on_marker(book_root, &mut report);
     check_live_operands(book_root, &mut report);
+    check_snippet_arguments(book_root, &mut report);
     Ok(report)
 }
 
@@ -249,6 +250,51 @@ fn check_live_operands(book_root: &Path, report: &mut VerifyReport) {
                         line_number(&content, occ.span.start),
                     ));
                 }
+            }
+        }
+    }
+}
+
+/// A `snippets/` include emits no locator anchor, and everything the
+/// numbering pass renders — the caption, the label it registers, the
+/// provenance line — is driven off that anchor. All three arguments are
+/// therefore parsed, accepted, and silently dropped on a snippet, which on
+/// the page is indistinguishable from an argument the author forgot to
+/// write. `lang=` is not affected: it sets the emitted fence's info string,
+/// which snippets do get. A warning, not an error: the include itself
+/// renders correctly, and the fix is to delete the argument or freeze the
+/// file as a listing.
+fn check_snippet_arguments(book_root: &Path, report: &mut VerifyReport) {
+    for (rel, content) in chapter_markdown(book_root) {
+        for d in parse_listing_includes(&content) {
+            // `tag` is Some only for `listings/` paths, which do get anchors.
+            if d.tag.is_some() {
+                continue;
+            }
+            let line = line_number(&content, d.span.start);
+            if d.caption.is_some() {
+                report.warning(format!(
+                    "{rel}:{line}: caption on `{}` never renders — a snippets/ \
+                     include emits no anchor, so it is never numbered and nothing \
+                     renders its caption",
+                    d.rel_path,
+                ));
+            }
+            if d.label.is_some() {
+                report.warning(format!(
+                    "{rel}:{line}: label on `{}` is unresolvable — a snippets/ \
+                     include is never numbered, so no {{{{#listing-ref}}}} can \
+                     reach it",
+                    d.rel_path,
+                ));
+            }
+            if d.show_provenance.is_some() {
+                report.warning(format!(
+                    "{rel}:{line}: show-provenance on `{}` has no effect — the \
+                     provenance line renders from the anchor a snippets/ include \
+                     never emits",
+                    d.rel_path,
+                ));
             }
         }
     }
@@ -708,6 +754,104 @@ mod tests {
         let mut report = VerifyReport::default();
         check_references(&root, &manifest, &mut report);
         assert_eq!(report.error_count(), 0, "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_snippet_arguments_warns_on_a_caption_that_cannot_render() {
+        let (_t, root, _m) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "intro\n\n{{#include snippets/demo.rs caption=\"Never rendered\"}}\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_snippet_arguments(&root, &mut report);
+        assert_eq!(report.error_count(), 0, "a warning, not an error");
+        let msg = format!("{:?}", report.findings);
+        assert!(
+            msg.contains("ch.md:3") && msg.contains("caption") && msg.contains("snippets/demo.rs"),
+            "warning names the chapter, line and path; got: {msg}"
+        );
+    }
+
+    #[test]
+    fn check_snippet_arguments_warns_on_an_unresolvable_label() {
+        let (_t, root, _m) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "{{#include snippets/demo.rs label=\"nope\"}}\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_snippet_arguments(&root, &mut report);
+        assert_eq!(report.findings.len(), 1, "got {:?}", report.findings);
+        assert!(
+            format!("{:?}", report.findings).contains("label"),
+            "got {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn check_snippet_arguments_warns_on_show_provenance() {
+        let (_t, root, _m) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "{{#include snippets/demo.rs show-provenance=\"true\"}}\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_snippet_arguments(&root, &mut report);
+        assert_eq!(report.findings.len(), 1, "got {:?}", report.findings);
+        assert!(
+            format!("{:?}", report.findings).contains("show-provenance"),
+            "got {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn check_snippet_arguments_leaves_lang_alone() {
+        // `lang=` sets the emitted fence's info string, which snippets do
+        // get -- it is the one argument that still works on a snippet.
+        let (_t, root, _m) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "{{#include snippets/demo.rs lang=\"turtle\"}}\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_snippet_arguments(&root, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_snippet_arguments_silent_on_a_listings_include() {
+        // A `listings/` include is numbered, so both arguments work there.
+        let (_t, root, _m) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "{{#include listings/demo-v1.rs caption=\"A demo\" label=\"demo\"}}\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_snippet_arguments(&root, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_snippet_arguments_silent_on_a_bare_snippet() {
+        let (_t, root, _m) = book_with_demo();
+        fs::write(root.join("src/ch.md"), "{{#include snippets/demo.rs}}\n").unwrap();
+
+        let mut report = VerifyReport::default();
+        check_snippet_arguments(&root, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
     }
 
     #[test]

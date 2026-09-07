@@ -114,6 +114,11 @@ PDF. Naming an identifier in code font is the common case:
 {{#include listings/foo.rs caption="Adding `toml_edit` as a runtime dependency"}}
 ````
 
+`caption=`, `label=` and `show-provenance=` only work on `listings/`
+includes and on `{{#diff}}`. A `snippets/` include is never numbered, so
+none of them renders — `verify` warns when it finds one. `lang=` does work
+on a snippet, since it sets the fence the directive emits.
+
 A caption is inline content only: one that happens to open with a block
 marker (`1.`, `- `, `# `, `> `) stays literal text rather than turning into a
 list or heading. Raw HTML is escaped to visible text rather than passed

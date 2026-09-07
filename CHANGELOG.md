@@ -19,6 +19,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   rule callout bodies already follow.
 
 ### Added
+- **`verify` warns on an argument a snippet cannot render.** A `snippets/`
+  include emits no locator anchor, and the caption, the label it registers
+  and the provenance line all render off that anchor — so `caption=`,
+  `label=` and `show-provenance=` were parsed, accepted and silently
+  dropped, which on the page is indistinguishable from an argument the
+  author forgot to write. Each is now reported with the chapter, line and
+  path. A label is the worst of the three: nothing renders it, and a
+  `{{#listing-ref}}` pointed at it fails the build from a different file.
+  `lang=` is unaffected — it sets the emitted fence's info string, which
+  snippets do get. Warnings, so the exit code is unchanged.
 - **Listings can show where they came from.** With
   `[preprocessor.listings] show-listing-provenance`, each listing renders a
   muted line beneath its caption naming the `source` path the manifest
