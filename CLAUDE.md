@@ -122,6 +122,30 @@ cargo install --path . --locked --force
 cargo install --path . --locked --force
 ```
 
+## Watching CI
+
+```bash
+./scripts/ci-watch.sh              # the current HEAD
+./scripts/ci-watch.sh <sha|ref>    # a specific commit
+POLL=15 TIMEOUT=600 ./scripts/ci-watch.sh
+```
+
+Prints one line per job as it reaches a terminal state, one per workflow
+when it finishes, then exits: 0 all green, 1 some job failed, 2 timed out.
+Every terminal state is reported, not just successes -- a watcher that only
+greps for "success" is silent through a crashloop, which looks exactly like
+still-running.
+
+It exists as a script for a sandbox reason worth knowing before writing any
+other polling loop here. `excludedCommands` in `.claude/settings.json` match
+the **top-level command line**. `gh run list` alone is excluded and works;
+`gh` inside a `for` or `while` loop is not matched, so the whole invocation
+stays sandboxed and every call fails on the read-denied `~/.config/gh` --
+silently, if the loop swallows errors. Excluding the script instead
+unsandboxes its whole process tree, and the `gh` it spawns inherits that,
+the same route `git push` takes for SSH. Run it as its own command: chaining
+an excluded command onto another line unsandboxes that line too.
+
 ## Release process
 
 1. Update version in `Cargo.toml`
