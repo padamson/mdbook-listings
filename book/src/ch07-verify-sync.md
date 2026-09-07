@@ -87,7 +87,7 @@ subcommand, so the manifest entry and recorded hash are what production
 wrote:
 
 ```rust
-{{#include listings/verify-tests-v1.rs:14:45}}
+{{#include listings/verify-tests-v1.rs:14:45 caption="Building the fixture through the real `freeze`, so the hash is production's"}}
 ```
 
 The headline test edits the frozen file after freezing and demands a
@@ -95,7 +95,7 @@ failing exit plus a diagnostic naming the tag, the path, and the hash
 mismatch:
 
 ```rust
-{{#include listings/verify-tests-v1.rs:61:81}}
+{{#include listings/verify-tests-v1.rs:61:81 caption="Demanding a failing exit and a diagnostic that names the tampered tag"}}
 ```
 
 Three more tests pin the rest of the contract: an intact book succeeds
@@ -110,21 +110,21 @@ with the same helper `freeze` used to record it (callout
 {{#callout integrity-check}}):
 
 ```rust
-{{#include listings/verify-v1.rs:1:83}}
+{{#include listings/verify-v1.rs:1:83 caption="Re-hashing each snapshot with the helper that recorded it"}}
 ```
 
 The only change to `freeze.rs` is visibility: `hex_sha256` becomes
 `pub(crate)` so verify hashes bytes the same way freeze recorded them. One
 function, no drift between writer and checker:
 
-{{#diff freeze-v5 freeze-v6}}
+{{#diff freeze-v5 freeze-v6 caption="Sharing `hex_sha256` so the writer and the checker cannot drift"}}
 
 The CLI handler replaces the `not yet implemented` bail the subcommand has
 carried since it was first added. Findings print to stderr with
 `error:`/`warning:` prefixes, the summary to stdout, and any error makes
 the exit non-zero for CI to gate on:
 
-{{#diff main-v15 main-v16}}
+{{#diff main-v15 main-v16 caption="Wiring the subcommand to print findings and gate CI on the exit code"}}
 
 What a failure looks like:
 
@@ -150,7 +150,7 @@ and is every file in `src/listings/` accounted for? `verify` gains three
 purely additive passes (the integrity check is untouched):
 
 ```rust
-{{#include listings/verify-v2.rs:109:203}}
+{{#include listings/verify-v2.rs:109:203 caption="Adding three passes over references, sidecars and orphaned files"}}
 ```
 
 `check_references` (callout {{#callout check-references}}) reuses the
@@ -170,7 +170,7 @@ manifest record claims is a warning, stray rather than broken.
 
 The tests grew the same way, one case per pass:
 
-{{#diff verify-tests-v1 verify-tests-v2}}
+{{#diff verify-tests-v1 verify-tests-v2 caption="Growing the suite one case per new pass"}}
 
 A book with a dangling reference now fails fast:
 
@@ -189,7 +189,7 @@ currency. `check_live_operands` (callout {{#callout live-audit}}) reports
 each one with chapter and line, a warning rather than an error:
 
 ```rust
-{{#include listings/verify-v3.rs:211:235}}
+{{#include listings/verify-v3.rs:211:235 caption="Warning on each `live:` operand that trades stability for currency"}}
 ```
 
 With every pass in place, this book becomes verify's first production
@@ -225,9 +225,9 @@ The slice-3 code delta — the `live:` audit, plus a fix for a false
 positive the dogfood surfaced (a `\{{#include listings/<tag>.callouts.toml}}`
 that displays a sidecar file is not a listing reference):
 
-{{#diff verify-v2 verify-v3}}
+{{#diff verify-v2 verify-v3 caption="Adding the `live:` audit, and excusing sidecar includes from it"}}
 
-{{#diff verify-tests-v2 verify-tests-v3}}
+{{#diff verify-tests-v2 verify-tests-v3 caption="Covering the audit and the sidecar exemption it needed"}}
 
 With the book re-sealed, verify is green — one warning remains, the `live:`
 operand ch.4 uses on purpose:
