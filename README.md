@@ -24,8 +24,14 @@ real and the prose keyed to it:
   a page or in the sidebar, and `label=` + `{{#listing-ref}}`
   cross-references that resolve to the current number so they never go
   stale.
+- **Show where a listing came from** — opt-in, a muted line under each
+  caption names the file the snapshot was taken from and the tag it was
+  frozen under, so a book that freezes one file repeatedly doesn't have to
+  spend its captions saying which version you're looking at.
 - **Verify** in CI — `mdbook-listings verify` fails the build if a frozen
-  snapshot was tampered with or a reference doesn't resolve.
+  snapshot was tampered with or a reference doesn't resolve, and warns on
+  the quieter slips: an annotation no prose picks up, a slice that cuts off
+  the line it annotates, an argument that will never render.
 
 ## Installation
 

@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-07
+
+Listings can say what they are and where they came from, and `verify`
+grew three warnings for slips that used to build clean.
+
+**What changes for an existing book.** Unlike 0.1.1 and 0.2.0, this
+release is not byte-identical for every book. A caption containing
+backticks now renders them as code rather than as literal backticks —
+almost certainly what its author intended, but it is a visible change to
+a page you already published. Everything else is opt-in: with
+`show-listing-provenance` unset, listings render exactly as before, and
+the new `verify` findings are warnings that leave the exit code alone.
+
 ### Fixed
 - **A caption's inline markdown now renders in HTML.** ``caption="Adding
   `toml_edit` as a dependency"`` reached the reader with literal backticks,
@@ -231,5 +244,7 @@ primitives and a verification gate (each is a user-story chapter in the
 - Claude Code plugin (marketplace + bundled skill) giving an agent a
   current reference for the CLI and directive syntax while authoring.
 
+[0.2.1]: https://github.com/padamson/mdbook-listings/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/padamson/mdbook-listings/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/padamson/mdbook-listings/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/padamson/mdbook-listings/releases/tag/v0.1.0
