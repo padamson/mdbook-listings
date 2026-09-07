@@ -12,11 +12,12 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+# Read-only by default; every job that needs to write says so itself.
+# Without this, the MSRV, test and e2e jobs -- which run third-party build
+# scripts and a browser -- hold a token that can push to the repo, move a
+# release and mint attestations.
 permissions:
-  contents: write
-  pages: write
-  id-token: write
-  attestations: write
+  contents: read
 
 # Cancel in-progress runs on the same PR; let main and tag runs queue.
 concurrency:
@@ -28,15 +29,15 @@ jobs:
     name: MSRV check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install MSRV toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
         with:
           toolchain: "1.88"
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: msrv-1.88
 
@@ -51,20 +52,20 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           components: rustfmt, clippy
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: test
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.1
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833 # v2.87.1
         with:
           tool: cargo-nextest
 
@@ -95,10 +96,10 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
       - name: Install fonts (for Typst PDF rendering)
         run: |
@@ -106,7 +107,7 @@ jobs:
           sudo apt-get install -y fonts-sil-charis fonts-inter fonts-jetbrains-mono
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           # Each bump rebuilds the playwright-rs test binary from scratch so
           # build.rs reruns and rebakes PLAYWRIGHT_DRIVER_DIR for the
@@ -124,7 +125,7 @@ jobs:
       # caches target/ and so the binary stays valid across runs, but the
       # driver lives OUTSIDE target/ so it needs its own cache key.
       - name: Cache Playwright browsers + driver
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cache/ms-playwright/
@@ -134,7 +135,7 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install mdbook (prebuilt)
-        uses: taiki-e/install-action@v2.87.1
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833 # v2.87.1
         with:
           tool: mdbook
 
@@ -223,12 +224,16 @@ jobs:
 
       - name: Upload Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: book/build/html
 
   deploy-book:
     name: Deploy book to GitHub Pages
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     needs: e2e
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -241,14 +246,18 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Configure Pages
-        uses: actions/configure-pages@v6
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
       - name: Deploy
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
 
   build-release:
     name: Build release ${{ matrix.target }}
+    permissions:
+      contents: write       # upload assets to the GitHub Release
+      id-token: write       # provenance attestation
+      attestations: write
     needs: e2e
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}
@@ -266,7 +275,7 @@ jobs:
             target: x86_64-pc-windows-msvc
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Get version from tag
         id: get_version
@@ -274,17 +283,17 @@ jobs:
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           target: ${{ matrix.target }}
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: release-${{ matrix.target }}
 
       - name: Install parse-changelog
-        uses: taiki-e/install-action@v2.87.1
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833 # v2.87.1
         with:
           tool: parse-changelog
 
@@ -315,7 +324,7 @@ jobs:
         run: parse-changelog CHANGELOG.md ${{ steps.get_version.outputs.version }} > release_notes.md
 
       - name: Upload release asset
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           files: |
             *.tar.gz
@@ -325,7 +334,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate SLSA provenance attestation
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: |
             *.tar.gz
@@ -334,14 +343,16 @@ jobs:
 
   publish-crates:
     name: Publish to crates.io
+    permissions:
+      contents: read
     needs: build-release
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
 
       - name: Check if token is set
         id: check_token
