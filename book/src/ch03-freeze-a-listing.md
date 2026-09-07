@@ -109,7 +109,7 @@ commit, all frozen.
 ### `tests/freeze.rs` — the acceptance criteria as tests
 
 ```rust
-{{#include listings/freeze-tests-v1.rs label="freeze-acceptance-tests" caption="The acceptance criteria as tests"}}
+{{#include listings/freeze-tests-v1.rs label="freeze-acceptance-tests" caption="Rejecting conflicting content and duplicate tags, which the book cannot exercise"}}
 ```
 
 The `freeze_rejects_conflicting_content_without_force` and
@@ -121,7 +121,7 @@ paths).
 ### `src/main.rs` — the CLI adapter
 
 ```rust
-{{#include listings/main-v1.rs}}
+{{#include listings/main-v1.rs caption="Dispatching every subcommand, with only `freeze` and `supports` implemented"}}
 ```
 
 The no-subcommand arm (`preprocess()`) is a stub that errors — the
@@ -134,7 +134,7 @@ because the dispatch table has to mention every subcommand.
 ### `src/freeze.rs` — the freeze logic
 
 ```rust
-{{#include listings/freeze-v1.rs}}
+{{#include listings/freeze-v1.rs caption="Deciding create, unchanged or replaced, and rejecting tags that escape `listings/`"}}
 ```
 
 `FreezeOutcome` carries the Create / Unchanged / Replaced decision
@@ -152,7 +152,7 @@ outside the listings directory.
 ### `src/manifest.rs` — the persistence layer
 
 ```rust
-{{#include listings/manifest-v1.rs}}
+{{#include listings/manifest-v1.rs caption="Reading and writing `listings.toml`, with `upsert` preserving insertion order"}}
 ```
 
 `upsert` preserves insertion order when replacing an existing
@@ -164,7 +164,7 @@ a reorder of the whole file.
 ### `src/lib.rs` — public module registrations
 
 ```rust
-{{#include listings/lib-v1.rs}}
+{{#include listings/lib-v1.rs caption="Exposing the crate's modules so the CLI and the tests can reach them"}}
 ```
 
 Nothing to see here; `lib.rs` exists only so `src/main.rs` and the
