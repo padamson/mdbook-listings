@@ -8,8 +8,12 @@
 //! in a shell step — so it drifts on the next bump and every e2e test dies
 //! at launch with `BrowserNotInstalled`.
 //!
-//! `install_browsers` adds `--with-deps` on Linux by itself, so CI gets the
-//! system libraries it needs and a local macOS run doesn't ask for sudo.
+//! `install_browsers_with_deps` is deliberate. Up to playwright-rs 0.16,
+//! a plain `install_browsers` implied `--with-deps` on Linux; 0.17 dropped
+//! that so the call matches `npx playwright install` on every platform.
+//! The e2e job runs on ubuntu, so the system libraries have to be asked
+//! for now. Only Linux installs them -- a local macOS run still doesn't
+//! ask for sudo -- so this is safe to call unconditionally.
 //!
 //! playwright-rs also ships a `playwright-rs install` bin behind its `cli`
 //! feature, but reaching it from CI means `cargo install playwright-rs`,
@@ -19,6 +23,6 @@
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    playwright_rs::install_browsers(Some(&["chromium"])).await?;
+    playwright_rs::install_browsers_with_deps(Some(&["chromium"])).await?;
     Ok(())
 }
