@@ -155,7 +155,7 @@ slice's contribution is the call-site swap (line 640 of v7), the
 new `render_inline_markdown` function just below `html_escape`,
 and the unit tests at the bottom.
 
-{{#diff callout-v6 callout-v7}}
+{{#diff callout-v6 callout-v7 caption="Rendering a callout body's own inline markdown instead of escaping it"}}
 
 Three details inside `render_inline_markdown` earn their own
 callout: {{#callout raw-html-neutralisation}} guards against
@@ -202,7 +202,7 @@ slice 9 also modified this file without refreezing (the
 and `cross_ref_badges_in_prose_render_with_full_opacity_not_subdued`
 tests), so those appear in the diff too.
 
-{{#diff e2e-callouts-v8 e2e-callouts-v9}}
+{{#diff e2e-callouts-v8 e2e-callouts-v9 caption="Catching up the e2e suite with tests written but never frozen"}}
 
 ### Slice 2 — preprocessor refreshes assets on every build
 
@@ -230,14 +230,14 @@ idempotency contract while now also seeding `.gitignore`. The
 preprocessor's `preprocess()` calls only `ensure_assets_fresh` (the
 gitignore is one-time setup, not per-build).
 
-{{#diff install-v8 install-v9}}
+{{#diff install-v8 install-v9 caption="Seeding `.gitignore` at install time, not on every build"}}
 
 The new helpers carry a single `// CALLOUT:` marker each — the
 detail that earns the WHY comment is the {{#callout
 assets-on-build}} note, which lives in `main.rs` next to the
 preprocessor call:
 
-{{#diff main-v9 main-v10}}
+{{#diff main-v9 main-v10 caption="Refreshing the bundled assets on build, behind one WHY comment"}}
 
 Tests added in this slice (all in `tests/install.rs`):
 
@@ -256,7 +256,7 @@ Tests added in this slice (all in `tests/install.rs`):
   idempotency (the future slice that adds the "already installed"
   message depends on this).
 
-{{#diff install-tests-v4 install-tests-v5}}
+{{#diff install-tests-v4 install-tests-v5 caption="Covering the `.gitignore` seed and its idempotency"}}
 
 Migration for an existing book (this book did exactly this in the
 slice-2 commit):
@@ -294,14 +294,14 @@ Slice 3 flips the default. The change is CSS-only, contained in
   collapsed sliver tucks against the badge on the left rather than
   the right; the transition then expands rightward.
 
-{{#diff listings-css-v2 listings-css-v3}}
+{{#diff listings-css-v2 listings-css-v3 caption="Flipping the popover's collapsed sliver to tuck against its badge"}}
 
 The `CSS_ASSET_SENTINEL` and `JS_ASSET_SENTINEL` constants in
 `src/install.rs` both bump (CSS v3→v5, JS v1→v5; the iteration
 during this slice's debug cycle accounts for the multi-step
 versioning) so the bundled-asset check catches the new shape.
 
-{{#diff install-v9 install-v10}}
+{{#diff install-v9 install-v10 caption="Bumping both asset sentinels so the bundled check sees the new shape"}}
 
 #### Viewport-aware widening into the gutter
 
@@ -370,7 +370,7 @@ the side/clamp choice live.
 The full JS file:
 
 ```js
-{{#include listings/listings-js-v1.js}}
+{{#include listings/listings-js-v1.js caption="Choosing each popover's side and clamping it to the viewport"}}
 ```
 
 #### Tests
@@ -392,7 +392,7 @@ A small helper `wait_for_layout_recalc(page)` awaits two
 `requestAnimationFrame` ticks so each test measures after the JS
 has reacted to the viewport change.
 
-{{#diff e2e-callouts-v9 e2e-callouts-v10}}
+{{#diff e2e-callouts-v9 e2e-callouts-v10 caption="Measuring after the layout settles, with a two-frame wait helper"}}
 
 #### What slice 3 does NOT fix
 
@@ -455,7 +455,7 @@ front of the rest-of-line, and `render_callout_overlay_html`
 emits `data-callout-align="<value>"` on the entry when the option
 is set:
 
-{{#diff callout-v7 callout-v8}}
+{{#diff callout-v7 callout-v8 caption="Parsing `--align` off a marker and emitting it on the entry"}}
 
 The runtime change is in `assets/mdbook-listings.js`: the
 `adjustPopoverPositioning` loop reads `entry.dataset.calloutAlign`
@@ -470,12 +470,12 @@ marker (`author-left` / `author-right`) is written on the entry
 for devtools diagnostics, matching the scheme slice 3 introduced
 for the viewport-aware decisions:
 
-{{#diff listings-js-v1 listings-js-v2}}
+{{#diff listings-js-v1 listings-js-v2 caption="Letting an author's side override the viewport-aware placement"}}
 
 The `JS_ASSET_SENTINEL` constant in `src/install.rs` bumps
 v5→v6 so the bundled-asset check catches the new shape:
 
-{{#diff install-v10 install-v11}}
+{{#diff install-v10 install-v11 caption="Bumping the JS sentinel again for the override-aware bundle"}}
 
 Tests added in this slice:
 
@@ -498,7 +498,7 @@ Tests added in this slice:
   `body.right <= badge.left + 1` — proving the author override
   beats viewport-aware auto-detection.
 
-{{#diff e2e-callouts-v10 e2e-callouts-v11}}
+{{#diff e2e-callouts-v10 e2e-callouts-v11 caption="Proving the author override beats viewport-aware auto-detection"}}
 
 ### Slice 5 — `freeze` output closes the authoring loop
 
@@ -562,9 +562,9 @@ manifest lookup) and `src/main.rs` (the three new `println!`
 lines + the strip-`src/` derivation + the conditional diff
 line):
 
-{{#diff freeze-v1 freeze-v2}}
+{{#diff freeze-v1 freeze-v2 caption="Suggesting the prior version of a source when freezing a new one"}}
 
-{{#diff main-v10 main-v11}}
+{{#diff main-v10 main-v11 caption="Printing what was frozen, and the diff worth running next"}}
 
 Tests added in this slice:
 
@@ -580,7 +580,7 @@ Tests added in this slice:
   — failures only ever wrote to stderr, so the new stdout lines
   don't affect them.
 
-{{#diff freeze-tests-v1 freeze-tests-v2}}
+{{#diff freeze-tests-v1 freeze-tests-v2 caption="Covering both diff-suggestion cases, prior version and none"}}
 
 ### Slice 6 — `mdbook-listings list` subcommand
 
@@ -632,7 +632,7 @@ The production-code change is in `src/main.rs`: a new
 `Command::List` variant on the enum plus a four-line handler
 that loads the manifest and iterates its `listings` vector:
 
-{{#diff main-v12 main-v13}}
+{{#diff main-v12 main-v13 caption="Adding a `list` subcommand that walks the manifest"}}
 
 Tests added in this slice (all in `tests/list.rs`, a new file):
 
@@ -648,7 +648,7 @@ Tests added in this slice (all in `tests/list.rs`, a new file):
   follow-up commit).
 
 ```rust
-{{#include listings/list-tests-v1.rs}}
+{{#include listings/list-tests-v1.rs caption="Pinning the path column against the Windows backslash regression"}}
 ```
 
 ### Slice 7 — `install` idempotency
@@ -705,7 +705,7 @@ Two new tests in `tests/install.rs`:
   CLI-level: the friendly message reaches stdout, both
   invocations exit success. Pins the downstream signal.
 
-{{#diff install-tests-v5 install-tests-v6}}
+{{#diff install-tests-v5 install-tests-v6 caption="Pinning the already-installed message and its exit status"}}
 
 ### Slice 8 — default `--tag` derivation
 
@@ -771,14 +771,14 @@ helper, `VERSION_PREFIXES` constant, and `TagDerivationError`
 enum with two variants (`UnusableSourceName`,
 `UnrecognisedConvention`).
 
-{{#diff freeze-v3 freeze-v4}}
+{{#diff freeze-v3 freeze-v4 caption="Deriving a default tag by bumping the source's existing version suffix"}}
 
 CLI wiring in `src/main.rs`: `Command::Freeze::tag` becomes
 `Option<String>`; the handler calls `derive_default_tag` when
 `None`, wraps the `TagDerivationError` in `anyhow::Error` so the
 CLI surfaces the actionable message on stderr with exit 1.
 
-{{#diff main-v13 main-v14}}
+{{#diff main-v13 main-v14 caption="Making `--tag` optional and surfacing the derivation failure on stderr"}}
 
 Tests added in this slice:
 
@@ -793,7 +793,7 @@ Tests added in this slice:
   omitted on an unrecognised-convention prior errors with the
   actionable message.
 
-{{#diff freeze-tests-v2 freeze-tests-v3}}
+{{#diff freeze-tests-v2 freeze-tests-v3 caption="Covering an omitted tag on a first freeze, a bump, and an error"}}
 
 ### Slice 9 — sidecar TOML callouts
 
@@ -815,7 +815,7 @@ the post-slice-9 freeze of `src/callout.rs`) and attaches two
 callouts at source lines that don't carry inline markers:
 
 ```toml
-{{#include listings/callout-v9.callouts.toml}}
+{{#include listings/callout-v9.callouts.toml caption="Attaching callouts to lines that carry no inline marker"}}
 ```
 
 The naming convention is `<tag>.callouts.toml` next to
@@ -833,7 +833,7 @@ that ALSO carries the inline `// CALLOUT: parse-entry` marker at
 source line 28 — three badges total, one inline, two sidecar:
 
 ```rust
-{{#include listings/callout-v9.rs:28:50}}
+{{#include listings/callout-v9.rs:28:50 caption="Showing one inline and two sidecar badges on the same slice"}}
 ```
 
 #### Three correctness details earned their own test
@@ -878,13 +878,13 @@ new `stripped_source_lines: Vec<usize>` field — the per-block
 source-line numbers of stripped inline markers, which the
 sidecar translation step needs.
 
-{{#diff callout-v8 callout-v9}}
+{{#diff callout-v8 callout-v9 caption="Returning stripped source lines so the sidecar can translate them"}}
 
 CLI wiring in `src/main.rs`: load the sidecar map once per
 preprocessor invocation and pass `&sidecars` to every
 `splice_callouts(...)` call.
 
-{{#diff main-v14 main-v15}}
+{{#diff main-v14 main-v15 caption="Loading the sidecar map once per invocation and threading it through"}}
 
 #### Quieting chronic build noise: escape `{{` in substituted content
 
@@ -908,9 +908,9 @@ mdbook-listings freezes is source code (Rust, YAML, TOML, JS,
 CSS) — never Markdown — so `{{...}}` in the body is always
 literal text, never an authored directive.
 
-{{#diff include-v2 include-v3}}
+{{#diff include-v2 include-v3 caption="Escaping double braces in an included body so mdbook leaves them alone"}}
 
-{{#diff diff-v9 diff-v10}}
+{{#diff diff-v9 diff-v10 caption="Applying the same escape to a rendered diff's body"}}
 
 Tests added in this slice:
 
@@ -940,7 +940,7 @@ Tests added in this slice:
   `splice_chapter_escapes_double_braces_in_included_body` pins
   the `{{` → `\{{` substitution contract above.
 
-{{#diff e2e-callouts-v11 e2e-callouts-v12}}
+{{#diff e2e-callouts-v11 e2e-callouts-v12 caption="Asserting each badge renders exactly once in the built chapter"}}
 
 Alongside the splicer escapes, a sweep of earlier chapters
 fixed unescaped illustrative `{{#…}}` references inside inline
@@ -993,7 +993,7 @@ The diff below is this slice's own change. It badges two callouts,
 `strip-diff` and `strip-diff-skip`; both are `+` lines, so the diff is
 itself an instance of the rule it documents.
 
-{{#diff callout-v9 callout-v10}}
+{{#diff callout-v9 callout-v10 caption="Badging a diff's added lines, demonstrated on this diff itself"}}
 
 ### Slice 11 — one directive grammar across the three passes
 
@@ -1027,7 +1027,7 @@ closer rule the diff parser got wrong is pinned by the walker's first
 direct unit tests (callout {{#callout fence-closer-rule}}):
 
 ```rust
-{{#include listings/fence-v1.rs:1:154}}
+{{#include listings/fence-v1.rs:1:154 caption="Extracting the fence walker, with the closer rule its parser got wrong"}}
 ```
 
 Second, a shared scanner owns the occurrence grammar — find the prefix,
@@ -1038,7 +1038,7 @@ actually differs between them: argument parsing and fence policy
 consolidates here too (callout {{#callout shared-line-number}}):
 
 ```rust
-{{#include listings/directive-v1.rs:1:111}}
+{{#include listings/directive-v1.rs:1:111 caption="Sharing one directive scanner, with fence policy the only difference"}}
 ```
 
 Neither new module carries inline `// CALLOUT:` markers; the four badges
@@ -1050,7 +1050,7 @@ occurrences. The diff parser's rewrite includes the regression test that
 failed against the old toggle
 (`parse_directives_does_not_close_outer_fence_on_shorter_inner_fence`):
 
-{{#diff diff-v10 diff-v11}}
+{{#diff diff-v10 diff-v11 caption="Rewriting the diff parser over the shared scanner"}}
 
 The include parser keeps its path-prefix interception and range-suffix
 parsing, and drops everything else. Its entry-point marker also gets a
@@ -1060,7 +1060,7 @@ moment this diff first rendered, because ch.6 pins `parse-entry` to
 exactly one badge. The renamed marker is an edited `+` line, so it
 badges here under slice 10's rule:
 
-{{#diff include-v3 include-v4}}
+{{#diff include-v3 include-v4 caption="Renaming a marker the e2e suite caught colliding across modules"}}
 
 The callout pass loses its local fence and backtick machinery, gains the
 escape check, and picks up a pin test for it
@@ -1068,7 +1068,7 @@ escape check, and picks up a pin test for it
 The fence walker's departure to its own module is most of this diff's
 bulk:
 
-{{#diff callout-v10 callout-v11}}
+{{#diff callout-v10 callout-v11 caption="Leaving a backslash-escaped directive literal, as the walker moves out"}}
 
 To confirm the refactor changed nothing it shouldn't, this book was
 built twice — once with the pre-slice binary, once with this one — and
