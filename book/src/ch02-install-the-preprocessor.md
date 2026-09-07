@@ -66,7 +66,7 @@ delegates setup and assertions to a `MinimalFixtureBook` helper
 so it reads as the scenario rather than the mechanics:
 
 ```rust
-{{#include listings/install-tests-v1.rs}}
+{{#include listings/install-tests-v1.rs caption="Driving `install` from the CLI, `#[ignore]`d until the command exists"}}
 ```
 
 The test is `#[ignore]`'d so the green-build pre-commit chain
@@ -89,7 +89,7 @@ that unit tests assert is present in the bundled bytes (so a build
 that strips or replaces the asset fails loudly):
 
 ```rust
-{{#include listings/install-v1.rs}}
+{{#include listings/install-v1.rs caption="Declaring the bundled CSS and the sentinel its tests assert on"}}
 ```
 
 The asset itself is intentionally a placeholder — real callout
@@ -98,14 +98,14 @@ styling depends on choices the **Render Inline Callouts** story
 string the unit tests look for:
 
 ```css
-{{#include listings/install-css-v1.css}}
+{{#include listings/install-css-v1.css caption="Holding only the sentinel until the callout story picks its styling"}}
 ```
 
 `src/lib.rs` gains one line — `pub mod install;` — so the rest of
 the crate can reach the new module:
 
 ```rust
-{{#include listings/lib-v2.rs}}
+{{#include listings/lib-v2.rs caption="Registering the `install` module so the rest of the crate reaches it"}}
 ```
 
 The unit tests run as part of the regular suite and pass; the
@@ -125,7 +125,7 @@ a diagnostic.
 `Cargo.toml` gains `toml_edit` as a runtime dep:
 
 ```toml
-{{#include listings/cargo-toml-v1.toml}}
+{{#include listings/cargo-toml-v1.toml caption="Adding `toml_edit` as a runtime dependency"}}
 ```
 
 The install module now declares the primitive alongside the CSS
@@ -140,7 +140,7 @@ Everything else — the CSS constants and their tests — is
 unchanged from `install-v1`.
 
 ```rust
-{{#include listings/install-v2.rs}}
+{{#include listings/install-v2.rs caption="Adding a `BookConfig` that round-trips `book.toml` without losing comments"}}
 ```
 
 The integration test from slice 1 is still `#[ignore]`'d.
@@ -167,7 +167,7 @@ Everything else — the CSS constants, the `BookConfig` parse and
 render methods, and their tests — is unchanged from `install-v2`.
 
 ```rust
-{{#include listings/install-v3.rs}}
+{{#include listings/install-v3.rs caption="Registering the preprocessor idempotently, so a second run is a no-op"}}
 ```
 
 The integration test from slice 1 is still `#[ignore]`'d. The
@@ -207,7 +207,7 @@ methods, the preprocessor-registration method, and their tests
 — is unchanged from `install-v3`.
 
 ```rust
-{{#include listings/install-v4.rs}}
+{{#include listings/install-v4.rs caption="Writing the CSS asset and registering it under `additional-css`"}}
 ```
 
 The integration test from slice 1 is still `#[ignore]`'d.
@@ -249,7 +249,7 @@ names or describing the body in prose is dropped — but the code
 itself is the same as `install-v4`.
 
 ```rust
-{{#include listings/install-v5.rs}}
+{{#include listings/install-v5.rs caption="Composing the steps into `install`, reporting through an `InstallOutcome`"}}
 ```
 
 **What's new in `main-v2` compared to `main-v1`:** the
@@ -263,7 +263,7 @@ stub) and the `main`/`run`/`supports` functions — is unchanged
 from `main-v1`.
 
 ```rust
-{{#include listings/main-v2.rs}}
+{{#include listings/main-v2.rs caption="Wiring the `Install` subcommand to report which outcome it produced"}}
 ```
 
 **What's new in `install-tests-v2` compared to `install-tests-v1`:**
@@ -271,7 +271,7 @@ the `#[ignore = "..."]` attribute is removed; the
 `#[test]` attribute and the body are unchanged.
 
 ```rust
-{{#include listings/install-tests-v2.rs}}
+{{#include listings/install-tests-v2.rs caption="Removing the `#[ignore]` now that `install` satisfies the test"}}
 ```
 
 The integration test from slice 1 is no longer ignored. Slices
@@ -310,7 +310,7 @@ diagnostic; other I/O errors still go through the existing
 constant, struct, and test — is unchanged.
 
 ```rust
-{{#include listings/install-v6.rs}}
+{{#include listings/install-v6.rs caption="Turning a missing `book.toml` into a diagnostic that names the file"}}
 ```
 
 **What's new in `install-tests-v3` compared to
@@ -320,7 +320,7 @@ test (`install_registers_preprocessor_and_writes_css`) and the
 `MinimalFixtureBook` helper are unchanged.
 
 ```rust
-{{#include listings/install-tests-v3.rs}}
+{{#include listings/install-tests-v3.rs caption="Covering the missing-`book.toml` path with an integration test"}}
 ```
 
 The suite now runs 24 tests (10 install-related, 14 from other
@@ -356,7 +356,7 @@ method's existing behaviour (preprocessor entry with command)
 and idempotency are unchanged.
 
 ```rust
-{{#include listings/install-v7.rs}}
+{{#include listings/install-v7.rs caption="Ordering the preprocessor before `admonish` when the book already registers it"}}
 ```
 
 **What's new in `install-tests-v4` compared to
@@ -366,7 +366,7 @@ integration test. The other tests and helper struct are
 unchanged.
 
 ```rust
-{{#include listings/install-tests-v4.rs}}
+{{#include listings/install-tests-v4.rs caption="Asserting the `before` ordering end to end against a fixture book"}}
 ```
 
 The suite now runs 27 tests (14 install-related, 13 from other
@@ -402,7 +402,7 @@ change; no behaviour change. The full test suite (14 install
 tests, 27 overall) passes byte-for-byte the same as before.
 
 ```rust
-{{#include listings/install-v8.rs}}
+{{#include listings/install-v8.rs caption="Extracting `subtable_mut` from both registration methods, with no behaviour change"}}
 ```
 
 The chapter is feature- and quality-complete. The wrap-up
