@@ -98,7 +98,7 @@ inside `[dependencies]` in alphabetical position. Everything else is
 unchanged.
 
 ```toml
-{{#include listings/cargo-toml-v2.toml}}
+{{#include listings/cargo-toml-v2.toml caption="Adding `mdbook-preprocessor` and `serde_json` for the preprocessor protocol"}}
 ```
 
 `src/main.rs`'s `preprocess` function used to bail with `not yet
@@ -114,7 +114,7 @@ derive struct, every other subcommand handler, `supports`,
 `main`/`run` — is byte-identical.
 
 ```rust
-{{#include listings/main-v3.rs}}
+{{#include listings/main-v3.rs caption="Replacing the `preprocess` stub with a `parse_input` to `to_writer` round-trip"}}
 ```
 
 The integration test lives in a new `tests/diffs.rs` (per ch. 0's
@@ -128,7 +128,7 @@ mdbook constructors (`PreprocessorContext::new`, `Chapter::new`,
 JSON array — the exact shape mdbook itself sends a preprocessor.
 
 ```rust
-{{#include listings/diffs-tests-v1.rs}}
+{{#include listings/diffs-tests-v1.rs caption="Building the two-element JSON envelope mdbook actually sends a preprocessor"}}
 ```
 
 `#[ignore]` (with a reason that names the slices that close it out)
@@ -163,7 +163,7 @@ span }` and the free function `parse_directives(content) ->
 Vec<DiffDirective>`:
 
 ```rust
-{{#include listings/diff-v1.rs}}
+{{#include listings/diff-v1.rs caption="Declaring `DiffDirective` and the `parse_directives` scan over chapter text"}}
 ```
 
 The parser walks `content` byte-wise, looking for `\{{#diff`. When it
@@ -194,7 +194,7 @@ and the integration tests can reach the new module.
 unchanged.
 
 ```rust
-{{#include listings/lib-v3.rs}}
+{{#include listings/lib-v3.rs caption="Registering the `diff` module so the splicer is reachable"}}
 ```
 
 The integration test from slice 1 is still `#[ignore]`'d. The
@@ -229,7 +229,7 @@ file format. The parser, its tests, and the module's existing
 imports are unchanged.
 
 ```rust
-{{#include listings/diff-v2.rs}}
+{{#include listings/diff-v2.rs caption="Resolving a tag pair to bytes against an in-memory `Manifest`"}}
 ```
 
 The resolver stops at the first failing operand: if the left tag
@@ -272,7 +272,7 @@ alphabetical position inside `[dependencies]`. Everything else is
 unchanged.
 
 ```toml
-{{#include listings/cargo-toml-v3.toml}}
+{{#include listings/cargo-toml-v3.toml caption="Adding `similar` for the unified-diff rendering"}}
 ```
 
 `src/diff.rs` grows the `render` function plus four unit tests
@@ -288,7 +288,7 @@ source code is the right place to talk about behaviour. The
 behaviour itself is unchanged.
 
 ```rust
-{{#include listings/diff-v3.rs}}
+{{#include listings/diff-v3.rs caption="Rewriting the doc comments to describe behaviour, not story structure"}}
 ```
 
 [`similar`]: https://docs.rs/similar
@@ -333,7 +333,7 @@ start byte falls inside an open fence — the same rule that lets
 this very narrative quote `\{{#diff …}}` syntax in fenced examples
 without the splicer eating them.
 
-{{#diff diff-v3 diff-v4 caption="Fence-aware directive scanning"}}
+{{#diff diff-v3 diff-v4 caption="Skipping directives inside fences, so the narrative can quote the syntax"}}
 
 `src/main.rs`'s `preprocess` function goes from a no-op
 pass-through to the actual transformation: load the manifest from
@@ -344,7 +344,7 @@ let the closure return errors, so the splicer's failures are
 captured into a local `Option<anyhow::Error>` checked after the
 walk.
 
-{{#diff main-v3 main-v4}}
+{{#diff main-v3 main-v4 caption="Walking every chapter through the splicer, capturing the first error"}}
 
 `tests/diffs.rs` drops the `#[ignore]` on the slice-1 acceptance
 test (the splicer makes it pass) and gains two more integration
@@ -356,7 +356,7 @@ tempdir top, frozen files under `src/listings/`, matching what
 put those under a redundant `book/` subdirectory, which worked
 while the preprocessor was a pass-through but doesn't now.
 
-{{#diff diffs-tests-v1 diffs-tests-v2}}
+{{#diff diffs-tests-v1 diffs-tests-v2 caption="Moving the fixture's frozen files to where `Manifest::load` reads them"}}
 
 `book/book.toml` gains `[preprocessor.listings]` (with
 `before = ["admonish"]` because admonish is registered too) and
@@ -399,9 +399,9 @@ asserts on the `+++ live:…` header and the `+`/`−` lines
 reflecting the live bytes. The `MinimalDiffsBook` fixture grows
 a `write_live_file` helper for the same.
 
-{{#diff diff-v4 diff-v5}}
+{{#diff diff-v4 diff-v5 caption="Adding the `live:` operand and a `LiveFileMissing` that names the path"}}
 
-{{#diff diffs-tests-v2 diffs-tests-v3}}
+{{#diff diffs-tests-v2 diffs-tests-v3 caption="Driving a `live:` operand end to end, with a `write_live_file` helper"}}
 
 To dogfood it, here is the chapter rendering a `live:` diff
 between the `diff-v5` tag (frozen above) and the live
@@ -410,7 +410,7 @@ chapter's own source directory (`book/src/`, post-slice-8),
 so `../../src/diff.rs` walks up two levels to the repo root and
 back into the crate's `src/`:
 
-{{#diff diff-v5 live:../../src/diff.rs}}
+{{#diff diff-v5 live:../../src/diff.rs caption="Diffing the frozen module against its live source at build time"}}
 
 When slice 6 shipped, the diff above rendered as the "no changes"
 notice — the frozen `diff-v5` was byte-identical to the live
@@ -464,9 +464,9 @@ the slice-6 freeze of `src/diff.rs` and the post-refactor source.
 Same directive, different output, because the live source
 drifted. That's the use case for `live:` made visible.
 
-{{#diff diff-v5 diff-v6}}
+{{#diff diff-v5 diff-v6 caption="Removing `parse_escapes` and the escape branch the real pipeline never reaches"}}
 
-{{#diff diffs-tests-v3 diffs-tests-v4}}
+{{#diff diffs-tests-v3 diffs-tests-v4 caption="Dropping the tests that covered the removed escape branch"}}
 
 53 → 51 tests (the three `parse_escapes` unit tests, the
 `splice_chapter_strips_leading_backslash_from_escaped_directives`
@@ -503,7 +503,7 @@ Three failing tests drove the loop (two in `src/diff.rs`, one in
 `tests/diffs.rs`), then the implementation, then green: 54 tests
 pass.
 
-{{#diff diff-v6 diff-v7}}
+{{#diff diff-v6 diff-v7 caption="Resolving `live:` against the chapter's directory instead of the book root"}}
 
 The `main.rs` change threads `chapter_dir` in two spots a few lines apart.
 At the default three-line context they render as two separate hunks; widening
@@ -517,9 +517,9 @@ It sets the unified-diff context radius (default 3). See
 [Reading this book](reading-this-book.md).
 ```
 
-{{#diff main-v4 main-v5 context=6}}
+{{#diff main-v4 main-v5 context=6 caption="Computing the chapter directory `preprocess` passes to the splicer"}}
 
-{{#diff diffs-tests-v4 diffs-tests-v5}}
+{{#diff diffs-tests-v4 diffs-tests-v5 caption="Covering chapter-relative resolution in the integration suite"}}
 
 The slice-6 sub-section's live: directive
 (`live:../src/diff.rs` as it shipped in slice 6) now reads
