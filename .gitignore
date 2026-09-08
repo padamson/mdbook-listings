@@ -20,7 +20,13 @@ mutants.out.old/
 
 # playwright-rs-usage is installed, not vendored (see CLAUDE.md); a tracked
 # copy drifts and gets republished to this repo's own skill consumers.
-/.claude/skills/playwright-rs-usage/
+#
+# The skills CLI moved the real file to .agents/skills/ and made
+# .claude/skills/<name> a symlink to it, so the .claude path alone stopped
+# covering anything. Both are listed: the second line is the symlink, the
+# first is what it points at.
+/.agents/skills/
+/.claude/skills/
 
 # Claude Code runtime state (settings.local.json is ignored globally)
 /.claude/scheduled_tasks.lock

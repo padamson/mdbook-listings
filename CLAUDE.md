@@ -35,8 +35,22 @@ npx skills add padamson/playwright-rust -s playwright-rs-usage -a claude-code -y
 npx skills update    # refresh later
 ```
 
-`skills-lock.json` (tracked) records the source; the install itself lands
-at `.claude/skills/playwright-rs-usage/` (gitignored). Do not commit a
+`skills-lock.json` (tracked) records the source. The install itself lands at
+`.agents/skills/playwright-rs-usage/`, with `.claude/skills/<name>` a symlink
+pointing at it -- one real file, not two copies. Both paths are gitignored,
+and both entries are load-bearing: the CLI used to write the real file under
+`.claude/skills/`, so an ignore naming only that path stops covering anything
+after the move, and the real copy silently becomes tracked (it did, in
+`868c1c2`, and was untracked again in the commit that added this note).
+
+When updating, pick **Project** scope at the prompt -- Global updates a
+different set entirely and reports success either way, so check the version
+rather than the message:
+
+```bash
+npx skills update    # choose Project
+grep -m1 version: .claude/skills/playwright-rs-usage/SKILL.md
+``` Do not commit a
 copy: a tracked copy drifts against the crate and — because the skills CLI
 scans `.claude/skills/` — gets republished stale to anyone running
 `npx skills add padamson/mdbook-listings`. The install tracks upstream
