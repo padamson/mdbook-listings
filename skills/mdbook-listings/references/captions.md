@@ -25,12 +25,12 @@ orient, not to summarize. That is what makes the gerund head the default.
 ## Rules
 
 1. **Write a phrase, not a sentence.** Default to a gerund naming what the
-   listing does: `Adding a unit slot to QuantityValue`.
+   listing does: `Adding a timeout field to ClientConfig`.
 
 2. **The artifact type picks the head.** Source you author takes a gerund.
    Captured output takes a determiner plus a noun phrase naming what
-   produced it: `The output from running panschema verify`, `Validation
-   errors from the invalid fixture`, `Test results when one test fails`.
+   produced it: `The output from running cargo test`, `Validation errors
+   from the invalid fixture`, `Test results when one test fails`.
    This is the most transferable rule — a transcript is never `Running …`.
 
 3. **Six to sixteen words. Hard-cap twenty.** A caption is a title, not a
@@ -41,17 +41,17 @@ orient, not to summarize. That is what makes the gerund head the default.
    the book either way.
 
 5. **Name one or two identifiers, in code font.** The caption is where a
-   reader learns which class or slot the listing is about.
+   reader learns which type or function the listing is about.
 
-6. **Never positional.** Not "the schema below", not "the following
+6. **Never positional.** Not "the config below", not "the following
    fragment" — it breaks under reflow, print, and screen readers. Reference
    other listings by number via `{{#listing-ref}}`
    ([directives.md](directives.md)), which keeps the number current when
    listings shift.
 
 7. **Cross-reference a numbered listing; don't introduce it with a colon.**
-   A numbered listing is named in the prose ("Listing 5.4 adds the unit
-   slot"). The colon is the *unnumbered* idiom — it introduces a bare code
+   A numbered listing is named in the prose ("Listing 5.4 adds the timeout
+   field"). The colon is the *unnumbered* idiom — it introduces a bare code
    block that the sentence completes. Which one you reach for follows from
    whether you numbered the block, so this rule and rule 14 are one
    decision seen twice.
@@ -61,11 +61,10 @@ orient, not to summarize. That is what makes the gerund head the default.
    restate the artifact's name or its version — a slot already carries
    both. When it displays neither, the caption is the only place identity
    can live, so lead with the artifact and follow with what this version
-   shows. `The combustion benchmark: nine questions and the records their
-   answers must reach` becomes `Pairing nine questions with the records
-   their answers must reach` once a tag line carries the identity. A path
-   is never the identity either way: `The combustion benchmark`, not
-   `data/combustion-benchmark.yaml`.
+   shows. `The install module: writing the CSS asset and registering it`
+   becomes `Writing the CSS asset and registering it under additional-css`
+   once a tag line carries the identity. A path is never the identity
+   either way: `The install module`, not `src/install.rs`.
 
 9. **Say what it does, and to what.** Verb plus specific operands.
    `Changing parse_config into Config::new` beats "Refactoring the parser".
@@ -99,7 +98,7 @@ orient, not to summarize. That is what makes the gerund head the default.
 ## Anti-patterns
 
 - **The Classifier** — names the category, not the content. "Schema
-  excerpt", "YAML example", "The Sample class".
+  excerpt", "YAML example", "The Config struct".
 - **The Deictic** — "the code below".
 - **The Filename** — the caption is a path. Identity is the artifact's
   name, not where its bytes live, and a path breaks when files move.
@@ -112,7 +111,7 @@ orient, not to summarize. That is what makes the gerund head the default.
 - **The Legend** — the caption swells into a paragraph. Overflow belongs
   in prose or a callout.
 - **The Orphan Number** — numbering something you would not name.
-- **The Colon Introduction** — "…as shown in the schema below:" ahead of a
+- **The Colon Introduction** — "…as shown in the config below:" ahead of a
   numbered listing. Numbered means cross-referenced; the colon belongs to
   unnumbered blocks.
 
