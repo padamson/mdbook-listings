@@ -46,7 +46,7 @@ the new `verify` findings are warnings that leave the exit code alone.
   `[preprocessor.listings] show-listing-provenance`, each listing renders a
   muted line beneath its caption naming the `source` path the manifest
   recorded, followed by its tag as a pill —
-  `../data/combustion-benchmark.yaml` `(combustion-benchmark-v1)`. The path
+  `../src/install.rs` `(install-v4)`. The path
   leads because that is what comparable toolchains show and what a reader
   recognises: the Rust Book labels it `Filename:`, Docusaurus and Material
   for MkDocs give it the code block's title bar. Nothing has a precedent for

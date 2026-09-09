@@ -292,8 +292,8 @@ Renders a muted line beneath each listing's caption naming where its bytes
 **came from** and what the listing **is**:
 
 ```
-Listing 1.1 — Pairing nine questions with the records their answers must reach
-../data/combustion-benchmark.yaml  (combustion-benchmark-v1)
+Listing 2.8 — Writing the CSS asset and registering it under `additional-css`
+../src/install.rs  (install-v4)
 ```
 
 The path comes first, and is the manifest's `source` field — the file a
@@ -325,7 +325,7 @@ A `live:<path>` operand contributes the live path itself. A tag the manifest
 does not carry contributes no path, and the line shows the tag alone.
 
 The PDF backend has no pill, so it parenthesises the tag instead:
-`` `../data/combustion-benchmark.yaml` (`combustion-benchmark-v1`) ``.
+`` `../src/install.rs` (`install-v4`) ``.
 
 The List-of-Listings index stays caption-only — its entries are the one place
 a caption has to stand alone, and paths there would bury it.
@@ -335,8 +335,8 @@ one listing in a book that shows them; `show-provenance="true"` turns it on
 for one listing in a book that does not:
 
 ````markdown
-{{#include listings/scratch-v1.rs show-provenance="false"}}
-{{#diff schema-v2 schema-v3 show-provenance="true"}}
+{{#include listings/install-css-v1.css show-provenance="false"}}
+{{#diff install-v3 install-v4 show-provenance="true"}}
 ````
 
 A value that is neither `true` nor `false` is ignored, leaving the book-level
@@ -392,18 +392,18 @@ Listing 5.4" silently goes stale when a listing is inserted above it. Name
 the listing instead, and reference it by name:
 
 ````markdown
-```yaml
-{{#include listings/schema-v3.yaml label="claim-layer" caption="The claim layer"}}
+```rust
+{{#include listings/freeze-tests-v1.rs label="freeze-acceptance-tests" caption="Rejecting conflicting content and duplicate tags, which the book cannot exercise"}}
 ```
 ````
 
 Anywhere in the book (cross-chapter included):
 
 ````markdown
-The shape is defined in {{#listing-ref claim-layer}}.
+The two rejection cases are pinned in {{#listing-ref freeze-acceptance-tests}}.
 ````
 
-renders as the listing's *current* number — `Listing 5.4`, hyperlinked to the
+renders as the listing's *current* number — `Listing 3.1`, hyperlinked to the
 listing — and keeps tracking it as numbers shift. Mirrors what
 `{{#callout <label>}}` does for badges, one level up.
 

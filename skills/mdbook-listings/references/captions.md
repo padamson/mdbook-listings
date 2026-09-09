@@ -8,6 +8,10 @@ mechanics. This file covers what to write.
 Because the caption sits above the block, it is read first: its job is to
 orient, not to summarize. That is what makes the gerund head the default.
 
+The examples below are this tool's own book where a real caption fits the
+rule — the listing number is given so you can go and look — and are marked
+*illustrative* where none does.
+
 ## The target
 
 | property | target |
@@ -19,19 +23,21 @@ orient, not to summarize. That is what makes the gerund head the default.
 | backticked identifiers | one or two |
 | positional wording | none |
 | filename in caption text | none |
-| artifact name / version | only when the listing shows no tag or filename |
+| artifact name / version | only when the listing shows no provenance line |
 | number ⟺ caption | both or neither |
 
 ## Rules
 
 1. **Write a phrase, not a sentence.** Default to a gerund naming what the
-   listing does: `Adding a timeout field to ClientConfig`.
+   listing does: `` `Adding `toml_edit` as a runtime dependency` `` (2.5).
 
 2. **The artifact type picks the head.** Source you author takes a gerund.
    Captured output takes a determiner plus a noun phrase naming what
-   produced it: `The output from running cargo test`, `Validation errors
-   from the invalid fixture`, `Test results when one test fails`.
-   This is the most transferable rule — a transcript is never `Running …`.
+   produced it — *illustrative*, since this book freezes source and diffs
+   only: `` `The output from running mdbook-listings verify` ``,
+   `` `The diff a refreeze would produce` ``, `` `Test results when one test
+   fails` ``. This is the most transferable rule: a transcript is never
+   `Running …`.
 
 3. **Six to sixteen words. Hard-cap twenty.** A caption is a title, not a
    legend.
@@ -41,52 +47,63 @@ orient, not to summarize. That is what makes the gerund head the default.
    the book either way.
 
 5. **Name one or two identifiers, in code font.** The caption is where a
-   reader learns which type or function the listing is about.
+   reader learns what the listing is about — a type (`BookConfig`), a
+   function (`install`), a crate (`toml_edit`) or a config key
+   (`additional-css`). Listings of TOML, CSS and YAML have identifiers too.
 
-6. **Never positional.** Not "the config below", not "the following
+6. **Never positional.** Not "the listing below", not "the following
    fragment" — it breaks under reflow, print, and screen readers. Reference
    other listings by number via `{{#listing-ref}}`
    ([directives.md](directives.md)), which keeps the number current when
    listings shift.
 
 7. **Cross-reference a numbered listing; don't introduce it with a colon.**
-   A numbered listing is named in the prose ("Listing 5.4 adds the timeout
-   field"). The colon is the *unnumbered* idiom — it introduces a bare code
-   block that the sentence completes. Which one you reach for follows from
-   whether you numbered the block, so this rule and rule 14 are one
-   decision seen twice.
+   A numbered listing is named in the prose, by label so the number cannot
+   go stale: "see `{{#listing-ref freeze-acceptance-tests}}`, which pins the
+   two cases the book itself cannot exercise". The colon is the *unnumbered*
+   idiom — it introduces a bare code block that the sentence completes.
+   Which one you reach for follows from whether you numbered the block, so
+   this rule and rule 14 are one decision seen twice.
 
-8. **Don't repeat what the listing's chrome already shows.** When the
-   rendered listing displays its tag or filename, the caption must not
-   restate the artifact's name or its version — a slot already carries
-   both. When it displays neither, the caption is the only place identity
-   can live, so lead with the artifact and follow with what this version
-   shows. `The install module: writing the CSS asset and registering it`
-   becomes `Writing the CSS asset and registering it under additional-css`
-   once a tag line carries the identity. A path is never the identity
-   either way: `The install module`, not `src/install.rs`.
+8. **Don't repeat what the provenance line already shows.** With
+   `show-listing-provenance` on
+   ([directives.md](directives.md#show-listing-provenance)), a muted line
+   under the caption names the listing's file and tag, so the caption need
+   not — and should not — spend words on which artifact this is. The book's
+   `` `Writing the CSS asset and registering it under `additional-css`` ``
+   (2.8) never names `install`, because the line beneath it reads
+   `../src/install.rs (install-v4)`. Without that line, the same caption
+   would have to open with the artifact — `` `The install module: writing
+   the CSS asset …` `` — since the caption would be the only place identity
+   could live. Check which case your book is in before choosing.
 
 9. **Say what it does, and to what.** Verb plus specific operands.
-   `Changing parse_config into Config::new` beats "Refactoring the parser".
+   `` `Replacing the `preprocess` stub with a `parse_input` to `to_writer`
+   round-trip` `` (4.2) beats "Refactoring the preprocessor".
 
 10. **Compress the prose; do not echo it.** Restating the introducing
     sentence's idea is right; reusing its wording is not.
 
-11. **Announce a deliberate failure.** The house idiom is `Attempting to
-    …`, plus an explicit tail: `; this doesn't compile yet`, `which fails
-    --strict`, `that the validator rejects`. A listing that is meant to
-    fail must say so in its caption.
+11. **Announce a deliberate failure.** A listing that is meant to fail,
+    stay ignored, or be rejected must say so in its caption. This book's
+    forms: `` `Driving `install` from the CLI, `#[ignore]`d until the
+    command exists` `` (2.1) and `` `Rejecting conflicting content and
+    duplicate tags, which the book cannot exercise` `` (3.1). The Rust Book's
+    is `Attempting to …` with an explicit tail such as `; this doesn't
+    compile yet`.
 
-12. **A diff names the target of the change, not the mechanism.** The
-    verbs in use: `Adding`, `Changing X into Y`, `Updating the signature
-    of X to …`, `Extracting X from Y`, `Replacing`, `A revision of Listing
-    N that …`. Never "Adding lines 12–18".
+12. **A diff names the target of the change, not the mechanism.**
+    `` `Extracting `subtable_mut` from both registration methods, with no
+    behaviour change` `` (2.16); `` `Removing `parse_escapes` and the escape
+    branch the real pipeline never reaches` `` (4.15). The verbs in use:
+    `Adding`, `Changing X into Y`, `Extracting X from Y`, `Removing`,
+    `Replacing`. Never "Adding lines 12–18".
 
 13. **Escalate to a sentence only to carry the takeaway.** A full-sentence
     caption states the rule the listing proves while the prose states the
-    mechanics: *"Reading from or writing to a mutable static variable is
-    unsafe."* Reserve it for listings whose whole reason to exist is to
-    establish a constraint.
+    mechanics — the Rust Book's *"Reading from or writing to a mutable
+    static variable is unsafe."* Reserve it for listings whose whole reason
+    to exist is to establish a constraint.
 
 14. **If it does not deserve a caption, do not number it.** An unnumbered
     block should be completed by the sentence that introduces it. Numbered
@@ -97,8 +114,8 @@ orient, not to summarize. That is what makes the gerund head the default.
 
 ## Anti-patterns
 
-- **The Classifier** — names the category, not the content. "Schema
-  excerpt", "YAML example", "The Config struct".
+- **The Classifier** — names the category, not the content. "Rust source",
+  "TOML excerpt", "The BookConfig struct".
 - **The Deictic** — "the code below".
 - **The Filename** — the caption is a path. Identity is the artifact's
   name, not where its bytes live, and a path breaks when files move.
@@ -111,9 +128,8 @@ orient, not to summarize. That is what makes the gerund head the default.
 - **The Legend** — the caption swells into a paragraph. Overflow belongs
   in prose or a callout.
 - **The Orphan Number** — numbering something you would not name.
-- **The Colon Introduction** — "…as shown in the config below:" ahead of a
-  numbered listing. Numbered means cross-referenced; the colon belongs to
-  unnumbered blocks.
+- **The Colon Introduction** — a colon ahead of a numbered listing; see
+  rule 7.
 
 ## Where a book has to choose
 

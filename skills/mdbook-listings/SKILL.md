@@ -134,7 +134,8 @@ show-listing-provenance = true    # muted "<source> (<tag>)" line under the capt
   what to write.
 - **`show-listing-provenance`** — each listing gains a muted line beneath its
   caption naming the `source` path from `listings.toml` followed by its tag
-  as a pill, so the caption does not have to say which artifact this is. A `{{#diff}}` shows
+  as a pill, so the caption need not — and should not — spend words on which
+  artifact this is. A `{{#diff}}` shows
   both tags and collapses the path to one when its operands were frozen from
   the same file. The List-of-Listings index stays caption-only.
   `show-provenance="true"` / `show-provenance="false"` on an individual
