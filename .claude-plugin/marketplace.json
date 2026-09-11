@@ -11,7 +11,7 @@
       "source": "./",
       "description": "Author and maintain managed code listings in an mdBook book that uses the mdbook-listings preprocessor.",
       "homepage": "https://github.com/padamson/mdbook-listings",
-      "license": "MIT"
+      "license": "MIT OR Apache-2.0"
     }
   ]
 }
