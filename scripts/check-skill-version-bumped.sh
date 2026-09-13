@@ -27,8 +27,12 @@ if [ -z "$(git diff --cached --name-only -- skills/ .claude-plugin/)" ]; then
   exit 0
 fi
 
+# An empty read -- the commit that first adds the manifest, or a repo that
+# copied this script before its manifest existed -- must yield "", not a
+# JSONDecodeError traceback on stderr that reads like a hook crash. The
+# `|| echo ""` below only masks the exit status, not the noise.
 read_version() {
-  python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))'
+  python3 -c 'import json,sys; d=sys.stdin.read(); print(json.loads(d).get("version","") if d.strip() else "")'
 }
 
 old=$(git show "HEAD:$manifest" 2>/dev/null | read_version || echo "")
