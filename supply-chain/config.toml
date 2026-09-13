@@ -394,6 +394,11 @@ criteria = "safe-to-deploy"
 version = "0.1.5"
 criteria = "safe-to-run"
 
+[[exemptions.sync_wrapper]]
+version = "0.1.2"
+criteria = "safe-to-deploy"
+notes = "dev-only: reached through playwright-rs 0.18's route_service (tower) and used by the e2e suite and the screenshot tool, never the shipped binary. 496 lines; no trusted publisher to lean on."
+
 [[exemptions.tempfile]]
 version = "3.6.0"
 criteria = "safe-to-deploy"
@@ -413,6 +418,16 @@ criteria = "safe-to-deploy"
 [[exemptions.tokio-tungstenite]]
 version = "0.30.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.tower-layer]]
+version = "0.3.2"
+criteria = "safe-to-deploy"
+notes = "dev-only: the tower layer trait behind playwright-rs 0.18's route_service, used by the e2e suite and the screenshot tool, never the shipped binary. 690-line delta; 0.3.2 is published by davidpdrsn, whom no imported audit set trusts (carllerche, whom mozilla trusts, published only earlier versions)."
+
+[[exemptions.tower-service]]
+version = "0.3.2"
+criteria = "safe-to-deploy"
+notes = "dev-only: the tower trait crate behind playwright-rs 0.18's route_service, used by the e2e suite and the screenshot tool, never the shipped binary. 607 lines; published by hawkw, whom no imported audit set trusts."
 
 [[exemptions.tracing]]
 version = "0.1.44"

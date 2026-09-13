@@ -31,7 +31,7 @@ futures = "0.3"
 # with the fix. Tracked in #31.
 pdf-extract = { git = "https://github.com/padamson/pdf-extract", branch = "fix/per-page-font-cache" }
 playwright-rs = { workspace = true }
-playwright-rs-trace = "0.1.2"
+playwright-rs-trace = "0.2"
 predicates = "3"
 tempfile = "3"
 tokio = { workspace = true }
@@ -51,5 +51,5 @@ members = ["tools/capture-screenshots"]
 # dogfood the fork — we cut them. Browser install follows the crate; see
 # examples/install-browsers.rs.
 [workspace.dependencies]
-playwright-rs = "0.17.0"
+playwright-rs = "0.18.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
