@@ -13,7 +13,11 @@ fn frontmatter() -> String {
         "{}/skills/mdbook-listings/SKILL.md",
         env!("CARGO_MANIFEST_DIR")
     );
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    // A Windows checkout with autocrlf hands back CRLF; the scan wants the
+    // bytes as committed, which is what the guard script reads via git show.
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("{path}: {e}"))
+        .replace("\r\n", "\n");
     let front = text
         .strip_prefix("---\n")
         .and_then(|rest| rest.split_once("\n---\n"))
