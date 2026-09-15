@@ -1,6 +1,12 @@
 
 # cargo-vet audits file
 
+[[audits.chacha20]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.10.1 -> 0.10.2"
+notes = 'Fix for the yank reason: the SSE2 backend used the SSE4.1 intrinsic _mm_extract_epi32 under target_feature(enable = "sse2") to write the counter back. The delta replaces the two extracts with one _mm_storeu_si128 of the fourth state vector (words 12..16), in bounds for the 16-word state and equivalent because only the counter words change during keystream generation; loads are the same as before, factored into Backend::new. No new unsafe beyond that store, no I/O, no dependency changes.'
+
 [[audits.futures]]
 who = "Paul Adamson <paul.adamson.01@gmail.com>"
 criteria = "safe-to-run"
@@ -74,6 +80,12 @@ delta = "0.13.3 -> 0.13.4"
 who = "Paul Adamson <paul.adamson.01@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "0.13.3 -> 0.13.4"
+
+[[audits.rustls]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.23.40 -> 0.23.42"
+notes = "Delta adds the RFC 9149 ticket_request extension (client opt-in via ClientConfig::send_ticket_request, server ignores it unless max_tls13_tickets > 0), regenerates nightly-only read_buf signatures for BorrowedCursor<'_, u8>, and makes cosmetic edits. No unsafe, no I/O, no build.rs or dependency changes. Taken for RUSTSEC-2026-0285 (fixed in 0.23.45, which imported audits cover from 0.23.42)."
 
 [[audits.similar]]
 who = "Paul Adamson <paul.adamson.01@gmail.com>"
