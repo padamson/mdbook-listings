@@ -1,0 +1,33 @@
+name: Diff base
+description: >-
+  The revision a job should diff the checkout against, as a SHA that
+  `git diff <sha> HEAD` accepts. For a pull request it is the merge base of
+  HEAD with the base branch's current tip: the event payload's snapshot of
+  the base goes stale as soon as the base moves, and a plain diff against
+  the tip would show the base's own newer commits as reversions. For a push
+  it is the previous tip, or HEAD~1 when there is none (a branch's first
+  push, a manual run) or when it is no longer in the fetched history (a
+  force push). Needs a fetch-depth 0 checkout.
+outputs:
+  ref:
+    description: A SHA that `git diff <sha> HEAD` accepts.
+    value: ${{ steps.base.outputs.ref }}
+runs:
+  using: composite
+  steps:
+    - id: base
+      shell: bash
+      env:
+        EVENT: ${{ github.event_name }}
+        BASE_REF: ${{ github.base_ref }}
+        BEFORE: ${{ github.event.before }}
+      run: |
+        set -euo pipefail
+        if [ "$EVENT" = pull_request ]; then
+          ref=$(git merge-base "origin/$BASE_REF" HEAD)
+        elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+          ref=$BEFORE
+        else
+          ref=$(git rev-parse HEAD~1)
+        fi
+        echo "ref=$ref" >> "$GITHUB_OUTPUT"

@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Removed
+- **The Claude Code plugin manifests.** The authoring skill has one install
+  channel now, the Agent Skills CLI: `npx skills add padamson/mdbook-listings`.
+  The plugin channel carried nothing the skill directory does not, and the
+  installs it produced went stale against main. If you enabled the plugin,
+  run `/plugin uninstall mdbook-listings@mdbook-listings` and install with the
+  command in the README.
+
 ## [0.2.1] - 2026-09-07
 
 Listings can say what they are and where they came from, and `verify`

@@ -15,15 +15,21 @@ cargo deny check         # license/dependency check
 cargo vet                # supply chain review
 ```
 
-## Plugin skill stays in sync
+## The skill stays in sync
 
-The repo ships a Claude Code plugin (`.claude-plugin/` + `skills/mdbook-listings/`).
-When a change touches the CLI surface or directive syntax, updating the skill
-is part of done, the same as tests and docs. The `plugin version bumped` prek
-hook enforces the other half: any commit touching `skills/` or `.claude-plugin/`
-must bump the `plugin.json` version, because that version is the update gate
-for installed consumers — without a bump, `/plugin update` reports "already at
-the latest version" and the edit never reaches anyone.
+The repo ships an Agent Skill (`skills/mdbook-listings/`) that book repos
+install with `npx skills add padamson/mdbook-listings`. When a change touches
+the CLI surface or directive syntax, updating the skill is part of done, the
+same as tests and docs. The `skill version bumped` prek hook enforces the
+other half: any commit touching `skills/` must bump the frontmatter's
+`metadata.version`. The skills CLI re-pulls on `npx skills update` with no
+version concept of its own, so that field is the only thing a consumer can
+compare to know whether an install moved. CI runs the same script as the
+`Skill version guard` job against the PR base or the pre-push tip, so an
+unbumped edit from a clone without prek or a `--no-verify` commit is flagged
+on the push that lands it. That is a red job, not a merge gate: this repo
+commits straight to main, so the hook is the only thing that stops the edit
+landing.
 
 ## playwright-rs skill is installed, not vendored
 

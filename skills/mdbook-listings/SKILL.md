@@ -9,6 +9,9 @@ description: >-
   {{#diff}} between slices, numbering and captioning listings, rendering a
   book-wide List of Listings index, and verifying that the book stays in sync
   with its sources.
+license: MIT OR Apache-2.0
+metadata:
+  version: "0.1.15"
 ---
 
 # Authoring with mdbook-listings

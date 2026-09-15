@@ -3,6 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/mdbook-listings.svg)](https://crates.io/crates/mdbook-listings)
 [![CI](https://github.com/padamson/mdbook-listings/actions/workflows/ci.yml/badge.svg)](https://github.com/padamson/mdbook-listings/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![skills.sh](https://skills.sh/b/padamson/mdbook-listings)](https://skills.sh/padamson/mdbook-listings)
 
 Managed code listings for mdbook: freeze real source into your book, diff
 and annotate it, and verify it stays honest.
@@ -50,34 +51,14 @@ Full documentation at <https://padamson.github.io/mdbook-listings/>.
 What's planned beyond what's shipped: see
 [Future Work](https://padamson.github.io/mdbook-listings/ch09-future-work.html).
 
-## Claude Code plugin
+## Agent skill
 
-If you use [Claude Code](https://claude.com/claude-code), you can install an
-authoring assistant for this preprocessor. It gives the agent a concise,
-always-current reference for the CLI and directive syntax while it edits a
-book, so it doesn't have to re-derive the commands each session.
+A skill that teaches a coding agent the CLI and directive syntax ships in
+this repo. Install it into a book repo with the skills CLI:
 
-The plugin lives in this repo. To install it, add the repo as a plugin source
-and then install:
-
-```text
-/plugin marketplace add padamson/mdbook-listings
-/plugin install mdbook-listings@mdbook-listings
+```bash
+npx skills add padamson/mdbook-listings -s mdbook-listings -a claude-code -y
 ```
-
-Install at user scope (every project) or, in a book repo, at project scope
-(`--scope project`) so collaborators pick it up too.
-
-Marketplaces added this way do not auto-update by default. To pick up a newer
-plugin version, refresh the marketplace first, then update:
-
-```text
-/plugin marketplace update mdbook-listings
-/plugin update mdbook-listings@mdbook-listings
-```
-
-(You can also enable auto-update for this marketplace under `/plugin` →
-Marketplaces.)
 
 ## Development
 

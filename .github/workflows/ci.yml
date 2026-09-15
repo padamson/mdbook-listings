@@ -25,6 +25,27 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  skill-version:
+    name: Skill version guard
+    runs-on: ubuntu-latest
+    # The prek hook of the same name is per-clone and opt-in, so a hookless
+    # clone or a `--no-verify` commit would ship a skill edit without the
+    # version bump installed consumers key their updates on. Same script,
+    # run against the PR base or the tip before the push. Tag pushes and
+    # manual runs re-check a commit the main push already checked, so skip.
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Compute diff base
+        id: base
+        uses: ./.github/actions/diff-base
+
+      - name: Check the skill version against the base
+        run: scripts/check-skill-version-bumped.sh --base "${{ steps.base.outputs.ref }}"
+
   msrv:
     name: MSRV check
     runs-on: ubuntu-latest
@@ -255,10 +276,18 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
 
+  # The release is three jobs, not one. This job only builds: each matrix
+  # leg hands its archive to `release-assets` as a workflow artifact and
+  # never touches the GitHub Release or crates.io. That is what lets a
+  # flaky upload fail on its own without withholding the crate (#63), and
+  # what makes `gh run rerun --failed` re-upload without rebuilding. The
+  # trade: one failed leg now means no release page at all until the rerun,
+  # where the per-leg uploads used to leave a page with three of four
+  # archives. A complete page after a rerun beats a partial one now.
   build-release:
     name: Build release ${{ matrix.target }}
     permissions:
-      contents: write       # upload assets to the GitHub Release
+      contents: read
       id-token: write       # provenance attestation
       attestations: write
     needs: e2e
@@ -296,11 +325,6 @@ jobs:
         with:
           shared-key: release-${{ matrix.target }}
 
-      - name: Install parse-changelog
-        uses: taiki-e/install-action@84f5ac3124727fb3d284d4d22ee9ab3654fd09a6 # v2.87.7
-        with:
-          tool: parse-changelog
-
       # Build only the published crate's binary. `--bin mdbook-listings`
       # excludes the `capture-screenshots` workspace tool (publish = false),
       # which pulls in playwright-rs and doesn't cross-compile in the
@@ -323,20 +347,6 @@ jobs:
         shell: bash
         run: 7z a "mdbook-listings-v${{ steps.get_version.outputs.version }}-${{ matrix.target }}.zip" "target/${{ matrix.target }}/release/mdbook-listings.exe"
 
-      - name: Generate release notes
-        shell: bash
-        run: parse-changelog CHANGELOG.md ${{ steps.get_version.outputs.version }} > release_notes.md
-
-      - name: Upload release asset
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
-        with:
-          files: |
-            *.tar.gz
-            *.zip
-          body_path: release_notes.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Generate SLSA provenance attestation
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
@@ -345,20 +355,133 @@ jobs:
             *.zip
         continue-on-error: true
 
-  publish-crates:
-    name: Publish to crates.io
+      - name: Hand the archive to release-assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            *.tar.gz
+            *.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  # Attaches the four archives to the GitHub Release. Runs beside
+  # `publish-crates`, not ahead of it: the v0.2.1 cut lost its crate to an
+  # `other side closed` here, on a tarball crates.io never needed. Uploads
+  # retry because that failure was transient (a rerun with no code change
+  # fixed it). Failure here still reddens the run -- it should, the release
+  # page is incomplete -- but it no longer decides anything else.
+  release-assets:
+    name: Upload release assets
     permissions:
-      contents: read
+      contents: write       # create the GitHub Release and attach files
     needs: build-release
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      - name: Install parse-changelog
+        uses: taiki-e/install-action@84f5ac3124727fb3d284d4d22ee9ab3654fd09a6 # v2.87.7
+        with:
+          tool: parse-changelog
+
+      - name: Collect the archives
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create the release and attach the archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          parse-changelog CHANGELOG.md "${TAG#v}" > release_notes.md
+
+          # download-artifact matching nothing is not an error to it. It is
+          # to us: expired artifacts (7-day retention) or a rerun whose
+          # rebuild produced none must not spin the retry loop on a literal
+          # `dist/*` and report an upload fault.
+          shopt -s nullglob
+          files=(dist/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::no archives to upload; the build artifacts are missing or expired"
+            exit 1
+          fi
+          ls -l dist
+
+          # A rerun and a torn earlier attempt both arrive with the release
+          # already present. Refresh its notes rather than skip, so a
+          # CHANGELOG fix reaches the page. stderr stays visible so a
+          # transient API error reads as one, not as "release absent".
+          if gh release view "$TAG" >/dev/null; then
+            gh release edit "$TAG" --notes-file release_notes.md
+          else
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file release_notes.md
+          fi
+
+          # Retry per file with backoff, so only the flaky asset is retried
+          # and the ones already attached are never touched. Each failed
+          # attempt logs why, so a persistent fault is read from the log,
+          # not inferred from the count. `--clobber` replaces whatever a
+          # torn attempt left behind.
+          for f in "${files[@]}"; do
+            attempt=1
+            until gh release upload "$TAG" "$f" --clobber; do
+              if [ "$attempt" -ge 5 ]; then
+                echo "::error::upload of $f failed after $attempt attempts"
+                exit 1
+              fi
+              sleep $((attempt * 15))
+              attempt=$((attempt + 1))
+            done
+          done
+
+  publish-crates:
+    name: Publish to crates.io
+    permissions:
+      contents: read
+    # Gates on the binaries building, not on their reaching the release
+    # page -- crates.io consumers never see the tarballs. `always()` so a
+    # failed build leg fails this job by name instead of leaving it
+    # `skipped`, which the run summary reads as "not applicable" (#63).
+    needs: build-release
+    if: always() && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the release binaries to have built
+        env:
+          RESULT: ${{ needs.build-release.result }}
+        run: |
+          if [ "$RESULT" != success ]; then
+            echo "::error::release binaries did not build ($RESULT); crate not published"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
         with:
           toolchain: stable
+
+      - name: Install parse-changelog
+        uses: taiki-e/install-action@84f5ac3124727fb3d284d4d22ee9ab3654fd09a6 # v2.87.7
+        with:
+          tool: parse-changelog
+
+      # The CHANGELOG entry used to be checked as a side effect of writing
+      # release notes in the build job, which this job waited on. It is a
+      # precondition of publishing, not of uploading: a tag whose version
+      # CHANGELOG.md does not know is a mistake, and `cargo publish` cannot
+      # be undone.
+      - name: Require a CHANGELOG entry for this version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: parse-changelog CHANGELOG.md "${TAG#v}" >/dev/null
 
       # No soft guard and no continue-on-error, deliberately. Both were here
       # and both turned a release that published nothing into a green run:
