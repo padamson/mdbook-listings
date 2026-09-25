@@ -466,7 +466,7 @@ mod tests {
             version: 1,
             listings: vec![],
         };
-        let book_root = std::env::current_dir().unwrap();
+        let book_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let source = book_root.join("foo.rs");
         let tag = derive_default_tag(&m, &source, &book_root).unwrap();
         assert_eq!(tag, "foo-v1");
@@ -475,7 +475,7 @@ mod tests {
     /// Single prior `<basename>-v1` → `<basename>-v2`. Most common case.
     #[test]
     fn derive_default_tag_bumps_single_prior_v_match() {
-        let book_root = std::env::current_dir().unwrap();
+        let book_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let source = book_root.join("foo.rs");
         let source_rel = path_to_string(&relativize(&source, &book_root)).unwrap();
         let m = Manifest {
@@ -491,7 +491,7 @@ mod tests {
     /// should still be `v8`, not `v4`.
     #[test]
     fn derive_default_tag_bumps_from_max_n_not_count() {
-        let book_root = std::env::current_dir().unwrap();
+        let book_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let source = book_root.join("foo.rs");
         let source_rel = path_to_string(&relativize(&source, &book_root)).unwrap();
         let m = Manifest {
@@ -509,7 +509,7 @@ mod tests {
     /// `<basename>-rev<N>` honoured as an allowlist prefix.
     #[test]
     fn derive_default_tag_honours_rev_prefix() {
-        let book_root = std::env::current_dir().unwrap();
+        let book_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let source = book_root.join("foo.rs");
         let source_rel = path_to_string(&relativize(&source, &book_root)).unwrap();
         let m = Manifest {
@@ -523,7 +523,7 @@ mod tests {
     /// `<basename>-ver<N>` and `<basename>-version<N>` honoured too.
     #[test]
     fn derive_default_tag_honours_ver_and_version_prefixes() {
-        let book_root = std::env::current_dir().unwrap();
+        let book_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let source = book_root.join("foo.rs");
         let source_rel = path_to_string(&relativize(&source, &book_root)).unwrap();
         let m_ver = Manifest {
@@ -548,7 +548,7 @@ mod tests {
     /// matching prefix wins, so a mid-stream convention switch sticks.
     #[test]
     fn derive_default_tag_picks_most_recent_prefix_when_mixed() {
-        let book_root = std::env::current_dir().unwrap();
+        let book_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let source = book_root.join("foo.rs");
         let source_rel = path_to_string(&relativize(&source, &book_root)).unwrap();
         let m = Manifest {
@@ -570,7 +570,7 @@ mod tests {
     /// existing scheme is so the `--tag` fix is one keystroke away.
     #[test]
     fn derive_default_tag_errors_when_prior_listings_use_unrecognised_convention() {
-        let book_root = std::env::current_dir().unwrap();
+        let book_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let source = book_root.join("compose.yaml");
         let source_rel = path_to_string(&relativize(&source, &book_root)).unwrap();
         let m = Manifest {
@@ -593,7 +593,7 @@ mod tests {
     /// only entries matching the current source path count.
     #[test]
     fn derive_default_tag_ignores_listings_for_other_sources() {
-        let book_root = std::env::current_dir().unwrap();
+        let book_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let foo = book_root.join("foo.rs");
         let bar = book_root.join("bar.rs");
         let foo_rel = path_to_string(&relativize(&foo, &book_root)).unwrap();
