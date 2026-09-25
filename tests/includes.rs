@@ -164,13 +164,20 @@ fn listing_include_with_missing_file_fails_with_chapter_path_in_diagnostic() {
         .clone();
     let stderr = String::from_utf8_lossy(&stderr);
 
+    // The chapter path and line lead so an author can jump to the directive;
+    // the tag names the file that is missing. The prose between them can
+    // change freely.
     assert!(
-        stderr.contains("missing-tag"),
-        "diagnostic should name the missing tag; got:\n{stderr}",
+        stderr.contains("include-test.md:4:"),
+        "diagnostic should lead with the chapter path and directive line; got:\n{stderr}",
     );
     assert!(
-        stderr.contains("expanding") || stderr.contains("include") || stderr.contains("missing"),
-        "diagnostic should mention the include-expansion failure; got:\n{stderr}",
+        stderr.contains("references missing file"),
+        "diagnostic should say the file is missing, not that expansion failed generically; got:\n{stderr}",
+    );
+    assert!(
+        stderr.contains("listings/missing-tag.rs"),
+        "diagnostic should name the missing file; got:\n{stderr}",
     );
 }
 
