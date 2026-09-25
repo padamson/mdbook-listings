@@ -767,12 +767,31 @@ mod tests {
 
         let mut report = VerifyReport::default();
         check_snippet_arguments(&root, &mut report);
-        assert_eq!(report.error_count(), 0, "a warning, not an error");
-        let msg = format!("{:?}", report.findings);
+        let msg = single_warning(&report);
         assert!(
-            msg.contains("ch.md:3") && msg.contains("caption") && msg.contains("snippets/demo.rs"),
-            "warning names the chapter, line and path; got: {msg}"
+            msg.starts_with("src/ch.md:3:"),
+            "warning leads with the chapter and directive line; got: {msg}"
         );
+        assert!(
+            msg.contains("caption") && msg.contains("snippets/demo.rs"),
+            "warning names the argument and the path; got: {msg}"
+        );
+    }
+
+    /// The one finding in `report`, which must be a warning. A snippets/
+    /// argument that cannot take effect is worth a look and never a build
+    /// failure.
+    fn single_warning(report: &VerifyReport) -> &str {
+        let [finding] = report.findings.as_slice() else {
+            panic!("expected exactly one finding; got {:?}", report.findings);
+        };
+        assert_eq!(
+            finding.severity,
+            Severity::Warning,
+            "got {:?}",
+            report.findings
+        );
+        &finding.message
     }
 
     #[test]
@@ -786,11 +805,10 @@ mod tests {
 
         let mut report = VerifyReport::default();
         check_snippet_arguments(&root, &mut report);
-        assert_eq!(report.findings.len(), 1, "got {:?}", report.findings);
+        let msg = single_warning(&report);
         assert!(
-            format!("{:?}", report.findings).contains("label"),
-            "got {:?}",
-            report.findings
+            msg.starts_with("src/ch.md:1:") && msg.contains("label"),
+            "warning names the line and the argument; got: {msg}"
         );
     }
 
@@ -805,11 +823,10 @@ mod tests {
 
         let mut report = VerifyReport::default();
         check_snippet_arguments(&root, &mut report);
-        assert_eq!(report.findings.len(), 1, "got {:?}", report.findings);
+        let msg = single_warning(&report);
         assert!(
-            format!("{:?}", report.findings).contains("show-provenance"),
-            "got {:?}",
-            report.findings
+            msg.starts_with("src/ch.md:1:") && msg.contains("show-provenance"),
+            "warning names the line and the argument; got: {msg}"
         );
     }
 
