@@ -65,7 +65,9 @@ repos:
       - id: cargo-nextest
         name: cargo nextest run
         description: Run tests with nextest
-        entry: cargo nextest run --workspace
+        # The same filterset as CI's test job: the browser and PDF binaries
+        # need a built book and a Chromium, and run on the dedicated e2e job.
+        entry: cargo nextest run --workspace -E 'not binary(e2e_callouts) and not binary(pdf_callouts)'
         language: system
         types: [rust]
         pass_filenames: false

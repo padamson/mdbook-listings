@@ -6,7 +6,10 @@ Managed code listings for mdbook: inline callouts, freezing, and verification.
 
 ```bash
 cargo build              # build
-cargo nextest run        # run tests
+cargo nextest run --workspace -E 'not binary(e2e_callouts) and not binary(pdf_callouts)'
+                         # run tests (the hook and CI use this filter)
+cargo nextest run --test e2e_callouts                      # browser e2e; needs a built book
+cargo nextest run --test pdf_callouts --run-ignored only   # PDF content; needs the built PDF
 cargo test --doc         # doc tests
 cargo clippy             # lint
 cargo fmt                # format
@@ -71,7 +74,14 @@ cargo install prek
 prek install
 ```
 
-Hooks mirror CI checks: fmt, clippy, check, nextest, doctest, audit, deny, vet.
+Hooks mirror CI checks: fmt, clippy, check, nextest, doctest, audit, deny,
+vet. The nextest hook runs the same filterset as CI's test job, so a
+commit needs neither a built book nor a browser.
+
+`.config/nextest.toml` bounds every test: a hung test is a TIMEOUT
+failure, not a six-hour job. The budget is 120s locally, 240s under the
+`ci` profile, and 180s for a browser test in both. Every CI job carries
+a `timeout-minutes` for the same reason.
 
 ## Mutation testing
 
@@ -87,9 +97,10 @@ linearly with codebase size and routinely takes hours; `--in-diff`
 keeps the loop fast enough to use while the test is still warm.
 
 CI runs the per-diff variant on every push and PR (`mutation-testing-diff`
-in `security.yml`). The full-codebase job (`mutation-testing`) is
-manual-only via `workflow_dispatch` — use it for occasional audits or
-big refactors, never on a schedule.
+in `security.yml`). The full-codebase job (`mutation-testing`) runs on
+the weekly schedule and on `workflow_dispatch`, as the backstop for code
+no push touched: a test that stops killing a mutant in a file nobody
+edited is invisible to the diff job.
 
 Configuration lives in `.cargo/mutants.toml` — that exact path;
 cargo-mutants reads no other location and won't complain about a file

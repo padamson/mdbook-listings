@@ -1,0 +1,29 @@
+# nextest reads only this path. Profiles inherit from `default`; the
+# `[[profile.default.overrides]]` entries apply to `ci` as well, so each
+# override is written once.
+
+[profile.default]
+# A hung test fails in two minutes instead of holding the job for six
+# hours: SIGTERM after 2 x 60s, SIGKILL after the grace period. The
+# outcome is TIMEOUT, which is a failure.
+slow-timeout = { period = "60s", terminate-after = 2 }
+# Browser and driver teardown outlives nextest's 100ms default and would
+# read as a leak.
+leak-timeout = "1s"
+# No retries in any profile. A test that fails one run in three is a bug
+# to see, not a flake to paper over.
+
+[profile.ci]
+# Report every failure in one run instead of one per push.
+fail-fast = false
+slow-timeout = { period = "120s", terminate-after = 2 }
+
+# Each browser test launches its own Chromium; four at a time is what a
+# CI runner tolerates without the launches starving each other.
+[test-groups]
+browser = { max-threads = 4 }
+
+[[profile.default.overrides]]
+filter = 'binary(e2e_callouts)'
+test-group = 'browser'
+slow-timeout = { period = "180s", terminate-after = 1 }
