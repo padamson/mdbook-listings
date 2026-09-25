@@ -41,6 +41,13 @@ fn emit_build_version() {
     {
         println!("cargo:rerun-if-changed=.git/{}", reference.trim());
     }
+    // A tag laid on the current commit flips the answer from sha to bare
+    // without HEAD or the branch ref moving.
+    for tags in [".git/refs/tags", ".git/packed-refs"] {
+        if std::path::Path::new(tags).exists() {
+            println!("cargo:rerun-if-changed={tags}");
+        }
+    }
 }
 
 fn git_short_sha() -> Option<String> {

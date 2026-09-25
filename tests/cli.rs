@@ -21,12 +21,78 @@ fn help_lists_all_subcommands() {
 }
 
 #[test]
-fn version_reports_crate_version_with_optional_build_sha() {
+fn version_prints_the_string_the_build_script_computed() {
+    // build.rs decides once per build whether to suffix a sha; the binary
+    // prints that decision verbatim. Its shape has its own test below.
+    let text = version_output();
+    assert_eq!(
+        text,
+        concat!("mdbook-listings ", env!("CRATE_VERSION_WITH_BUILD")),
+    );
+}
+
+#[test]
+fn version_is_the_crate_version_with_an_optional_short_sha() {
     // Contract, not environment: `mdbook-listings <version>` exactly, plus an
     // optional ` (<7+ hex digits>)` build id. Bare is valid (crates.io
     // install, or HEAD sitting on the release tag); anything else must be a
-    // well-formed short sha. Demanding the sha unconditionally would fail
-    // tagged-release CI; forbidding it would fail every dev checkout.
+    // well-formed short sha.
+    let text = version_output();
+    let prefix = concat!("mdbook-listings ", env!("CARGO_PKG_VERSION"));
+    let suffix = text
+        .strip_prefix(prefix)
+        .unwrap_or_else(|| panic!("version must start with `{prefix}`; got `{text}`"));
+    if suffix.is_empty() {
+        return;
+    }
+    let sha = suffix
+        .strip_prefix(" (")
+        .and_then(|s| s.strip_suffix(')'))
+        .unwrap_or_else(|| panic!("suffix must be ` (<sha>)`; got `{suffix}`"));
+    assert!(
+        sha.len() >= 7 && sha.chars().all(|c| c.is_ascii_hexdigit()),
+        "build id must be a short git sha; got `{sha}`"
+    );
+}
+
+#[test]
+fn version_carries_a_sha_exactly_when_head_is_off_the_release_tag() {
+    // git is the oracle, asked a different question than build.rs asks
+    // (`tag --points-at`, not `describe --exact-match`), so a build script
+    // that stops consulting git, or misreads the answer, fails here. Both
+    // branches assert: outside git, or with HEAD on the release tag, the
+    // bare version is the whole contract.
+    let text = version_output();
+    let bare = concat!("mdbook-listings ", env!("CARGO_PKG_VERSION"));
+    let in_git = git(&["rev-parse", "--git-dir"]).is_some();
+    let on_release_tag = git(&["tag", "--points-at", "HEAD"]).is_some_and(|tags| {
+        tags.lines()
+            .any(|t| t == concat!("v", env!("CARGO_PKG_VERSION")))
+    });
+    if in_git && !on_release_tag {
+        assert!(
+            text.len() > bare.len(),
+            "a non-release build from a git checkout must report its commit; got `{text}`"
+        );
+    } else {
+        assert_eq!(
+            text, bare,
+            "a release or non-git build reports the bare version and nothing else"
+        );
+    }
+}
+
+/// stdout of a git command that succeeded, `None` for no git or a failure.
+fn git(args: &[&str]) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    String::from_utf8(out.stdout).ok()
+}
+
+fn version_output() -> String {
     let output = mdbook_listings()
         .arg("--version")
         .assert()
@@ -34,45 +100,10 @@ fn version_reports_crate_version_with_optional_build_sha() {
         .get_output()
         .stdout
         .clone();
-    let text = String::from_utf8(output).expect("utf-8 version output");
-    let text = text.trim();
-    let prefix = concat!("mdbook-listings ", env!("CARGO_PKG_VERSION"));
-    assert!(
-        text.starts_with(prefix),
-        "version must start with `{prefix}`; got `{text}`"
-    );
-    let suffix = &text[prefix.len()..];
-    if !suffix.is_empty() {
-        let sha = suffix
-            .strip_prefix(" (")
-            .and_then(|s| s.strip_suffix(')'))
-            .unwrap_or_else(|| panic!("suffix must be ` (<sha>)`; got `{suffix}`"));
-        assert!(
-            sha.len() >= 7 && sha.chars().all(|c| c.is_ascii_hexdigit()),
-            "build id must be a short git sha; got `{sha}`"
-        );
-    }
-
-    // In a git checkout whose HEAD is not the release tag, the build id must
-    // actually be present — that is the whole point of the feature. Skipped
-    // outside git (source tarball) and on a tagged release build.
-    let in_git_checkout = std::process::Command::new("git")
-        .args(["rev-parse", "--git-dir"])
-        .output()
-        .is_ok_and(|o| o.status.success());
-    let at_release_tag = std::process::Command::new("git")
-        .args(["describe", "--exact-match", "--tags", "HEAD"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .is_some_and(|tag| tag.trim() == concat!("v", env!("CARGO_PKG_VERSION")));
-    if in_git_checkout && !at_release_tag {
-        assert!(
-            !suffix.is_empty(),
-            "a non-release build from a git checkout must report its commit; got bare `{text}`"
-        );
-    }
+    String::from_utf8(output)
+        .expect("utf-8 version output")
+        .trim()
+        .to_string()
 }
 
 #[test]
