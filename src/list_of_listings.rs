@@ -244,26 +244,34 @@ mod tests {
     #[test]
     fn manifest_emits_json_script_with_mode_and_html_paths() {
         let out = render_manifest(&one_chapter(), SidebarMode::Append);
-        assert!(
-            out.contains(r#"<script id="mdbook-listings-manifest" type="application/json" data-sidebar="append">"#),
-            "manifest script tag with mode; got:\n{out}"
-        );
-        assert!(
-            out.contains("</script>"),
-            "closes the script tag; got:\n{out}"
-        );
+        let tag_start = out.find("<script").expect("a script tag");
+        let tag_end = tag_start + out[tag_start..].find('>').expect("tag closes");
+        let script_tag = &out[tag_start..tag_end];
+        for attr in [
+            r#"id="mdbook-listings-manifest""#,
+            r#"type="application/json""#,
+            r#"data-sidebar="append""#,
+        ] {
+            assert!(
+                script_tag.contains(attr),
+                "manifest script tag needs {attr}; got:\n{out}"
+            );
+        }
+        // The manifest lives between the tags, not beside them.
+        let body_end = out.find("</script>").expect("closes the script tag");
+        let body = &out[tag_end + 1..body_end];
         // The chapter link target is the rendered .html page, not the .md source
         // (mdbook only rewrites markdown links, not JSON inside a <script>).
         assert!(
-            out.contains(r#""path":"ch03.html""#),
+            body.contains(r#""path":"ch03.html""#),
             "path rewritten .md -> .html; got:\n{out}"
         );
         assert!(
-            out.contains(r#""number":"3.1""#) && out.contains(r#""id":"listing-3-1""#),
+            body.contains(r#""number":"3.1""#) && body.contains(r#""id":"listing-3-1""#),
             "listing number and id; got:\n{out}"
         );
         assert!(
-            out.contains(r#""caption":"The reuse manifest""#),
+            body.contains(r#""caption":"The reuse manifest""#),
             "caption carried through; got:\n{out}"
         );
     }

@@ -394,6 +394,41 @@ mod tests {
         )
     }
 
+    /// Byte range of the first `<div …>…</div>` whose opening tag carries
+    /// `attr`, so a test can check attributes, text and position without
+    /// pinning the order the renderer writes attributes in.
+    fn div_span(out: &str, attr: &str) -> std::ops::Range<usize> {
+        let start = out
+            .match_indices("<div")
+            .map(|(i, _)| i)
+            .find(|&i| {
+                let tag_end = out[i..].find('>').map_or(out.len(), |e| i + e);
+                out[i..tag_end].contains(attr)
+            })
+            .unwrap_or_else(|| panic!("no <div …{attr}…>; got:\n{out}"));
+        let end = out[start..]
+            .find("</div>")
+            .map(|e| start + e + "</div>".len())
+            .unwrap_or_else(|| panic!("<div …{attr}…> never closes; got:\n{out}"));
+        start..end
+    }
+
+    fn div_with<'a>(out: &'a str, attr: &str) -> &'a str {
+        &out[div_span(out, attr)]
+    }
+
+    /// An element's opening tag, through its `>`.
+    fn open_tag(element: &str) -> &str {
+        &element[..=element.find('>').expect("opening tag closes")]
+    }
+
+    /// The text between an element's opening tag and its closing tag.
+    fn inner(element: &str) -> &str {
+        let open = element.find('>').expect("opening tag closes") + 1;
+        let close = element.rfind("</").expect("closing tag");
+        &element[open..close]
+    }
+
     #[test]
     fn numbers_two_listings_in_document_order() {
         let content = format!(
@@ -402,13 +437,26 @@ mod tests {
             include_block("b", None)
         );
         let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
+        for (id, text) in [
+            ("listing-5-1", "Listing 5.1"),
+            ("listing-5-2", "Listing 5.2"),
+        ] {
+            let caption = div_with(&out, &format!(r#"id="{id}""#));
+            assert!(
+                caption.contains(r#"class="listing-caption""#),
+                "{id} must be a caption; got:\n{out}"
+            );
+            assert_eq!(inner(caption), text, "got:\n{out}");
+        }
+        // 5.1 captions block `a` and 5.2 captions block `b`: each caption
+        // precedes its own block and nothing else.
+        let first = div_span(&out, r#"id="listing-5-1""#).start;
+        let second = div_span(&out, r#"id="listing-5-2""#).start;
+        let block_a = out.find("fn a()").expect("block a");
+        let block_b = out.find("fn b()").expect("block b");
         assert!(
-            out.contains(r#"<div class="listing-caption" id="listing-5-1">Listing 5.1</div>"#),
-            "{out}"
-        );
-        assert!(
-            out.contains(r#"<div class="listing-caption" id="listing-5-2">Listing 5.2</div>"#),
-            "{out}"
+            first < block_a && block_a < second && second < block_b,
+            "numbering must follow document order; got:\n{out}"
         );
     }
 
@@ -421,12 +469,14 @@ mod tests {
         // Both anchors carry the machine-readable number for the callout pass,
         // spliced just inside the opening `<div` so the element stays well-formed.
         assert!(
-            out.contains(r#"<div data-listing-number="5.1" data-listing-tag="a""#),
-            "number must land inside the include anchor; got:\n{out}",
+            open_tag(div_with(&out, r#"data-listing-tag="a""#))
+                .contains(r#"data-listing-number="5.1""#),
+            "number must land inside the include anchor's opening tag; got:\n{out}",
         );
         assert!(
-            out.contains(r#"<div data-listing-number="5.2" data-listing-diff-left="a""#),
-            "number must land inside the diff anchor; got:\n{out}",
+            open_tag(div_with(&out, r#"data-listing-diff-left="a""#))
+                .contains(r#"data-listing-number="5.2""#),
+            "number must land inside the diff anchor's opening tag; got:\n{out}",
         );
     }
 
@@ -478,8 +528,8 @@ mod tests {
             ),
             "the path leads and the tag trails as a pill; got:\n{out}"
         );
-        let caption_at = out.find("listing-caption").expect("caption");
-        let provenance_at = out.find("listing-provenance").expect("provenance");
+        let caption_at = div_span(&out, r#"class="listing-caption""#).start;
+        let provenance_at = div_span(&out, r#"class="listing-provenance""#).start;
         let fence_at = out.find("```rust").expect("fence");
         assert!(
             caption_at < provenance_at && provenance_at < fence_at,
@@ -644,11 +694,7 @@ mod tests {
         let escaped = crate::callout::html_escape("A <script>alert(1)</script> caption");
         let content = include_block("a", Some(&escaped));
         let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
-        let div = out
-            .split("<div class=\"listing-caption\"")
-            .nth(1)
-            .and_then(|s| s.split("</div>").next())
-            .expect("caption div");
+        let div = inner(div_with(&out, r#"class="listing-caption""#));
         assert!(
             !div.contains("<script>"),
             "raw html in a caption must not reach the page; got:\n{div}"
@@ -676,11 +722,7 @@ mod tests {
             let escaped = crate::callout::html_escape(caption);
             let content = include_block("a", Some(&escaped));
             let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
-            let div = out
-                .split("<div class=\"listing-caption\"")
-                .nth(1)
-                .and_then(|s| s.split("</div>").next())
-                .expect("caption div");
+            let div = inner(div_with(&out, r#"class="listing-caption""#));
             assert!(
                 !div.contains(forbidden),
                 "caption {caption:?} must stay literal, got:\n{div}"
@@ -715,10 +757,9 @@ mod tests {
     fn number_and_caption_join_with_em_dash() {
         let content = include_block("a", Some("The claim layer"));
         let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
-        assert!(
-            out.contains(
-                r#"<div class="listing-caption" id="listing-5-1">Listing 5.1 — The claim layer</div>"#
-            ),
+        assert_eq!(
+            inner(div_with(&out, r#"id="listing-5-1""#)),
+            "Listing 5.1 — The claim layer",
             "got:\n{out}",
         );
     }
@@ -727,9 +768,15 @@ mod tests {
     fn flag_off_renders_caption_only_without_number_or_attribute() {
         let content = include_block("a", Some("Just a caption"));
         let (out, _) = splice_chapter(&content, Some("5"), false, false, Html);
-        assert!(
-            out.contains(r#"<div class="listing-caption">Just a caption</div>"#),
+        let caption = div_with(&out, r#"class="listing-caption""#);
+        assert_eq!(
+            inner(caption),
+            "Just a caption",
             "caption renders with the flag off; got:\n{out}",
+        );
+        assert!(
+            !caption.contains(" id="),
+            "no anchor id without a number; got:\n{out}"
         );
         assert!(
             !out.contains("Listing 5"),
@@ -780,9 +827,11 @@ mod tests {
     fn unnumbered_chapter_renders_caption_only() {
         let content = include_block("a", Some("Caption"));
         let (out, _) = splice_chapter(&content, None, true, false, Html);
+        let caption = div_with(&out, r#"class="listing-caption""#);
+        assert_eq!(inner(caption), "Caption", "got:\n{out}");
         assert!(
-            out.contains(r#"<div class="listing-caption">Caption</div>"#),
-            "got:\n{out}"
+            !caption.contains(" id="),
+            "no anchor id without a number; got:\n{out}"
         );
         assert!(
             !out.contains("Listing"),
@@ -815,11 +864,14 @@ mod tests {
         // immediately before the opening fence (not a line early).
         let content = format!("intro\n\n{}", include_block("a", None));
         let (out, _) = splice_chapter(&content, Some("5"), true, false, Html);
+        let caption = div_span(&out, r#"id="listing-5-1""#);
         assert!(
-            out.contains(
-                "intro\n\n<div class=\"listing-caption\" id=\"listing-5-1\">Listing 5.1</div>\n\n```rust"
-            ),
-            "caption must sit as a standalone block above its fence, after the preceding text; got:\n{out}",
+            out[..caption.start].ends_with("intro\n\n"),
+            "caption must follow the preceding text after one blank line; got:\n{out}",
+        );
+        assert!(
+            out[caption.end..].starts_with("\n\n```rust"),
+            "caption must sit one blank line above its fence; got:\n{out}",
         );
     }
 
@@ -832,7 +884,8 @@ mod tests {
         let (out, _) = splice_chapter(content, Some("5"), true, false, Html);
         assert!(out.contains("Listing 5.1"), "got:\n{out}");
         assert!(
-            out.contains(r#"<div data-listing-number="5.1" data-listing-tag="a""#),
+            open_tag(div_with(&out, r#"data-listing-tag="a""#))
+                .contains(r#"data-listing-number="5.1""#),
             "got:\n{out}",
         );
     }

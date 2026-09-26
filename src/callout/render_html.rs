@@ -375,26 +375,34 @@ mod tests {
         assert!(out.contains("data-callout-badge=\"a-one\""));
         assert!(out.contains("data-callout-badge=\"b-one\""));
         assert!(out.contains("data-callout-badge=\"b-two\""));
-        let a_one_ordinal = out
-            .split("data-callout-badge=\"a-one\"")
-            .nth(1)
-            .and_then(|s| s.split("data-callout-ordinal=\"").nth(1))
-            .unwrap_or("");
-        assert!(
-            a_one_ordinal.starts_with("1\""),
-            "first listing's first marker should be ordinal 1; got prefix {}",
-            &a_one_ordinal[..a_one_ordinal.len().min(10)],
+        assert_eq!(
+            ordinal_of(&out, "a-one"),
+            "1",
+            "first listing's first marker; got:\n{out}"
         );
-        let b_two_ordinal = out
-            .split("data-callout-badge=\"b-two\"")
-            .nth(1)
-            .and_then(|s| s.split("data-callout-ordinal=\"").nth(1))
-            .unwrap_or("");
-        assert!(
-            b_two_ordinal.starts_with("2\""),
-            "second listing's second marker should be ordinal 2; got prefix {}",
-            &b_two_ordinal[..b_two_ordinal.len().min(10)],
+        assert_eq!(
+            ordinal_of(&out, "b-two"),
+            "2",
+            "second listing's second marker; got:\n{out}"
         );
+    }
+
+    /// The `data-callout-ordinal` in the same opening tag as the badge for
+    /// `label`, whichever order the two attributes are written in. Panics
+    /// name the missing piece, so a test fails on "no badge" rather than on
+    /// a wrong ordinal it never had.
+    fn ordinal_of<'a>(out: &'a str, label: &str) -> &'a str {
+        let at = out
+            .find(&format!("data-callout-badge=\"{label}\""))
+            .unwrap_or_else(|| panic!("no badge for `{label}`; got:\n{out}"));
+        let tag_start = out[..at].rfind('<').expect("badge attribute sits in a tag");
+        let tag_end = at + out[at..].find('>').expect("tag closes");
+        let tag = &out[tag_start..tag_end];
+        let ordinal = tag
+            .split("data-callout-ordinal=\"")
+            .nth(1)
+            .unwrap_or_else(|| panic!("badge `{label}` carries no ordinal; got:\n{out}"));
+        ordinal.split('"').next().expect("attribute value closes")
     }
 
     #[test]
@@ -483,8 +491,8 @@ mod tests {
             "the added (`+`) side's new body should render; got:\n{out}",
         );
         assert!(
-            out.contains("+fn unchanged() {}") || out.contains(" fn unchanged() {}"),
-            "the unchanged code line should survive in the diff; got:\n{out}",
+            out.contains("\n fn unchanged() {}\n"),
+            "the unchanged code line should survive as a context line; got:\n{out}",
         );
     }
 
@@ -529,8 +537,9 @@ mod tests {
         );
         let out = splice_chapter(content, SupportedRenderer::Html, &SidecarCallouts::empty())
             .expect("splice");
-        assert!(
-            out.contains("data-callout-badge=\"new-marker\" data-callout-ordinal=\"1\""),
+        assert_eq!(
+            ordinal_of(&out, "new-marker"),
+            "1",
             "added marker should be ordinal 1 once the context marker is suppressed; got:\n{out}",
         );
         assert!(
@@ -629,13 +638,7 @@ mod tests {
             "```rust\n// CALLOUT: lbl Authors write `{{#callout LABEL}}` to cross-ref.\n```\n";
         let out = splice_chapter(content, SupportedRenderer::Html, &SidecarCallouts::empty())
             .expect("splice");
-        let body = out
-            .split("<div class=\"callout-body\"")
-            .nth(1)
-            .unwrap_or("")
-            .split("</div>")
-            .next()
-            .unwrap_or("");
+        let body = extract_callout_body(&out);
         assert!(
             body.contains("&#123;&#123;#callout LABEL"),
             "expected `{{` escaped to `&#123;` so the cross-ref scanner can't see it; got body:\n{body}",
@@ -654,13 +657,7 @@ mod tests {
         // Scope the check to the rendered callout-body div, since the
         // overlay is now followed by a measurement <script> emitted by
         // the splicer itself (not user content).
-        let body = out
-            .split("<div class=\"callout-body\"")
-            .nth(1)
-            .unwrap_or("")
-            .split("</div>")
-            .next()
-            .unwrap_or("");
+        let body = extract_callout_body(&out);
         assert!(
             body.contains("&lt;script&gt;"),
             "callout body must escape user-supplied <script>; got:\n{body}",
@@ -674,10 +671,10 @@ mod tests {
     fn extract_callout_body(out: &str) -> &str {
         out.split("<div class=\"callout-body\"")
             .nth(1)
-            .unwrap_or("")
+            .unwrap_or_else(|| panic!("no callout body rendered; got:\n{out}"))
             .split("</div>")
             .next()
-            .unwrap_or("")
+            .expect("split yields at least one piece")
     }
 
     #[test]
