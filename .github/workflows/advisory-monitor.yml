@@ -1,0 +1,202 @@
+name: Security Advisory Monitor
+
+# Daily check for newly published RustSec advisories against the
+# dependency tree, decoupled from push cadence. `cargo deny check
+# advisories` reads deny.toml's `[advisories].ignore`, so already-triaged
+# advisories stay quiet and only a *new* one trips the check. On a hit, a
+# single tracking issue is opened and kept current; when the tree is
+# clean again the issue is closed.
+#
+# Why a monitor when Security & Quality already runs `cargo deny` on push
+# and on its weekly schedule: advisories are published by the world, not
+# by a commit. The weekly run would still go red on Saturday; this turns
+# the same finding into an issue with triage instructions, daily, so the
+# fix or the ignore entry can land before any gate fails. It reads the
+# same ignore list the gates read, so the two never disagree.
+
+on:
+  schedule:
+    # Daily at 07:00 UTC.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+# One run at a time: two overlapping runs would each see no open issue
+# and each open one.
+concurrency:
+  group: advisory-monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  advisories:
+    name: Check for new advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ISSUE_TITLE: "Security: new dependency advisory detected"
+      ISSUE_LABEL: security-advisory
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@9114bf4d891761788c546334fd37538eae1bf8b3 # v2.87.16
+        with:
+          tool: cargo-deny
+
+      # Diagnostics go to stderr, so they are captured with it; the
+      # log-level flag keeps the advisory-db fetch chatter out of the
+      # report, which would otherwise change from run to run.
+      #
+      # A non-zero exit is a hit only when a diagnostic says so. Anything
+      # else non-zero (a failed fetch of the advisory database, cargo
+      # metadata unable to clone a git dependency, a bad deny.toml) fails
+      # the job instead of filing an issue about a network error.
+      - name: Check advisories
+        id: check
+        shell: bash
+        run: |
+          set +e
+          report="$(cargo deny --log-level error check advisories 2>&1)"
+          code=$?
+          set -e
+          echo "$report"
+          if [ "$code" -eq 0 ]; then
+            echo "has_new=false" >> "$GITHUB_OUTPUT"
+          elif grep -qE '^(error|warning)\[[a-z-]+\]' <<< "$report"; then
+            {
+              echo "report<<REPORT_EOF"
+              echo "$report"
+              echo "REPORT_EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "has_new=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::cargo deny exited $code without a diagnostic; the monitor itself is broken" >&2
+            exit "$code"
+          fi
+
+      # The plain list endpoint, filtered by label and title. `--search`
+      # would go through the search index, which lags creation by minutes
+      # and can miss the issue the previous run just opened.
+      - name: Find the tracking issue
+        id: find
+        shell: bash
+        run: |
+          set -euo pipefail
+          number="$(gh issue list \
+            --state open \
+            --label "$ISSUE_LABEL" \
+            --json number,title \
+            --jq ".[] | select(.title == \"$ISSUE_TITLE\") | .number" \
+            | head -1)"
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      # The report lives between two markers in the body. An update
+      # rewrites only that section, so triage notes above or below it
+      # survive, and only a changed report is written at all, with a
+      # comment so watchers are told. An unchanged report leaves the issue
+      # untouched.
+      - name: Open or update the tracking issue
+        if: steps.check.outputs.has_new == 'true'
+        # The report reaches the scripts through the environment and files,
+        # never `${{ }}` interpolation: advisory text is community-authored
+        # and could otherwise be evaluated by the shell.
+        env:
+          REPORT: ${{ steps.check.outputs.report }}
+          EXISTING: ${{ steps.find.outputs.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$REPORT" > "$RUNNER_TEMP/report.txt"
+          cat > "$RUNNER_TEMP/render.py" <<'PY'
+          import sys
+
+          old_body, report_file, out_file = sys.argv[1:4]
+          START, END = "<!-- advisory-report -->", "<!-- /advisory-report -->"
+          INTRO = """`cargo deny check advisories` failed: a dependency advisory that is
+          **not** in the ignore lists is affecting the tree.
+
+          Triage each one:
+          - **Fix available**: bump the crate (`cargo update -p <crate>`), or bump
+            the parent that pins it.
+          - **No fix / upstream-blocked**: accept the risk and add the `RUSTSEC-…`
+            id, with a rationale, to **both** ignore lists: `deny.toml`
+            `[advisories].ignore`, which this monitor and the `cargo deny` gates
+            read, and `.cargo/audit.toml`, which the `cargo audit` gate and hook
+            read. One without the other leaves a gate red.
+
+          """
+          FOOTER = "\n\n_Maintained automatically by the Security Advisory Monitor workflow._\n"
+          report = open(report_file).read().rstrip("\n")
+          section = f"{START}\n```\n{report}\n```\n{END}"
+          old = open(old_body).read()
+          if not old.strip():
+              body, status = INTRO.replace("\n          ", "\n") + section + FOOTER, "new"
+          elif START in old and END in old:
+              i, j = old.index(START), old.index(END) + len(END)
+              if old[i:j] == section:
+                  body, status = old, "unchanged"
+              else:
+                  body, status = old[:i] + section + old[j:], "changed"
+          else:
+              body, status = old.rstrip("\n") + "\n\n" + section + "\n", "changed"
+          open(out_file, "w").write(body)
+          print(status)
+          PY
+
+          if [ -n "$EXISTING" ]; then
+            gh issue view "$EXISTING" --json body --jq .body > "$RUNNER_TEMP/old.txt"
+          else
+            : > "$RUNNER_TEMP/old.txt"
+          fi
+          status="$(python3 "$RUNNER_TEMP/render.py" "$RUNNER_TEMP/old.txt" "$RUNNER_TEMP/report.txt" "$RUNNER_TEMP/body.txt")"
+          # An open issue whose body was emptied by hand is still the issue.
+          if [ -n "$EXISTING" ] && [ "$status" = new ]; then
+            status=changed
+          fi
+          case "$status" in
+            new)
+              echo "Opening tracking issue"
+              gh label create "$ISSUE_LABEL" \
+                --description "Tracks newly published dependency advisories awaiting triage" \
+                --color B60205 2>/dev/null || true
+              gh issue create \
+                --title "$ISSUE_TITLE" \
+                --label "$ISSUE_LABEL" \
+                --body-file "$RUNNER_TEMP/body.txt"
+              ;;
+            changed)
+              echo "Report changed; updating tracking issue #$EXISTING"
+              gh issue edit "$EXISTING" --body-file "$RUNNER_TEMP/body.txt"
+              {
+                echo "The advisory report changed:"
+                echo
+                echo '```'
+                cat "$RUNNER_TEMP/report.txt"
+                echo '```'
+              } > "$RUNNER_TEMP/comment.txt"
+              gh issue comment "$EXISTING" --body-file "$RUNNER_TEMP/comment.txt"
+              ;;
+            unchanged)
+              echo "Tracking issue #$EXISTING already carries this report"
+              ;;
+          esac
+
+      - name: Close the tracking issue
+        if: steps.check.outputs.has_new == 'false' && steps.find.outputs.number != ''
+        env:
+          EXISTING: ${{ steps.find.outputs.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Advisories clean; closing tracking issue #$EXISTING"
+          gh issue close "$EXISTING" \
+            --comment "\`cargo deny check advisories\` is clean again. Closing automatically."
