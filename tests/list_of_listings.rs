@@ -6,22 +6,14 @@
 //! end-to-end through the preprocessor binary. Inner unit tests in
 //! `src/number.rs` / `src/list_of_listings.rs` cover the pieces.
 
-use std::fs;
-use std::path::PathBuf;
-use std::str::FromStr;
-
-use mdbook_preprocessor::PreprocessorContext;
-use mdbook_preprocessor::book::{Book, BookItem, Chapter, SectionNumber};
-use mdbook_preprocessor::config::Config;
-use tempfile::TempDir;
-
 mod common;
-use common::mdbook_listings;
+use common::book::{MinimalBook, Page, chapter_content, run_preprocessor};
+use common::book::{NUMBERED, NUMBERED_WITH_INDEX};
 
 #[test]
 fn list_of_listings_directive_renders_grouped_linked_index() {
-    let book = MinimalBook::new();
-    let envelope = book.envelope(
+    let book = MinimalBook::with_sample_and_claim();
+    let envelope = book.envelope(NUMBERED_WITH_INDEX, &[
         // ch03: one numbered listing with a caption.
         Page {
             name: "Freeze a listing",
@@ -43,9 +35,9 @@ fn list_of_listings_directive_renders_grouped_linked_index() {
             number: None,
             content: "# List of Listings\n\n{{#list-of-listings}}\n",
         },
-    );
+    ]);
 
-    let returned = run(envelope);
+    let returned = run_preprocessor(envelope);
     let index = chapter_content(&returned, "List of Listings");
 
     // Marker is consumed.
@@ -85,8 +77,8 @@ fn list_of_listings_directive_renders_grouped_linked_index() {
 
 #[test]
 fn list_of_listings_directive_is_stripped_when_feature_disabled() {
-    let book = MinimalBook::new();
-    let mut envelope_book = book.book(
+    let book = MinimalBook::with_sample_and_claim();
+    let pages = [
         Page {
             name: "Freeze a listing",
             path: "ch03.md",
@@ -99,12 +91,11 @@ fn list_of_listings_directive_is_stripped_when_feature_disabled() {
             number: None,
             content: "# List of Listings\n\n{{#list-of-listings}}\n",
         },
-    );
+    ];
     // number-listings on, list-of-listings OFF.
-    let ctx = book.context("[preprocessor.listings]\nnumber-listings = true\n");
-    let envelope = serialize(&ctx, &mut envelope_book);
+    let envelope = book.envelope(NUMBERED, &pages);
 
-    let returned = run(envelope);
+    let returned = run_preprocessor(envelope);
     let index = chapter_content(&returned, "List of Listings");
 
     assert!(
@@ -119,8 +110,8 @@ fn list_of_listings_directive_is_stripped_when_feature_disabled() {
 
 #[test]
 fn sidebar_append_emits_manifest_on_every_page() {
-    let book = MinimalBook::new();
-    let mut envelope_book = book.book(
+    let book = MinimalBook::with_sample_and_claim();
+    let pages = [
         Page {
             name: "Freeze a listing",
             path: "ch03.md",
@@ -133,14 +124,14 @@ fn sidebar_append_emits_manifest_on_every_page() {
             number: None,
             content: "# List of Listings\n\n{{#list-of-listings}}\n",
         },
-    );
+    ];
     // Sidebar on (append); the inline-page flag is independent and left off.
-    let ctx = book.context(
+    let envelope = book.envelope(
         "[preprocessor.listings]\nnumber-listings = true\nlist-of-listings-sidebar = \"append\"\n",
+        &pages,
     );
-    let envelope = serialize(&ctx, &mut envelope_book);
 
-    let returned = run(envelope);
+    let returned = run_preprocessor(envelope);
 
     // The manifest rides on every page (each carries its own sidebar), even the
     // chapter that hosts no marker.
@@ -175,8 +166,8 @@ fn sidebar_append_emits_manifest_on_every_page() {
 
 #[test]
 fn sidebar_off_emits_no_manifest() {
-    let book = MinimalBook::new();
-    let mut envelope_book = book.book(
+    let book = MinimalBook::with_sample_and_claim();
+    let pages = [
         Page {
             name: "Freeze a listing",
             path: "ch03.md",
@@ -189,12 +180,11 @@ fn sidebar_off_emits_no_manifest() {
             number: None,
             content: "# List of Listings\n\n{{#list-of-listings}}\n",
         },
-    );
+    ];
     // Numbering on, but no sidebar option at all.
-    let ctx = book.context("[preprocessor.listings]\nnumber-listings = true\n");
-    let envelope = serialize(&ctx, &mut envelope_book);
+    let envelope = book.envelope(NUMBERED, &pages);
 
-    let returned = run(envelope);
+    let returned = run_preprocessor(envelope);
     let content = chapter_content(&returned, "Freeze a listing");
     assert!(
         !content.contains("mdbook-listings-manifest"),
@@ -204,8 +194,8 @@ fn sidebar_off_emits_no_manifest() {
 
 #[test]
 fn appendix_listings_number_with_the_title_letter() {
-    let book = MinimalBook::new();
-    let envelope = book.envelope(
+    let book = MinimalBook::with_sample_and_claim();
+    let envelope = book.envelope(NUMBERED_WITH_INDEX, &[
         // Numbered chapter: dotted section number as before.
         Page {
             name: "Freeze a listing",
@@ -229,9 +219,9 @@ fn appendix_listings_number_with_the_title_letter() {
             number: None,
             content: "# List of Listings\n\n{{#list-of-listings}}\n",
         },
-    );
+    ]);
 
-    let returned = run(envelope);
+    let returned = run_preprocessor(envelope);
 
     let appendix = chapter_content(&returned, "Appendix A: The Worked Example");
     assert!(
@@ -258,91 +248,3 @@ fn appendix_listings_number_with_the_title_letter() {
 }
 
 // --- harness -------------------------------------------------------------
-
-struct Page<'a> {
-    name: &'a str,
-    path: &'a str,
-    number: Option<&'a [u32]>,
-    content: &'a str,
-}
-
-/// Tempdir laid out as a real book root: two frozen listings under
-/// `src/listings/` and a `listings.toml` registering them.
-struct MinimalBook {
-    _tmp: TempDir,
-    root: PathBuf,
-}
-
-impl MinimalBook {
-    fn new() -> Self {
-        let tmp = TempDir::new().expect("tempdir");
-        let root = tmp.path().to_path_buf();
-        let listings_dir = root.join("src").join("listings");
-        fs::create_dir_all(&listings_dir).unwrap();
-        fs::write(listings_dir.join("sample.rs"), "fn sample_body() {}\n").unwrap();
-        fs::write(listings_dir.join("claim.rs"), "fn claim_body() {}\n").unwrap();
-        fs::write(
-            root.join("listings.toml"),
-            "version = 1\n\n\
-             [[listing]]\n\
-             tag = \"sample\"\n\
-             source = \"../sample.rs\"\n\
-             frozen = \"src/listings/sample.rs\"\n\
-             sha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n\n\
-             [[listing]]\n\
-             tag = \"claim\"\n\
-             source = \"../claim.rs\"\n\
-             frozen = \"src/listings/claim.rs\"\n\
-             sha256 = \"0000000000000000000000000000000000000000000000000000000000000000\"\n",
-        )
-        .unwrap();
-        Self { _tmp: tmp, root }
-    }
-
-    fn context(&self, config_toml: &str) -> PreprocessorContext {
-        let config = Config::from_str(config_toml).expect("parse config");
-        PreprocessorContext::new(self.root.clone(), config, "html".to_string())
-    }
-
-    fn book(&self, a: Page, b: Page) -> Book {
-        Book::new_with_items(vec![chapter(a), chapter(b)])
-    }
-
-    /// The common case: both feature flags on, three pages.
-    fn envelope(&self, a: Page, b: Page, c: Page) -> String {
-        let ctx = self
-            .context("[preprocessor.listings]\nnumber-listings = true\nlist-of-listings = true\n");
-        let mut book = Book::new_with_items(vec![chapter(a), chapter(b), chapter(c)]);
-        serialize(&ctx, &mut book)
-    }
-}
-
-fn chapter(p: Page) -> BookItem {
-    let mut ch = Chapter::new(p.name, p.content.to_string(), p.path, vec![]);
-    ch.number = p.number.map(SectionNumber::new);
-    BookItem::Chapter(ch)
-}
-
-fn serialize(ctx: &PreprocessorContext, book: &mut Book) -> String {
-    serde_json::to_string(&(ctx, &*book)).expect("serialize envelope")
-}
-
-fn run(envelope: String) -> Book {
-    let output = mdbook_listings()
-        .write_stdin(envelope)
-        .assert()
-        .success()
-        .get_output()
-        .stdout
-        .clone();
-    serde_json::from_slice(&output).expect("parse stdout as Book")
-}
-
-fn chapter_content(book: &Book, name: &str) -> String {
-    book.iter()
-        .find_map(|item| match item {
-            BookItem::Chapter(ch) if ch.name == name => Some(ch.content.clone()),
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("chapter `{name}` missing from returned book"))
-}

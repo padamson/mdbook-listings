@@ -6,6 +6,7 @@
 
 use assert_cmd::Command;
 
+pub mod book;
 pub mod e2e_harness;
 
 pub fn mdbook_listings() -> Command {
