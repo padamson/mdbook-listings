@@ -178,6 +178,13 @@ where
     let url = format!("file://{}", chapter_html.display());
     with_traced_page(name, move |page| async move {
         page.goto(&url, None).await.expect("goto chapter");
+        // The code font swaps in late on a cold cache and reflows every
+        // pre, and the badge JS re-pins on that signal. A test that reads
+        // two boxes in two round trips must not straddle it.
+        let _: String = page
+            .evaluate_value("document.fonts.ready.then(() => 'ready')")
+            .await
+            .expect("wait for fonts");
         body(page).await;
     })
     .await;

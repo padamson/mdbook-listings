@@ -1,4 +1,4 @@
-use playwright_rs::protocol::Viewport;
+use playwright_rs::protocol::{BoundingBox, Locator, Viewport};
 use playwright_rs::{expect, locator};
 
 mod common;
@@ -8,20 +8,126 @@ use common::e2e_harness::with_traced_chapter;
 const CH05: &str = "ch05-render-inline-callouts";
 const CH06: &str = "ch06-dogfooding-polish";
 
-/// Wait for the page to lay out + the popover-positioning JS to re-run
-/// after a viewport change. `set_viewport_size` fires a `resize` event;
-/// our JS recalcs on the next `requestAnimationFrame`. Two rAF ticks
-/// are enough to guarantee the recalc has finished AND the resulting
-/// class / CSS-var changes have been applied to layout.
+/// The rendered box of a locator's first match. `Locator::bounding_box` is
+/// a plain query with no auto-wait, and it answers `None` both for a
+/// selector that matches nothing and for an element that is not rendered;
+/// a geometry test can measure neither, and the two need different fixes,
+/// so the panic says which it was.
+async fn bounding_box(locator: &Locator) -> BoundingBox {
+    match locator.bounding_box().await.expect("bounding box") {
+        Some(rendered) => rendered,
+        None => {
+            let matches = locator.count().await.expect("count matches");
+            panic!(
+                "cannot measure {locator:?}: {}",
+                if matches == 0 {
+                    "no element matches".to_string()
+                } else {
+                    format!("{matches} match(es), none rendered")
+                }
+            )
+        }
+    }
+}
+
+/// `raf2()`: a promise for two animation frames, the one settle every
+/// layout wait in this file uses. The first frame lets a `resize` or event
+/// listener run and schedule the badge recalc; the second lets the recalc's
+/// class and CSS-variable changes land in layout. `recalc` itself runs
+/// synchronously inside one frame, so two is the whole wait.
+const RAF2_JS: &str = r#"
+    const raf2 = () => new Promise(r =>
+      requestAnimationFrame(() => requestAnimationFrame(r)));
+"#;
+
+/// `lineRect(pre, line)`: the box of a listing line's first character,
+/// found by walking the pre's text nodes and counting newlines. The ground
+/// truth for where a line sits, wrapped or not, shared by the alignment
+/// sweeps that inject it.
+const LINE_RECT_JS: &str = r#"
+    function lineRect(pre, line) {
+      const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+      let remaining = line - 1;
+      let pending = false; // line starts at next non-empty node
+      let node;
+      while ((node = walker.nextNode())) {
+        const text = node.nodeValue;
+        let idx = 0;
+        if (pending) {
+          if (text.length === 0) continue;
+          pending = false;
+        } else {
+          while (remaining > 0) {
+            const nl = text.indexOf('\n', idx);
+            if (nl === -1) break;
+            idx = nl + 1;
+            remaining--;
+          }
+          if (remaining > 0) continue;
+          if (idx >= text.length) { pending = true; continue; }
+        }
+        const r = document.createRange();
+        r.setStart(node, idx);
+        r.setEnd(node, Math.min(idx + 1, text.length));
+        return r.getBoundingClientRect();
+      }
+      return null;
+    }
+"#;
+
+/// `survey(lineRectFn)`: every badge against the line it annotates,
+/// measured by `lineRectFn(pre, line)`. A badge's vertical centre must fall
+/// inside its line's box, 2px tolerance. Every entry counts: an overlay
+/// with no pre, an entry with no line or badge, and a line the measurer
+/// cannot find are all reported, not stepped over, so a regression in the
+/// emitter cannot shrink the sweep into a pass.
+const SURVEY_JS: &str = r#"
+    function survey(lineRectFn) {
+      const bad = [];
+      let checked = 0;
+      document.querySelectorAll('.callout-overlay').forEach((ov, i) => {
+        const pre = ov.previousElementSibling;
+        if (!pre || pre.tagName !== 'PRE') {
+          bad.push('overlay#' + i + ': no <pre> sibling');
+          return;
+        }
+        ov.querySelectorAll('.callout-entry').forEach(e => {
+          const line = parseInt(e.dataset.calloutLine, 10);
+          const badge = e.querySelector('.callout-badge');
+          checked++;
+          if (!line || !badge) {
+            bad.push('overlay#' + i + ' entry ' + (e.dataset.calloutLine || '?') +
+              ': ' + (badge ? 'no data-callout-line' : 'no badge'));
+            return;
+          }
+          const lr = lineRectFn(pre, line);
+          if (!lr || lr.height === 0) {
+            bad.push(badge.id + ': line ' + line + ' not found in its <pre>');
+            return;
+          }
+          const br = badge.getBoundingClientRect();
+          const c = (br.top + br.bottom) / 2;
+          if (c < lr.top - 2 || c > lr.bottom + 2) {
+            bad.push(badge.id + ': center=' + Math.round(c) +
+              ' line=[' + Math.round(lr.top) + ',' + Math.round(lr.bottom) + ']');
+          }
+        });
+      });
+      return { checked, bad };
+    }
+"#;
+
+/// Wait for the page to lay out and the popover-positioning JS to re-run
+/// after a viewport change; see [`RAF2_JS`] for why two frames.
 async fn wait_for_layout_recalc(page: &playwright_rs::protocol::Page) {
-    // Two rAF ticks: the first lets the resize event's listener run
-    // and schedule the JS recalc; the second lets the recalc's class /
-    // CSS-var changes settle into layout. evaluate_value always parses
-    // a String return, so the promise resolves with a sentinel.
+    let script = [
+        "(async () => {",
+        RAF2_JS,
+        "await raf2(); return 'done'; })()",
+    ]
+    .concat();
     let _: String = page
-        .evaluate_value(
-            "new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r('done'))))",
-        )
+        .evaluate_value(&script)
         .await
         .expect("wait for layout recalc");
 }
@@ -49,9 +155,9 @@ async fn label_only_callout_renders_badge_without_following_body() {
 }
 
 #[tokio::test]
-async fn callout_badge_renders_with_data_attribute_in_ch04() {
+async fn callout_badge_renders_with_data_attribute_in_ch05() {
     with_traced_chapter(
-        "callout_badge_renders_with_data_attribute_in_ch04",
+        "callout_badge_renders_with_data_attribute_in_ch05",
         CH05,
         |page| async move {
             let badges = page.locator(locator!("[data-callout-badge]"));
@@ -152,7 +258,7 @@ async fn every_callout_cross_ref_resolves_to_a_badge_with_matching_ordinal_and_t
                     .get_attribute("data-callout-ref")
                     .await
                     .expect("ref label")
-                    .unwrap_or_default();
+                    .unwrap_or_else(|| panic!("ref #{i} has no data-callout-ref"));
                 assert!(!label.is_empty(), "ref #{i} has empty data-callout-ref");
 
                 let expected_href = format!("#callout-{label}");
@@ -171,7 +277,7 @@ async fn every_callout_cross_ref_resolves_to_a_badge_with_matching_ordinal_and_t
                     .get_attribute("data-callout-ordinal")
                     .await
                     .expect("ref ordinal")
-                    .unwrap_or_default();
+                    .unwrap_or_else(|| panic!("ref `{label}` has no data-callout-ordinal"));
                 expect(target.clone())
                     .to_have_attribute("data-callout-ordinal", &ref_ordinal)
                     .await
@@ -183,7 +289,7 @@ async fn every_callout_cross_ref_resolves_to_a_badge_with_matching_ordinal_and_t
                     .text_content()
                     .await
                     .expect("ref text")
-                    .unwrap_or_default()
+                    .unwrap_or_else(|| panic!("ref `{label}` has no text"))
                     .trim()
                     .to_string();
                 expect(target)
@@ -217,10 +323,8 @@ async fn every_cross_refed_label_has_a_visible_badge_in_the_chapter() {
                     .get_attribute("data-callout-ref")
                     .await
                     .expect("ref label")
-                    .unwrap_or_default();
-                if label.is_empty() {
-                    continue;
-                }
+                    .unwrap_or_else(|| panic!("ref #{i} has no data-callout-ref"));
+                assert!(!label.is_empty(), "ref #{i} has empty data-callout-ref");
                 let target = page.locator(format!(r#"button[id="callout-{label}"]"#));
                 if target.count().await.expect("count target") == 0 {
                     missing.push(label);
@@ -258,15 +362,14 @@ async fn clicking_each_cross_ref_scrolls_target_badge_into_viewport() {
 
             let mut labels: Vec<String> = Vec::with_capacity(count);
             for i in 0..count {
-                if let Some(label) = refs
+                let label = refs
                     .nth(i as i32)
                     .get_attribute("data-callout-ref")
                     .await
                     .expect("ref label")
-                    && !label.is_empty()
-                {
-                    labels.push(label);
-                }
+                    .unwrap_or_else(|| panic!("ref #{i} has no data-callout-ref"));
+                assert!(!label.is_empty(), "ref #{i} has empty data-callout-ref");
+                labels.push(label);
             }
 
             let mut failures: Vec<String> = Vec::new();
@@ -289,9 +392,19 @@ async fn clicking_each_cross_ref_scrolls_target_badge_into_viewport() {
                     failures.push(format!("label `{label}`: scroll failed: {e:?}"));
                     continue;
                 }
-                if !target.is_visible().await.unwrap_or(false) {
-                    failures.push(format!("label `{label}`: target not visible after click"));
-                    continue;
+                // A point-in-time check on purpose: the jump has happened by
+                // now, and a target that only turns up after a polling wait
+                // would be the bug.
+                match target.is_visible().await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        failures.push(format!("label `{label}`: target not visible after click"));
+                        continue;
+                    }
+                    Err(e) => {
+                        failures.push(format!("label `{label}`: visibility check failed: {e:?}"));
+                        continue;
+                    }
                 }
 
                 let actual_hash: String = page
@@ -333,20 +446,12 @@ async fn cross_ref_badges_in_prose_render_with_full_opacity_not_subdued() {
         "cross_ref_badges_in_prose_render_with_full_opacity_not_subdued",
         CH05,
         |page| async move {
-            let opacity: String = page
-                .evaluate_value(
-                    r#"(() => {
-                      const a = document.querySelector('a.callout-badge.callout-ref');
-                      if (!a) return 'no-cross-ref-found';
-                      return getComputedStyle(a).opacity;
-                    })()"#,
-                )
-                .await
-                .expect("read computed opacity");
-            assert_eq!(
-                opacity, "1",
-                "cross-ref badge in prose should have full opacity; got `{opacity}` \
-                 (subdued styling means the .callout-entry scope on `:only-child` regressed)",
+            let cross_ref = page
+                .locator(locator!("a.callout-badge.callout-ref"))
+                .first();
+            expect(cross_ref).to_have_css("opacity", "1").await.expect(
+                "cross-ref badge in prose should have full opacity; subdued styling means \
+                     the .callout-entry scope on `:only-child` regressed",
             );
         },
     )
@@ -396,39 +501,46 @@ async fn every_badge_renders_inside_its_owning_pre() {
         "every_badge_renders_inside_its_owning_pre",
         CH05,
         |page| async move {
-            // For each .callout-overlay, locate its sibling <pre> and
-            // every .callout-badge inside, and verify each badge's y
-            // sits within the pre's y-range.
-            let report: String = page
-                .evaluate_value(
-                    r#"(() => {
-                      const failures = [];
-                      const overlays = document.querySelectorAll('.callout-overlay');
-                      overlays.forEach((o, i) => {
-                        const pre = o.previousElementSibling;
-                        if (!pre || pre.tagName !== 'PRE') return;
-                        const preBox = pre.getBoundingClientRect();
-                        const preTopAbs = preBox.top + window.scrollY;
-                        const preBotAbs = preBox.bottom + window.scrollY;
-                        o.querySelectorAll('.callout-badge').forEach(b => {
-                          const bb = b.getBoundingClientRect();
-                          const bAbs = bb.top + window.scrollY;
-                          if (bAbs < preTopAbs - 2 || bAbs > preBotAbs + 2) {
-                            failures.push(
-                              `overlay#${i} badge#${b.id || b.dataset.calloutBadge}: ` +
-                              `y=${bAbs.toFixed(0)} pre=[${preTopAbs.toFixed(0)}..${preBotAbs.toFixed(0)}]`
-                            );
-                          }
-                        });
-                      });
-                      return failures.join('\n');
-                    })()"#,
-                )
-                .await
-                .expect("evaluate badges-vs-pre");
+            // For each .callout-overlay, its sibling <pre> and every
+            // .callout-badge inside: each badge's y sits within the pre's
+            // y-range. Both boxes are viewport-relative, so they compare.
+            let overlays = page.locator(locator!(".callout-overlay"));
+            let overlay_count = overlays.count().await.expect("count overlays");
+            assert!(overlay_count > 0, "expected at least one .callout-overlay");
+            let mut failures: Vec<String> = Vec::new();
+            for i in 0..overlay_count {
+                let overlay = overlays.nth(i as i32);
+                let pre = overlay.locator("xpath=preceding-sibling::*[1][self::pre]");
+                let Some(pre_box) = pre.bounding_box().await.expect("pre box") else {
+                    failures.push(format!("overlay #{i}: no rendered <pre> sibling"));
+                    continue;
+                };
+                let (top, bottom) = (pre_box.y, pre_box.y + pre_box.height);
+                let badges = overlay.locator(".callout-badge");
+                let badge_count = badges.count().await.expect("count badges");
+                for j in 0..badge_count {
+                    let badge = badges.nth(j as i32);
+                    let verdict = match badge.bounding_box().await.expect("badge box") {
+                        None => Some("not rendered".to_string()),
+                        Some(b) if b.y < top - 2.0 || b.y > bottom + 2.0 => {
+                            Some(format!("y={:.0} pre=[{top:.0}..{bottom:.0}]", b.y))
+                        }
+                        Some(_) => None,
+                    };
+                    if let Some(problem) = verdict {
+                        let id = badge
+                            .get_attribute("id")
+                            .await
+                            .expect("badge id")
+                            .unwrap_or_default();
+                        failures.push(format!("overlay #{i} badge `{id}`: {problem}"));
+                    }
+                }
+            }
             assert!(
-                report.is_empty(),
-                "badges rendered outside their owning <pre>:\n{report}"
+                failures.is_empty(),
+                "badges rendered outside their owning <pre>:\n{}",
+                failures.join("\n")
             );
         },
     )
@@ -490,34 +602,24 @@ async fn callout_body_opens_to_the_right_of_its_badge_on_wide_viewports() {
             .await
             .expect("set wide viewport");
             wait_for_layout_recalc(&page).await;
-            let badge = page
-                .locator(locator!("button#callout-snippets-intercept"));
+            let badge = page.locator(locator!("button#callout-snippets-intercept"));
             badge.hover(None).await.expect("hover badge to reveal body");
             // Confirm the body is laid out before measuring (clip-path
             // animation has finished and the box has its target width).
-            let body = page
-                .locator(locator!("#callout-body-snippets-intercept"));
-            expect(body)
+            let body = page.locator(locator!("#callout-body-snippets-intercept"));
+            expect(body.clone())
                 .to_be_visible()
                 .await
                 .expect("body popover must be visible after hover");
 
-            let report: String = page
-                .evaluate_value(
-                    r#"(() => {
-                      const badge = document.querySelector('button#callout-snippets-intercept');
-                      const body = document.querySelector('#callout-body-snippets-intercept');
-                      const badgeBox = badge.getBoundingClientRect();
-                      const bodyBox = body.getBoundingClientRect();
-                      if (bodyBox.left + 1 < badgeBox.right) {
-                        return `body.left=${bodyBox.left.toFixed(1)} < badge.right=${badgeBox.right.toFixed(1)} (popover is covering the line it annotates)`;
-                      }
-                      return 'ok';
-                    })()"#,
-                )
-                .await
-                .expect("evaluate body-vs-badge layout");
-            assert_eq!(report, "ok", "default popover position regression");
+            let badge_box = bounding_box(&badge).await;
+            let body_box = bounding_box(&body).await;
+            let (body_left, badge_right) = (body_box.x, badge_box.x + badge_box.width);
+            assert!(
+                body_left + 1.0 >= badge_right,
+                "popover must open to the right of its badge, not over the line it annotates; \
+                 body.left={body_left:.1} badge.right={badge_right:.1}",
+            );
         },
     )
     .await;
@@ -548,36 +650,26 @@ async fn callout_body_falls_back_to_left_opening_when_right_gutter_is_too_narrow
             .await
             .expect("set narrow viewport");
             wait_for_layout_recalc(&page).await;
-            let badge = page
-                .locator(locator!("button#callout-snippets-intercept"));
+            let badge = page.locator(locator!("button#callout-snippets-intercept"));
             badge
                 .scroll_into_view_if_needed()
                 .await
                 .expect("scroll badge into view");
             badge.hover(None).await.expect("hover badge");
-            let body = page
-                .locator(locator!("#callout-body-snippets-intercept"));
-            expect(body)
+            let body = page.locator(locator!("#callout-body-snippets-intercept"));
+            expect(body.clone())
                 .to_be_visible()
                 .await
                 .expect("body must be visible after hover");
 
-            let report: String = page
-                .evaluate_value(
-                    r#"(() => {
-                      const badge = document.querySelector('button#callout-snippets-intercept');
-                      const body = document.querySelector('#callout-body-snippets-intercept');
-                      const badgeBox = badge.getBoundingClientRect();
-                      const bodyBox = body.getBoundingClientRect();
-                      if (bodyBox.right > badgeBox.left + 1) {
-                        return `body.right=${bodyBox.right.toFixed(1)} > badge.left=${badgeBox.left.toFixed(1)} (popover did not fall back to left-opening on a narrow viewport)`;
-                      }
-                      return 'ok';
-                    })()"#,
-                )
-                .await
-                .expect("evaluate body-vs-badge layout");
-            assert_eq!(report, "ok", "narrow-viewport fallback regression");
+            let badge_box = bounding_box(&badge).await;
+            let body_box = bounding_box(&body).await;
+            let (body_right, badge_left) = (body_box.x + body_box.width, badge_box.x);
+            assert!(
+                body_right <= badge_left + 1.0,
+                "popover must fall back to opening left when the right gutter is too narrow; \
+                 body.right={body_right:.1} badge.left={badge_left:.1}",
+            );
         },
     )
     .await;
@@ -607,53 +699,49 @@ async fn callout_body_never_overflows_the_viewport_horizontally() {
             .await
             .expect("set mid viewport");
             wait_for_layout_recalc(&page).await;
-            let badge = page
-                .locator(locator!("button#callout-snippets-intercept"));
+            let badge = page.locator(locator!("button#callout-snippets-intercept"));
             badge.hover(None).await.expect("hover badge");
-            let body = page
-                .locator(locator!("#callout-body-snippets-intercept"));
-            expect(body)
+            let body = page.locator(locator!("#callout-body-snippets-intercept"));
+            expect(body.clone())
                 .to_be_visible()
                 .await
                 .expect("body must be visible after hover");
 
-            let report: String = page
+            // The right edge the popover must stay inside is the scroll
+            // container's VISIBLE width, excluding its scrollbar: mdbook's
+            // scrollbar lives on `.content`, not on the document, and
+            // measuring against `window.innerWidth` lets the popover hide
+            // under it. Only that edge is computed in the page.
+            let usable_right: f64 = page
                 .evaluate_value(
                     r#"(() => {
                       const body = document.querySelector('#callout-body-snippets-intercept');
-                      const bodyBox = body.getBoundingClientRect();
-                      // Walk up to find the scroll container — mdbook's
-                      // scrollbar lives on `.content`, not on the
-                      // document. The right edge of the scroll
-                      // container's VISIBLE area (excluding its
-                      // scrollbar) is what the popover must stay inside;
-                      // measuring against `window.innerWidth` or
-                      // `documentElement.clientWidth` lets the popover
-                      // hide under `.content`'s scrollbar.
-                      function findScrollContainer(elem) {
-                        let p = elem.parentElement;
-                        while (p && p !== document.body) {
-                          const oy = getComputedStyle(p).overflowY;
-                          if (oy === 'auto' || oy === 'scroll') return p;
-                          p = p.parentElement;
-                        }
-                        return document.documentElement;
+                      let p = body.parentElement;
+                      while (p && p !== document.body) {
+                        const oy = getComputedStyle(p).overflowY;
+                        if (oy === 'auto' || oy === 'scroll') break;
+                        p = p.parentElement;
                       }
-                      const container = findScrollContainer(body);
-                      const cRect = container.getBoundingClientRect();
-                      const usableRight = cRect.left + container.clientWidth;
-                      if (bodyBox.right > usableRight + 1) {
-                        return `body.right=${bodyBox.right.toFixed(1)} > usableRight=${usableRight.toFixed(1)} (popover overflows the visible area OR sits under the scrollbar — clamp / flip not applied)`;
-                      }
-                      if (bodyBox.left < -1) {
-                        return `body.left=${bodyBox.left.toFixed(1)} < 0 (popover overflows the LEFT viewport edge)`;
-                      }
-                      return 'ok';
+                      const container = (p && p !== document.body) ? p : document.documentElement;
+                      return String(container.getBoundingClientRect().left + container.clientWidth);
                     })()"#,
                 )
                 .await
-                .expect("evaluate body-vs-viewport layout");
-            assert_eq!(report, "ok", "viewport-overflow regression");
+                .expect("measure the scroll container's visible right edge")
+                .parse()
+                .expect("a pixel value");
+            let body_box = bounding_box(&body).await;
+            let body_right = body_box.x + body_box.width;
+            assert!(
+                body_right <= usable_right + 1.0,
+                "popover overflows the visible area or sits under the scrollbar (clamp or flip \
+                 not applied); body.right={body_right:.1} usableRight={usable_right:.1}",
+            );
+            assert!(
+                body_box.x >= -1.0,
+                "popover overflows the left viewport edge; body.left={:.1}",
+                body_box.x
+            );
         },
     )
     .await;
@@ -682,40 +770,33 @@ async fn callout_with_align_left_option_pins_popover_left_even_on_wide_viewport(
             .expect("set wide viewport");
             wait_for_layout_recalc(&page).await;
 
-            let badge = page
-                .locator(locator!("button#callout-align-left-demo"));
+            let badge = page.locator(locator!("button#callout-align-left-demo"));
             badge
                 .scroll_into_view_if_needed()
                 .await
                 .expect("scroll badge into view");
             badge.hover(None).await.expect("hover badge");
-            let body = page
-                .locator(locator!("#callout-body-align-left-demo"));
-            expect(body)
+            let body = page.locator(locator!("#callout-body-align-left-demo"));
+            expect(body.clone())
                 .to_be_visible()
                 .await
                 .expect("body popover must be visible after hover");
 
-            let report: String = page
-                .evaluate_value(
-                    r#"(() => {
-                      const badge = document.querySelector('button#callout-align-left-demo');
-                      const body = document.querySelector('#callout-body-align-left-demo');
-                      const entry = badge.closest('.callout-entry');
-                      const badgeBox = badge.getBoundingClientRect();
-                      const bodyBox = body.getBoundingClientRect();
-                      if (entry?.dataset.calloutAlign !== 'left') {
-                        return `entry data-callout-align should be "left", got ${entry?.dataset.calloutAlign}`;
-                      }
-                      if (bodyBox.right > badgeBox.left + 1) {
-                        return `body.right=${bodyBox.right.toFixed(1)} > badge.left=${badgeBox.left.toFixed(1)} (popover did not pin LEFT despite --align=left override)`;
-                      }
-                      return 'ok';
-                    })()"#,
-                )
+            let aligned_entry = page.locator(locator!(
+                r#".callout-entry[data-callout-align="left"] button#callout-align-left-demo"#
+            ));
+            expect(aligned_entry)
+                .to_have_count(1)
                 .await
-                .expect("evaluate body-vs-badge layout");
-            assert_eq!(report, "ok", "--align=left override regression");
+                .expect("the --align=left option must surface as data-callout-align on the entry");
+            let badge_box = bounding_box(&badge).await;
+            let body_box = bounding_box(&body).await;
+            let (body_right, badge_left) = (body_box.x + body_box.width, badge_box.x);
+            assert!(
+                body_right <= badge_left + 1.0,
+                "popover must pin left despite the wide viewport; \
+                 body.right={body_right:.1} badge.left={badge_left:.1}",
+            );
         },
     )
     .await;
@@ -788,17 +869,14 @@ async fn list_of_listings_sidebar_nests_entries_under_page_headings() {
             // own `listing-N-M` caption anchors.
             let nav_entries = page.locator(locator!(".mdbook-listings-nav-item"));
             let nav_count = nav_entries.count().await.expect("count nav entries");
-            // evaluate_value yields a String, so stringify the count in JS.
-            let page_listings: String = page
-                .evaluate_value(
-                    "String(document.querySelectorAll('main .listing-caption[id^=\"listing-\"]').length)",
-                )
+            let page_listings = page
+                .locator(locator!(r#"main .listing-caption[id^="listing-"]"#))
+                .count()
                 .await
                 .expect("count page listing anchors");
             assert_eq!(
-                nav_count.to_string(),
-                page_listings,
-                "sidebar should nest exactly this page's listings ({page_listings}), got {nav_count}",
+                nav_count, page_listings,
+                "sidebar should nest exactly this page's listings",
             );
 
             // Nested mode does not build the standalone append block.
@@ -851,7 +929,7 @@ async fn list_of_listings_sidebar_append_flows_below_the_nav_tree() {
             );
 
             let section = page.locator(locator!("#mdbook-listings-sidebar"));
-            expect(section)
+            expect(section.clone())
                 .to_be_visible()
                 .await
                 .expect("append section must render");
@@ -859,25 +937,21 @@ async fn list_of_listings_sidebar_append_flows_below_the_nav_tree() {
             // The defect this guards: the section used to be a normal-flow
             // sibling of the absolutely-positioned `.sidebar-scrollbox`, so it
             // painted on top of the nav tree instead of after it. Compare
-            // rendered boxes rather than DOM position — the DOM looked fine
+            // rendered boxes rather than DOM position; the DOM looked fine
             // while the layout was broken.
-            let verdict: String = page
-                .evaluate_value(
-                    r#"(() => {
-                        const sec = document.getElementById('mdbook-listings-sidebar');
-                        const tree = document.querySelector('#mdbook-sidebar ol.chapter');
-                        if (!sec || !tree) return 'missing';
-                        const s = sec.getBoundingClientRect();
-                        const t = tree.getBoundingClientRect();
-                        if (s.height === 0 || s.width === 0) return 'section-collapsed';
-                        return s.top >= t.bottom - 1 ? 'below' : `overlaps(section.top=${Math.round(s.top)}, tree.bottom=${Math.round(t.bottom)})`;
-                    })()"#,
-                )
-                .await
-                .expect("compare section and nav-tree boxes");
-            assert_eq!(
-                verdict, "below",
-                "append section must flow below the nav tree, not over it"
+            let section_box = bounding_box(&section).await;
+            let tree_box = bounding_box(&page.locator(locator!("#mdbook-sidebar ol.chapter"))).await;
+            assert!(
+                section_box.height > 0.0 && section_box.width > 0.0,
+                "append section collapsed to {}x{}",
+                section_box.width,
+                section_box.height
+            );
+            let (section_top, tree_bottom) = (section_box.y, tree_box.y + tree_box.height);
+            assert!(
+                section_top >= tree_bottom - 1.0,
+                "append section must flow below the nav tree, not over it; \
+                 section.top={section_top:.0} tree.bottom={tree_bottom:.0}",
             );
         },
     )
@@ -902,25 +976,16 @@ async fn list_of_listings_sidebar_hover_recolours_text_without_a_block() {
                 .expect("a nested listing entry must be present");
             entry.hover(None).await.expect("hover the entry");
 
-            let verdict: String = page
-                .evaluate_value(
-                    r#"(() => {
-                        const a = document.querySelector('.mdbook-listings-nav-item a');
-                        if (!a) return 'missing';
-                        const s = getComputedStyle(a);
-                        const bg = s.backgroundColor;
-                        const transparent = bg === 'transparent' || /rgba\(0, 0, 0, 0\)/.test(bg);
-                        if (!transparent) return `block-highlight(${bg})`;
-                        if (s.color === bg) return `invisible-text(${s.color})`;
-                        return 'text-only';
-                    })()"#,
-                )
+            // Chromium reports `transparent` as rgba(0, 0, 0, 0).
+            expect(entry.clone())
+                .to_have_css("background-color", "rgba(0, 0, 0, 0)")
                 .await
-                .expect("inspect hovered entry style");
-            assert_eq!(
-                verdict, "text-only",
-                "hover must recolour text only, with no background block"
-            );
+                .expect("hover must recolour the text only, with no background block");
+            expect(entry)
+                .not()
+                .to_have_css("color", "rgba(0, 0, 0, 0)")
+                .await
+                .expect("hovered text must stay visible, not match its transparent background");
         },
     )
     .await;
@@ -953,71 +1018,24 @@ async fn callout_badges_stay_on_their_lines_when_listing_soft_wraps() {
                 .await
                 .expect("inject wrap css");
             wait_for_layout_recalc(&page).await;
-            wait_for_layout_recalc(&page).await;
 
-            // For every callout entry: find the rendered box of its target
-            // line by walking the pre's text nodes (counting newlines) and
-            // measuring a Range at the line's first character — the ground
-            // truth regardless of wrapping — then compare the badge's
-            // vertical center against it. A wrapped target line anchors to
-            // its first visual row.
+            // A wrapped target line anchors to its first visual row, which
+            // is where `lineRect` measures.
+            let script = [
+                "(() => {",
+                LINE_RECT_JS,
+                SURVEY_JS,
+                r#"
+                    const s = survey(lineRect);
+                    if (s.checked === 0) return 'no-entries-checked';
+                    return s.bad.length
+                      ? 'MISALIGNED(' + s.bad.length + '/' + s.checked + ') ' + s.bad.slice(0, 4).join('; ')
+                      : 'aligned:' + s.checked;
+                })()"#,
+            ]
+            .concat();
             let report: String = page
-                .evaluate_value(
-                    r#"(() => {
-                        function lineRect(pre, line) {
-                          const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
-                          let remaining = line - 1;
-                          let pending = false; // line starts at next non-empty node
-                          let node;
-                          while ((node = walker.nextNode())) {
-                            const text = node.nodeValue;
-                            let idx = 0;
-                            if (pending) {
-                              if (text.length === 0) continue;
-                              pending = false;
-                            } else {
-                              while (remaining > 0) {
-                                const nl = text.indexOf('\n', idx);
-                                if (nl === -1) break;
-                                idx = nl + 1;
-                                remaining--;
-                              }
-                              if (remaining > 0) continue;
-                              if (idx >= text.length) { pending = true; continue; }
-                            }
-                            const r = document.createRange();
-                            r.setStart(node, idx);
-                            r.setEnd(node, Math.min(idx + 1, text.length));
-                            return r.getBoundingClientRect();
-                          }
-                          return null;
-                        }
-                        const bad = [];
-                        let checked = 0;
-                        document.querySelectorAll('.callout-overlay').forEach(ov => {
-                          const pre = ov.previousElementSibling;
-                          if (!pre || pre.tagName !== 'PRE') return;
-                          ov.querySelectorAll('.callout-entry').forEach(e => {
-                            const line = parseInt(e.dataset.calloutLine, 10);
-                            const badge = e.querySelector('.callout-badge');
-                            if (!line || !badge) return;
-                            const lr = lineRect(pre, line);
-                            if (!lr || lr.height === 0) return;
-                            checked++;
-                            const br = badge.getBoundingClientRect();
-                            const c = (br.top + br.bottom) / 2;
-                            if (c < lr.top - 2 || c > lr.bottom + 2) {
-                              bad.push(badge.id + ': center=' + Math.round(c) +
-                                ' line=[' + Math.round(lr.top) + ',' + Math.round(lr.bottom) + ']');
-                            }
-                          });
-                        });
-                        if (checked === 0) return 'no-entries-checked';
-                        return bad.length
-                          ? 'MISALIGNED(' + bad.length + '/' + checked + ') ' + bad.slice(0, 4).join('; ')
-                          : 'aligned:' + checked;
-                    })()"#,
-                )
+                .evaluate_value(&script)
                 .await
                 .expect("measure badge-vs-line alignment");
             assert!(
@@ -1041,80 +1059,35 @@ async fn callout_badges_realign_after_late_font_load() {
         "callout_badges_realign_after_late_font_load",
         CH05,
         |page| async move {
+            let script = [
+                "(async () => {",
+                RAF2_JS,
+                LINE_RECT_JS,
+                SURVEY_JS,
+                r#"
+                    // Reflow the pres the way a late font activation does:
+                    // metrics change, no resize event.
+                    const style = document.createElement('style');
+                    style.textContent =
+                      'main pre, main pre code { font-size: 19px !important; }';
+                    document.head.appendChild(style);
+                    await raf2();
+                    const before = survey(lineRect);
+                    if (before.checked === 0) return 'no-entries';
+                    if (before.bad.length === 0) return 'perturbation-had-no-effect';
+
+                    // The production signal that fonts finished loading.
+                    document.fonts.dispatchEvent(new Event('loadingdone'));
+                    await raf2();
+                    const after = survey(lineRect);
+                    return after.bad.length === 0
+                      ? 'realigned:' + after.checked
+                      : 'STILL-STALE(' + after.bad.length + '/' + after.checked + ') ' + after.bad.slice(0, 4).join('; ');
+                })()"#,
+            ]
+            .concat();
             let outcome: String = page
-                .evaluate_value(
-                    r#"(async () => {
-                        function lineRect(pre, line) {
-                          const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
-                          let remaining = line - 1;
-                          let pending = false;
-                          let node;
-                          while ((node = walker.nextNode())) {
-                            const text = node.nodeValue;
-                            let idx = 0;
-                            if (pending) {
-                              if (text.length === 0) continue;
-                              pending = false;
-                            } else {
-                              while (remaining > 0) {
-                                const nl = text.indexOf('\n', idx);
-                                if (nl === -1) break;
-                                idx = nl + 1;
-                                remaining--;
-                              }
-                              if (remaining > 0) continue;
-                              if (idx >= text.length) { pending = true; continue; }
-                            }
-                            const r = document.createRange();
-                            r.setStart(node, idx);
-                            r.setEnd(node, Math.min(idx + 1, text.length));
-                            return r.getBoundingClientRect();
-                          }
-                          return null;
-                        }
-                        function survey() {
-                          let checked = 0, misaligned = 0;
-                          document.querySelectorAll('.callout-overlay').forEach(ov => {
-                            const pre = ov.previousElementSibling;
-                            if (!pre || pre.tagName !== 'PRE') return;
-                            ov.querySelectorAll('.callout-entry').forEach(e => {
-                              const line = parseInt(e.dataset.calloutLine, 10);
-                              const badge = e.querySelector('.callout-badge');
-                              if (!line || !badge) return;
-                              const lr = lineRect(pre, line);
-                              if (!lr || lr.height === 0) return;
-                              checked++;
-                              const c = (badge.getBoundingClientRect().top +
-                                         badge.getBoundingClientRect().bottom) / 2;
-                              if (c < lr.top - 2 || c > lr.bottom + 2) misaligned++;
-                            });
-                          });
-                          return { checked, misaligned };
-                        }
-                        const raf2 = () => new Promise(r =>
-                          requestAnimationFrame(() => requestAnimationFrame(r)));
-
-                        // Reflow the pres the way a late font activation does:
-                        // metrics change, no resize event.
-                        const style = document.createElement('style');
-                        style.textContent =
-                          'main pre, main pre code { font-size: 19px !important; }';
-                        document.head.appendChild(style);
-                        await raf2();
-                        const before = survey();
-                        if (before.checked === 0) return 'no-entries';
-                        if (before.misaligned === 0) return 'perturbation-had-no-effect';
-
-                        // The production signal that fonts finished loading.
-                        document.fonts.dispatchEvent(new Event('loadingdone'));
-                        await raf2();
-                        await raf2();
-                        const after = survey();
-                        return after.misaligned === 0
-                          ? 'realigned:' + after.checked
-                          : 'STILL-STALE(' + after.misaligned + '/' + after.checked + ')';
-                    })()"#,
-                )
+                .evaluate_value(&script)
                 .await
                 .expect("perturb, signal loadingdone, survey alignment");
             assert!(
@@ -1142,9 +1115,11 @@ async fn callout_badges_place_correctly_under_safari_boundary_rect_semantics() {
         "callout_badges_place_correctly_under_safari_boundary_rect_semantics",
         CH05,
         |page| async move {
-            let outcome: String = page
-                .evaluate_value(
-                    r#"(async () => {
+            let script = [
+                "(async () => {",
+                RAF2_JS,
+                SURVEY_JS,
+                r#"
                         const orig = Range.prototype.getBoundingClientRect;
                         Range.prototype.getBoundingClientRect = function () {
                           const r = orig.call(this);
@@ -1162,11 +1137,11 @@ async fn callout_badges_place_correctly_under_safari_boundary_rect_semantics() {
                         };
 
                         window.dispatchEvent(new Event('resize'));
-                        const raf2 = () => new Promise(r =>
-                          requestAnimationFrame(() => requestAnimationFrame(r)));
-                        await raf2();
                         await raf2();
 
+                        // Like lineRect, but measures the line's first VISIBLE
+                        // glyph with the UNPATCHED rect, so the survey's ground
+                        // truth is not itself subject to the emulated bug.
                         function lineRectTrue(pre, line) {
                           const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
                           let remaining = line - 1, pending = false, node;
@@ -1197,29 +1172,17 @@ async fn callout_badges_place_correctly_under_safari_boundary_rect_semantics() {
                           }
                           return null;
                         }
-                        let checked = 0, misaligned = 0;
-                        document.querySelectorAll('.callout-overlay').forEach(ov => {
-                          const pre = ov.previousElementSibling;
-                          if (!pre || pre.tagName !== 'PRE') return;
-                          ov.querySelectorAll('.callout-entry').forEach(e => {
-                            const line = parseInt(e.dataset.calloutLine, 10);
-                            const badge = e.querySelector('.callout-badge');
-                            if (!line || !badge) return;
-                            const lr = lineRectTrue(pre, line);
-                            if (!lr || lr.height === 0) return;
-                            checked++;
-                            const br = badge.getBoundingClientRect();
-                            const c = (br.top + br.bottom) / 2;
-                            if (c < lr.top - 2 || c > lr.bottom + 2) misaligned++;
-                          });
-                        });
+                        const s = survey(lineRectTrue);
                         Range.prototype.getBoundingClientRect = orig;
-                        if (checked === 0) return 'no-entries';
-                        return misaligned === 0
-                          ? 'aligned:' + checked
-                          : 'MISALIGNED(' + misaligned + '/' + checked + ')';
-                    })()"#,
-                )
+                        if (s.checked === 0) return 'no-entries';
+                        return s.bad.length === 0
+                          ? 'aligned:' + s.checked
+                          : 'MISALIGNED(' + s.bad.length + '/' + s.checked + ') ' + s.bad.slice(0, 4).join('; ');
+                })()"#,
+            ]
+            .concat();
+            let outcome: String = page
+                .evaluate_value(&script)
                 .await
                 .expect("emulate safari rects, survey alignment");
             assert!(
@@ -1242,26 +1205,30 @@ async fn listing_ref_renders_as_link_to_current_number() {
         "listing_ref_renders_as_link_to_current_number",
         "reading-this-book",
         |page| async move {
-            let verdict: String = page
-                .evaluate_value(
-                    r#"(() => {
-                        const links = [...document.querySelectorAll(
-                          'main a[href*="ch03-freeze-a-listing.html#listing-"]')];
-                        if (!links.length) return 'no-ref-link';
-                        const a = links[0];
-                        const id = a.getAttribute('href').split('#')[1];
-                        const expected = 'Listing ' + id.replace('listing-', '').replace('-', '.');
-                        return a.textContent === expected
-                          ? 'ok:' + a.textContent
-                          : 'MISMATCH text=' + a.textContent + ' expected=' + expected;
-                    })()"#,
-                )
+            let link = page
+                .locator(locator!(
+                    r#"main a[href*="ch03-freeze-a-listing.html#listing-"]"#
+                ))
+                .first();
+            let href = link
+                .get_attribute("href")
                 .await
-                .expect("inspect listing-ref link");
-            assert!(
-                verdict.starts_with("ok:"),
-                "listing-ref must render the target's current number as its link text; got: {verdict}"
+                .expect("href")
+                .expect("a listing-ref link carries an href");
+            let id = href
+                .split('#')
+                .nth(1)
+                .unwrap_or_else(|| panic!("listing-ref href has no fragment: {href}"));
+            // `listing-3-2` names `Listing 3.2`: the first dash separates the
+            // chapter from the ordinal.
+            let expected = format!(
+                "Listing {}",
+                id.trim_start_matches("listing-").replacen('-', ".", 1)
             );
+            expect(link)
+                .to_have_text(&expected)
+                .await
+                .expect("listing-ref must render the target's current number as its link text");
         },
     )
     .await;
