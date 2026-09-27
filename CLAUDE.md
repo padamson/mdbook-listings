@@ -185,4 +185,10 @@ an excluded command onto another line unsandboxes that line too.
 4. Tag: `git tag vX.Y.Z`
 5. Push: `git push origin main --tags`
 
-The tag triggers CI which builds, tests, creates a GitHub Release, and publishes to crates.io.
+The tag triggers CI which builds, tests, creates a GitHub Release, and
+publishes to crates.io. Publishing authenticates through crates.io Trusted
+Publishing: the job mints a GitHub OIDC token and exchanges it for a
+short-lived registry token, so there is no `CARGO_REGISTRY_TOKEN` secret to
+rotate. The trusted publisher lives in the crate's settings on crates.io
+(owner `padamson`, this repo, workflow `ci.yml`, no environment); if it is
+ever removed the publish step fails, which is the right outcome.
