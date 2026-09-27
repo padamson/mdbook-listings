@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-27
+
+A documentation release. The preprocessor and the CLI behave exactly as
+they did in 0.2.1; what changes is how the authoring skill is installed,
+and the README that crates.io shows now says so instead of pointing at
+the retired plugin channel.
+
 ### Removed
 - **The Claude Code plugin manifests.** The authoring skill has one install
   channel now, the Agent Skills CLI: `npx skills add padamson/mdbook-listings`.
@@ -252,6 +259,7 @@ primitives and a verification gate (each is a user-story chapter in the
 - Claude Code plugin (marketplace + bundled skill) giving an agent a
   current reference for the CLI and directive syntax while authoring.
 
+[0.2.2]: https://github.com/padamson/mdbook-listings/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/padamson/mdbook-listings/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/padamson/mdbook-listings/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/padamson/mdbook-listings/compare/v0.1.0...v0.1.1
