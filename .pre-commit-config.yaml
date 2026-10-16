@@ -88,13 +88,33 @@ repos:
         pass_filenames: false
         files: (Cargo\.toml|Cargo\.lock)$
 
+      # Advisories go through the same script as the CI gate and the
+      # advisory monitor. Both deny hooks are diff-gated on purpose: an
+      # advisory published overnight should not block an unrelated
+      # commit; the scheduled monitor catches those.
       - id: cargo-deny
         name: cargo deny
         description: Check licenses, bans, and source restrictions
-        entry: cargo deny check
+        entry: cargo deny --workspace check bans licenses sources
         language: system
         pass_filenames: false
         files: (Cargo\.toml|Cargo\.lock|deny\.toml)$
+
+      - id: cargo-deny-advisories
+        name: cargo deny advisories (every lockfile)
+        description: Check every tracked Cargo.lock against the RustSec database
+        entry: scripts/check-advisories.sh
+        language: system
+        pass_filenames: false
+        files: (Cargo\.toml|Cargo\.lock|deny\.toml)$
+
+      - id: advisory-checker-classifies-output
+        name: advisory checker still tells a hit from a broken tool
+        description: the advisory monitor runs on a schedule nobody watches, so a misclassification is silent
+        entry: scripts/test-check-advisories.sh
+        language: system
+        pass_filenames: false
+        files: ^scripts/(check-advisories\.sh|test-check-advisories\.sh|advisory-issue-body\.py)$
 
       - id: cargo-vet
         name: cargo vet

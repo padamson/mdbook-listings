@@ -15,3 +15,7 @@ flate = "flate"
 # `writeable` is the real crate name on crates.io (an `icu4x`
 # helper). typos defaults to suggesting `writable`.
 writeable = "writeable"
+
+# scripts/test-check-advisories.sh replays cargo-deny's error for a
+# misspelt deny.toml key; the misspelling is the fixture.
+ignroe = "ignroe"
