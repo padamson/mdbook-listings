@@ -204,6 +204,11 @@ user-id = 3618
 user-login = "dtolnay"
 user-name = "David Tolnay"
 
+[[publisher.libc]]
+version = "0.2.191"
+when = "2026-10-16"
+trusted-publisher = "github:rust-lang/libc"
+
 [[publisher.linux-raw-sys]]
 version = "0.12.1"
 when = "2025-12-23"
@@ -236,18 +241,18 @@ user-login = "epage"
 user-name = "Ed Page"
 
 [[publisher.playwright-rs]]
-version = "0.19.0"
-when = "2026-09-27"
+version = "0.20.1"
+when = "2026-10-17"
 trusted-publisher = "github:padamson/playwright-rust"
 
 [[publisher.playwright-rs-macros]]
-version = "0.1.1"
-when = "2026-08-02"
+version = "0.1.2"
+when = "2026-10-11"
 trusted-publisher = "github:padamson/playwright-rust"
 
 [[publisher.playwright-rs-trace]]
-version = "0.2.0"
-when = "2026-09-09"
+version = "0.2.2"
+when = "2026-10-17"
 trusted-publisher = "github:padamson/playwright-rust"
 
 [[publisher.potential_utf]]
@@ -1172,6 +1177,12 @@ who = "Pat Hickey <p.hickey@f5.com>"
 criteria = "safe-to-deploy"
 delta = "1.8.1 -> 1.8.2"
 
+[[audits.embark-studios.audits.cfg_aliases]]
+who = "Johan Andersson <opensource@embark-studios.com>"
+criteria = "safe-to-deploy"
+version = "0.1.1"
+notes = "No unsafe usage or ambient capabilities"
+
 [[audits.embark-studios.audits.idna]]
 who = "Johan Andersson <opensource@embark-studios.com>"
 criteria = "safe-to-deploy"
@@ -1608,6 +1619,19 @@ aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/mai
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
 delta = "0.10.2 -> 0.10.3"
+aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/supply-chain/audits.toml"
+
+[[audits.mozilla.audits.cfg_aliases]]
+who = "Alex Franchuk <afranchuk@mozilla.com>"
+criteria = "safe-to-deploy"
+delta = "0.1.1 -> 0.2.1"
+notes = "Very minor changes."
+aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/supply-chain/audits.toml"
+
+[[audits.mozilla.audits.cfg_aliases]]
+who = "Erich Gubler <erichdongubler@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.2.1 -> 0.2.2"
 aggregated-from = "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/supply-chain/audits.toml"
 
 [[audits.mozilla.audits.core-foundation-sys]]

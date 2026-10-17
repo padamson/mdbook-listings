@@ -222,10 +222,6 @@ criteria = "safe-to-deploy"
 version = "0.3.103"
 criteria = "safe-to-deploy"
 
-[[exemptions.libc]]
-version = "0.2.185"
-criteria = "safe-to-deploy"
-
 [[exemptions.libredox]]
 version = "0.1.16"
 criteria = "safe-to-deploy"
@@ -252,6 +248,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.native-tls]]
 version = "0.2.18"
+criteria = "safe-to-deploy"
+
+[[exemptions.nix]]
+version = "0.31.3"
 criteria = "safe-to-deploy"
 
 [[exemptions.nom]]
@@ -550,7 +550,7 @@ version = "0.11.3"
 criteria = "safe-to-deploy"
 
 [[exemptions.zip]]
-version = "8.6.0"
+version = "9.0.4"
 criteria = "safe-to-deploy"
 
 [[exemptions.zopfli]]

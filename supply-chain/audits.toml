@@ -261,6 +261,13 @@ user-id = 3618 # David Tolnay (dtolnay)
 start = "2019-05-02"
 end = "2027-05-16"
 
+[[trusted.libc]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:rust-lang/libc"
+start = "2026-10-02"
+end = "2027-10-17"
+notes = "libc moved to crates.io trusted publishing with 0.2.190; rust-lang owns it, the same trust playwright-rust records"
+
 [[trusted.linux-raw-sys]]
 criteria = "safe-to-deploy"
 user-id = 6825 # Dan Gohman (sunfishcode)
