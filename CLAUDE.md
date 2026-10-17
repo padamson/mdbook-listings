@@ -158,14 +158,15 @@ cargo install --path . --locked --force
 ```bash
 ./scripts/ci-watch.sh              # the current HEAD
 ./scripts/ci-watch.sh <sha|ref>    # a specific commit
-POLL=15 TIMEOUT=600 ./scripts/ci-watch.sh
+./scripts/ci-watch.sh --poll 15 --timeout 600
 ```
 
 Prints one line per job as it reaches a terminal state, one per workflow
 when it finishes, then exits: 0 all green, 1 some job failed, 2 timed out.
 Every terminal state is reported, not just successes -- a watcher that only
 greps for "success" is silent through a crashloop, which looks exactly like
-still-running.
+still-running. A run that fails with no jobs at all (an invalid workflow file)
+counts as a failure, and a run re-run mid-watch is reported by its new result.
 
 It exists as a script for a sandbox reason worth knowing before writing any
 other polling loop here. `excludedCommands` in `.claude/settings.json` match
@@ -175,7 +176,10 @@ stays sandboxed and every call fails on the read-denied `~/.config/gh` --
 silently, if the loop swallows errors. Excluding the script instead
 unsandboxes its whole process tree, and the `gh` it spawns inherits that,
 the same route `git push` takes for SSH. Run it as its own command: chaining
-an excluded command onto another line unsandboxes that line too.
+an excluded command onto another line unsandboxes that line too. Pass the
+interval and timeout as flags for the same reason: `TIMEOUT=600
+./scripts/ci-watch.sh` is not the excluded command, so it runs sandboxed and
+every `gh` call fails.
 
 ## Release process
 
