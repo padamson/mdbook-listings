@@ -176,7 +176,7 @@ fn extension_for_lang(lang: &str) -> Option<&'static str> {
 /// deleted one is gone in the post-diff state.
 pub(crate) fn callouts_for_block(info: &str, block_text: &str) -> Vec<Callout> {
     if info == "diff" {
-        return callouts_from_diff_block(block_text);
+        return callouts_on_diff_lines(block_text, '+');
     }
     if let Some(prefix) = comment_prefix_for_language(info) {
         return parse_callouts(block_text, prefix);
@@ -195,18 +195,16 @@ pub(super) fn is_diff_metadata(line: &str) -> bool {
         || line.starts_with('\\')
 }
 
-fn callouts_from_diff_block(block_text: &str) -> Vec<Callout> {
+/// Callout markers on the diff lines that start with `indicator`. Rendering
+/// reads only `+` lines (see [`callouts_for_block`]); the context (` `) form
+/// explains why a cite of an unbadged marker fails.
+pub(super) fn callouts_on_diff_lines(block_text: &str, indicator: char) -> Vec<Callout> {
     let mut out = Vec::new();
     for (idx, raw_line) in block_text.lines().enumerate() {
         if is_diff_metadata(raw_line) {
             continue;
         }
-        let Some(stripped) = raw_line.strip_prefix('+') else {
-            // Context (` `) and removed (`-`) lines carry no badge: an
-            // unchanged callout is already badged wherever the listing is
-            // `{{#include}}`-d in full, and a removed one is gone in the
-            // new state. Only an added marker (a new or edited callout)
-            // surfaces here.
+        let Some(stripped) = raw_line.strip_prefix(indicator) else {
             continue;
         };
         for prefix in ALL_COMMENT_PREFIXES {

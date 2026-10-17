@@ -29,6 +29,12 @@ pub enum SpliceError {
     /// A `{{#callout <label>}}` directive named a label that no callout
     /// marker in the chapter defines.
     UnknownLabel { label: String },
+    /// A `{{#callout <label>}}` directive named a label whose marker sits
+    /// only on unchanged context lines of the chapter's diffs. A diff
+    /// badges only what it changed, so the marker renders nothing to link
+    /// to; the generic unknown-label message would send the author looking
+    /// for a typo.
+    DiffContextLabel { label: String },
     /// The same label appears as BOTH an inline `// CALLOUT:` marker in
     /// the frozen listing AND as a `[[callout]]` entry in the sidecar
     /// TOML file. Cross-source collisions silently hide one of the two
@@ -59,6 +65,12 @@ impl std::fmt::Display for SpliceError {
                 f,
                 "{{{{#callout {label}}}}} references a label that no callout marker defines \
                  in this chapter",
+            ),
+            SpliceError::DiffContextLabel { label } => write!(
+                f,
+                "{{{{#callout {label}}}}} references a marker that appears in this chapter \
+                 only on an unchanged context line of a {{{{#diff}}}}, and a diff badges only \
+                 added lines; cite it from an {{{{#include}}}} of the listing instead",
             ),
             SpliceError::LabelCollision {
                 label,
@@ -125,7 +137,24 @@ pub fn splice_chapter(
 ) -> Result<String, SpliceError> {
     let label_to_ordinal = collect_first_occurrence_ordinals(content, sidecars)?;
     let with_lists = splice_callout_lists(content, &label_to_ordinal, renderer, sidecars)?;
-    replace_callout_refs(&with_lists, &label_to_ordinal, renderer)
+    replace_callout_refs(&with_lists, &label_to_ordinal, renderer).map_err(|err| match err {
+        SpliceError::UnknownLabel { label } if on_diff_context_line(content, &label) => {
+            SpliceError::DiffContextLabel { label }
+        }
+        other => other,
+    })
+}
+
+/// Whether `label` has a marker on a context line of one of the chapter's
+/// diffs. Read from the unspliced chapter, since splicing strips markers.
+fn on_diff_context_line(content: &str, label: &str) -> bool {
+    FencedBlocks::new(content)
+        .filter(|block| block.info == "diff")
+        .any(|block| {
+            parse::callouts_on_diff_lines(block.body, ' ')
+                .iter()
+                .any(|c| c.label == label)
+        })
 }
 
 /// A label's canonical badge: its within-listing ordinal and the number of
@@ -502,6 +531,63 @@ mod tests {
         match err {
             SpliceError::UnknownLabel { label } => assert_eq!(label, "missing"),
             other => panic!("expected UnknownLabel, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_cite_of_a_marker_only_on_a_diff_context_line_names_that_cause() {
+        let content = concat!(
+            "```diff\n",
+            "--- a-tag\n",
+            "+++ b-tag\n",
+            "@@ -1,2 +1,3 @@\n",
+            " # CALLOUT: carried An unchanged callout.\n",
+            " carried: true\n",
+            "+added: true\n",
+            "```\n\n",
+            "See {{#callout carried}}.\n",
+        );
+        let err = splice_chapter(content, SupportedRenderer::Html, &SidecarCallouts::empty())
+            .expect_err("a cite of an unbadged context marker cannot resolve");
+        match err {
+            SpliceError::DiffContextLabel { label } => assert_eq!(label, "carried"),
+            other => panic!("expected DiffContextLabel, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_cite_of_a_marker_only_on_a_removed_diff_line_is_an_unknown_label() {
+        // The callout is gone in the new state, so the generic message is
+        // the right one; only context lines get the diff-specific cause.
+        let content = concat!(
+            "```diff\n",
+            "--- a-tag\n",
+            "+++ b-tag\n",
+            "@@ -1,2 +1,1 @@\n",
+            "-# CALLOUT: gone A removed callout.\n",
+            " kept: true\n",
+            "```\n\n",
+            "See {{#callout gone}}.\n",
+        );
+        let err = splice_chapter(content, SupportedRenderer::Html, &SidecarCallouts::empty())
+            .expect_err("a cite of a removed marker cannot resolve");
+        match err {
+            SpliceError::UnknownLabel { label } => assert_eq!(label, "gone"),
+            other => panic!("expected UnknownLabel, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_diff_context_label_message_names_the_label_and_the_include_remedy() {
+        let msg = SpliceError::DiffContextLabel {
+            label: "carried".to_string(),
+        }
+        .to_string();
+        for token in ["{{#callout carried}}", "{{#diff}}", "{{#include}}"] {
+            assert!(
+                msg.contains(token),
+                "message should name {token}; got: {msg}"
+            );
         }
     }
 

@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- **A cite of a callout that a diff shows unchanged says why it fails.** A
+  `{{#diff}}` badges only added lines, so a marker on an unchanged context
+  line renders no badge, and a `{{#callout}}` naming it has nothing to link
+  to. The build used to fail with the generic "no callout marker defines"
+  message, which reads like a typo in the label. It now says the marker sits
+  only on a diff context line and to cite it from an `{{#include}}` of the
+  listing. The authoring skill's directives reference now states the
+  added-lines-only rule, which it never mentioned.
+
 ## [0.2.2] - 2026-09-27
 
 A documentation release. The preprocessor and the CLI behave exactly as

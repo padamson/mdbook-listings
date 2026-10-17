@@ -223,6 +223,15 @@ reset between listings; with `number-listings` on, badges are scoped to their
 listing's number instead (`5.3.1` — listing `5.3`, badge `1`), in the listing
 and in prose cross-references, so a badge says which listing it belongs to.
 
+In a `{{#diff}}`, only a marker on an added (`+`) line gets a badge. That
+covers a new callout and an edited one (its `+` side lands the badge on the
+line it annotates). A marker on an unchanged context line, or on a removed
+line, gets no badge (HTML also strips the comment; PDF leaves the diff text
+as is): the diff shows what changed, and an unchanged callout already has its
+badge wherever the listing is `{{#include}}`d. So cite an unchanged callout
+from a chapter that includes the listing (or a slice holding the marker), not
+from one that only diffs it.
+
 Example source file, frozen and then included:
 
 ````markdown
@@ -248,8 +257,10 @@ See callout {{#callout signature}} for why the parameter is borrowed.
 ````
 
 A reference to a label that no marker in the chapter defines **fails the build**
-with a diagnostic naming the missing label and the chapter. Adding or removing a
-marker renumbers badges visually but does not break label-based references.
+with a diagnostic naming the missing label and the chapter. When the label's
+only marker in the chapter sits on a diff context line, the diagnostic says so
+instead. Adding or removing a marker renumbers badges visually but does not
+break label-based references.
 
 The reverse slip — a marker whose badge renders but that no `{{#callout}}`
 anywhere picks up — builds clean and is reported by `verify` as a warning
