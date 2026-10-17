@@ -29,8 +29,11 @@ jobs:
         with:
           toolchain: stable
 
+      # Unpinned on purpose: an older cargo-audit can fail to parse newer
+      # advisory-db entries (CVSS 4.0, 2025), and a pinned copy waits on a
+      # Dependabot bump to recover. `--locked` builds against its own lock.
       - name: Install cargo-audit
-        run: cargo install cargo-audit
+        run: cargo install --locked cargo-audit
 
       - name: Run cargo audit
         run: cargo audit
@@ -48,7 +51,7 @@ jobs:
           toolchain: stable
 
       - name: Install cargo-deny
-        run: cargo install cargo-deny
+        run: cargo install --locked cargo-deny
 
       - name: Run cargo deny
         run: cargo deny --workspace check bans licenses sources
@@ -75,35 +78,25 @@ jobs:
         with:
           toolchain: stable
 
+      # Built from crates.io on purpose: install-action serves GitHub release
+      # binaries, and cargo-vet's newest release with binaries is 0.10.0,
+      # which cannot parse the `trusted-publisher` entries that 0.10.2
+      # (crates.io) writes. `--locked` builds against cargo-vet's own
+      # Cargo.lock. No version pin on purpose: Dependabot cannot bump a
+      # `run:` line, and cargo-vet refuses a store written by a newer
+      # version, so a pinned CI copy older than a local one goes red.
       - name: Install cargo-vet
-        run: cargo install cargo-vet
+        run: cargo install --locked cargo-vet
 
       - name: Run cargo vet
         run: |
           if [ -f supply-chain/audits.toml ]; then
-            cargo vet
+            # `--locked` reads imports.lock instead of fetching the
+            # imported audits, so a commit that left an import out fails.
+            cargo vet --locked
           else
             echo "supply-chain/ not initialized; skipping. Run 'cargo vet init' to enable."
           fi
-
-  semver-checks:
-    name: Semver Compatibility
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # stable
-        with:
-          toolchain: stable
-
-      - name: Install cargo-semver-checks
-        run: cargo install cargo-semver-checks
-
-      - name: Check semver compatibility
-        run: cargo semver-checks check-release
 
   mutation-testing:
     name: Mutation Testing (full)

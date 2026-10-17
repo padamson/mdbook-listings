@@ -290,6 +290,33 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
 
+  # Compares the crate's public API against its latest crates.io release,
+  # so a breaking change under a non-breaking version bump fails here,
+  # before the binaries build and so before anything is released or
+  # published. On 0.x a minor bump (0.2 to 0.3) allows one. It checks the
+  # root package only; capture-screenshots is a `publish = false` tool.
+  semver-checks:
+    name: Semver Compatibility
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # stable
+        with:
+          toolchain: stable
+
+      # Unpinned on purpose: each new stable rustdoc JSON format needs a new
+      # cargo-semver-checks, and a copy pinned through install-action's
+      # manifest would block every tag until Dependabot bumped the action.
+      - name: Install cargo-semver-checks
+        run: cargo install --locked cargo-semver-checks
+
+      - name: Check semver compatibility
+        run: cargo semver-checks check-release
+
   # The release is three jobs, not one. This job only builds: each matrix
   # leg hands its archive to `release-assets` as a workflow artifact and
   # never touches the GitHub Release or crates.io. That is what lets a
@@ -304,7 +331,9 @@ jobs:
       contents: read
       id-token: write       # provenance attestation
       attestations: write
-    needs: e2e
+    # publish-crates needs this job's success, so the semver gate holds
+    # back the crate as well as the release page.
+    needs: [e2e, semver-checks]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -467,15 +496,22 @@ jobs:
     # page -- crates.io consumers never see the tarballs. `always()` so a
     # failed build leg fails this job by name instead of leaving it
     # `skipped`, which the run summary reads as "not applicable" (#63).
-    needs: build-release
+    # semver-checks is listed so a failed gate is named as the cause; it
+    # also skips build-release, which would otherwise read as a failed build.
+    needs: [semver-checks, build-release]
     if: always() && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Require the release binaries to have built
+      - name: Require the semver gate and the release binaries
         env:
+          SEMVER: ${{ needs.semver-checks.result }}
           RESULT: ${{ needs.build-release.result }}
         run: |
+          if [ "$SEMVER" != success ]; then
+            echo "::error::semver check did not pass ($SEMVER); crate not published"
+            exit 1
+          fi
           if [ "$RESULT" != success ]; then
             echo "::error::release binaries did not build ($RESULT); crate not published"
             exit 1

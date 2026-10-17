@@ -46,10 +46,10 @@ jobs:
         with:
           toolchain: stable
 
+      # The same install as the Security & Quality gate, so the two run the
+      # same cargo-deny over check-advisories.sh and agree on a finding.
       - name: Install cargo-deny
-        uses: taiki-e/install-action@861a07ce7084f55488e375df125cdc99bba60eb7 # v2.87.23
-        with:
-          tool: cargo-deny
+        run: cargo install --locked cargo-deny
 
       # Exit codes are documented in the script. A broken check fails the
       # job, at the end when a hit beside it still needs filing.
