@@ -91,9 +91,10 @@ jobs:
       - name: Run cargo vet
         run: |
           if [ -f supply-chain/audits.toml ]; then
-            # `--locked` reads imports.lock instead of fetching the
-            # imported audits, so a commit that left an import out fails.
-            cargo vet --locked
+            # Not `--locked`: vet fetches the publisher records of trusted
+            # crates' new versions into imports.lock, and Dependabot changes
+            # only Cargo.lock, so a locked vet fails every trusted bump.
+            cargo vet
           else
             echo "supply-chain/ not initialized; skipping. Run 'cargo vet init' to enable."
           fi
