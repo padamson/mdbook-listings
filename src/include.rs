@@ -78,8 +78,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
         let (args, show_provenance) = crate::directive::split_show_provenance(&args);
         let raw = args.trim();
         // CALLOUT: snippets-intercept Two prefixes are intercepted: `listings/` (frozen tags — emit anchor) and `snippets/` (no anchor; we expand to give the callout splicer a shot at any CALLOUT markers in the snippet source). Other forms fall through to mdbook's built-in `links` preprocessor.
-        let intercepted = raw.starts_with("listings/") || raw.starts_with("snippets/");
-        if !intercepted {
+        if !is_intercepted_path(raw) {
             continue;
         }
         // Split on the first `:` to separate the path from an optional
@@ -122,6 +121,82 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
     out
 }
 
+/// An include with an intercepted path prefix that this preprocessor
+/// leaves alone but mdbook's `links` preprocessor, which runs after it,
+/// will still expand.
+#[derive(Debug, PartialEq, Eq)]
+pub struct UninterceptedInclude {
+    /// The path argument as mdbook reads it: the first word after `#include`.
+    pub path: String,
+    pub line: usize,
+}
+
+/// The diagnostic both `verify` and the preprocessor print after their own
+/// `file:line:` prefix, so the two cannot describe the problem differently.
+impl std::fmt::Display for UninterceptedInclude {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "mdbook-listings does not expand {{{{#include {}}}}} here, but mdbook's \
+             `links` preprocessor will expand it anyway, even in inline code or an \
+             HTML comment; to show the directive literally, escape it as \
+             \\{{{{#include …}}}} on a single line",
+            self.path,
+        )
+    }
+}
+
+/// mdbook's own link grammar, copied verbatim from the `links`
+/// preprocessor in mdbook-driver 0.5. Matching its regex rather than
+/// approximating it is the point: the two scanners disagree on inline
+/// code, on spacing inside the braces, and on where an escape ends, and
+/// every disagreement is a place an include slips past this preprocessor.
+static MDBOOK_LINK: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?x)
+        \\\{\{\#.*\}\}
+        |
+        \{\{\s*
+        \#([a-zA-Z0-9_]+)
+        \s+
+        ([^}]+)
+        \}\}",
+    )
+    .expect("mdbook's link regex compiles")
+});
+
+/// Includes of `listings/` or `snippets/` paths that mdbook's `links`
+/// preprocessor will expand but this one skips, in document order. Run on
+/// chapter source before splicing: a spliced listing's own text is code to
+/// show, not a directive the author wrote.
+///
+/// An include this preprocessor sees and then hands back on purpose, such
+/// as an anchor-name suffix, is not reported; only ones its scanner never
+/// saw are.
+pub fn unintercepted_includes(content: &str) -> Vec<UninterceptedInclude> {
+    let seen: std::collections::HashSet<usize> =
+        scan_directives(content, "{{#include ", FencePolicy::Annotate)
+            .into_iter()
+            .map(|occ| occ.span.start)
+            .collect();
+    MDBOOK_LINK
+        .captures_iter(content)
+        .filter(|cap| cap.get(1).is_some_and(|kind| kind.as_str() == "include"))
+        .filter_map(|cap| {
+            let start = cap.get(0)?.start();
+            let path = cap.get(2)?.as_str().split_whitespace().next()?;
+            (is_intercepted_path(path) && !seen.contains(&start)).then(|| UninterceptedInclude {
+                path: path.to_string(),
+                line: line_number(content, start),
+            })
+        })
+        .collect()
+}
+
+fn is_intercepted_path(path: &str) -> bool {
+    path.starts_with("listings/") || path.starts_with("snippets/")
+}
+
 #[derive(Debug)]
 pub enum SpliceError {
     ListingFileMissing {
@@ -134,6 +209,10 @@ pub enum SpliceError {
     ListingIncludeMidLine {
         tag: String,
         line: usize,
+        chapter_path: Option<PathBuf>,
+    },
+    UninterceptedInclude {
+        include: UninterceptedInclude,
         chapter_path: Option<PathBuf>,
     },
 }
@@ -151,10 +230,7 @@ impl std::fmt::Display for SpliceError {
                 write!(
                     f,
                     "{}:{line}: {{{{#include listings/{tag}.…}}}} references missing file {}: {source}",
-                    chapter_path
-                        .as_deref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "<chapter>".into()),
+                    chapter_label(chapter_path.as_deref()),
                     path.display(),
                 )
             }
@@ -167,21 +243,34 @@ impl std::fmt::Display for SpliceError {
                     f,
                     "{}:{line}: {{{{#include listings/{tag}.…}}}} shares its line with other text; \
                      put it on a line of its own so it can render as a code block",
-                    chapter_path
-                        .as_deref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "<chapter>".into()),
+                    chapter_label(chapter_path.as_deref()),
+                )
+            }
+            SpliceError::UninterceptedInclude {
+                include,
+                chapter_path,
+            } => {
+                write!(
+                    f,
+                    "{}:{}: {include}",
+                    chapter_label(chapter_path.as_deref()),
+                    include.line,
                 )
             }
         }
     }
 }
 
+fn chapter_label(chapter_path: Option<&Path>) -> String {
+    chapter_path.map_or_else(|| "<chapter>".into(), |p| p.display().to_string())
+}
+
 impl std::error::Error for SpliceError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             SpliceError::ListingFileMissing { source, .. } => Some(source),
-            SpliceError::ListingIncludeMidLine { .. } => None,
+            SpliceError::ListingIncludeMidLine { .. }
+            | SpliceError::UninterceptedInclude { .. } => None,
         }
     }
 }
@@ -193,6 +282,12 @@ pub fn splice_chapter(
     chapter_path: Option<&Path>,
     manifest: &crate::manifest::Manifest,
 ) -> Result<String, SpliceError> {
+    if let Some(include) = unintercepted_includes(content).into_iter().next() {
+        return Err(SpliceError::UninterceptedInclude {
+            include,
+            chapter_path: chapter_path.map(Path::to_path_buf),
+        });
+    }
     let directives = parse_listing_includes(content);
     if directives.is_empty() {
         return Ok(content.to_string());
@@ -554,7 +649,7 @@ mod tests {
                 assert_eq!(line, 4);
                 assert_eq!(chapter_path.as_deref(), Some(chapter));
             }
-            SpliceError::ListingIncludeMidLine { .. } => panic!("wrong variant"),
+            other => panic!("expected ListingFileMissing, got {other:?}"),
         }
     }
 
@@ -581,6 +676,18 @@ mod tests {
             chapter_path: None,
         };
         assert!(mid_line.source().is_none(), "nothing underlies this one");
+
+        let unintercepted = SpliceError::UninterceptedInclude {
+            include: UninterceptedInclude {
+                path: "listings/foo.rs".into(),
+                line: 1,
+            },
+            chapter_path: None,
+        };
+        assert!(
+            unintercepted.source().is_none(),
+            "nothing underlies this one"
+        );
     }
 
     #[test]
@@ -602,7 +709,7 @@ mod tests {
                 assert_eq!(line, 1);
                 assert_eq!(chapter_path.as_deref(), Some(chapter));
             }
-            SpliceError::ListingFileMissing { .. } => panic!("wrong variant"),
+            other => panic!("expected ListingIncludeMidLine, got {other:?}"),
         }
     }
 
@@ -954,6 +1061,141 @@ mod tests {
         let content = "```rust\n{{#include listings/foo.rs}}\n```\n";
         let out = splice_chapter(content, src, None, &no_manifest()).expect("splice");
         assert!(out.contains("fn body() {}\n```"), "got:\n{out}");
+    }
+
+    fn unintercepted(content: &str) -> Vec<(String, usize)> {
+        unintercepted_includes(content)
+            .into_iter()
+            .map(|u| (u.path, u.line))
+            .collect()
+    }
+
+    fn found(path: &str, line: usize) -> Vec<(String, usize)> {
+        vec![(path.to_string(), line)]
+    }
+
+    #[test]
+    fn unintercepted_flags_an_include_inside_inline_code() {
+        let content = "Prose\nquoting `{{#include listings/foo.rs caption=\"x\"}}` here.\n";
+        assert_eq!(unintercepted(content), found("listings/foo.rs", 2));
+    }
+
+    #[test]
+    fn unintercepted_flags_a_snippets_include_too() {
+        let content = "Quoting `{{#include snippets/bar.rs}}`.\n";
+        assert_eq!(unintercepted(content), found("snippets/bar.rs", 1));
+    }
+
+    #[test]
+    fn unintercepted_flags_inline_code_inside_an_html_comment() {
+        let content =
+            "Intro.\n\n<!--\nfrozen as a listing (`{{#include listings/<tag>.yaml}}`).\n-->\n";
+        assert_eq!(unintercepted(content), found("listings/<tag>.yaml", 4));
+    }
+
+    #[test]
+    fn unintercepted_flags_inline_code_inside_a_fence() {
+        // The backtick count applies inside a fence too, so a quoted
+        // directive in a markdown example is skipped there as well.
+        let content = "```markdown\nUse `{{#include listings/foo.rs}}` here.\n```\n";
+        assert_eq!(unintercepted(content), found("listings/foo.rs", 2));
+    }
+
+    #[test]
+    fn unintercepted_flags_a_double_backtick_span_holding_a_literal_backtick() {
+        // Three backticks precede the directive, so the single-backtick
+        // parity check reads it as inside code; mdbook does not care.
+        let content = "``a ` b`` then {{#include listings/foo.rs}}\n";
+        assert_eq!(unintercepted(content), found("listings/foo.rs", 1));
+    }
+
+    #[test]
+    fn unintercepted_flags_whitespace_between_the_braces_and_the_hash() {
+        let content = "{{ #include listings/foo.rs }}\n";
+        assert_eq!(unintercepted(content), found("listings/foo.rs", 1));
+    }
+
+    #[test]
+    fn unintercepted_flags_a_tab_or_newline_after_include() {
+        let content = "{{#include\tlistings/foo.rs}}\n\n{{#include\nsnippets/bar.rs}}\n";
+        assert_eq!(
+            unintercepted(content),
+            vec![
+                ("listings/foo.rs".to_string(), 1),
+                ("snippets/bar.rs".to_string(), 3)
+            ]
+        );
+    }
+
+    #[test]
+    fn unintercepted_flags_an_escape_whose_braces_close_on_a_later_line() {
+        // mdbook's escape form must close on its own line; otherwise its
+        // include pattern matches from the `{` just after the backslash.
+        let content = "\\{{#include listings/foo.rs\n}}\n";
+        assert_eq!(unintercepted(content), found("listings/foo.rs", 1));
+    }
+
+    #[test]
+    fn unintercepted_silent_on_includes_the_preprocessor_expands() {
+        let content = "{{#include listings/foo.rs}}\n\n\
+                       ```rust\n{{#include snippets/bar.rs:1:3}}\n```\n";
+        assert_eq!(unintercepted(content), Vec::new());
+    }
+
+    #[test]
+    fn unintercepted_silent_on_a_one_line_escape() {
+        let content = "\\{{#include listings/foo.rs}}\n\nand `\\{{#include snippets/bar.rs}}`\n";
+        assert_eq!(unintercepted(content), Vec::new());
+    }
+
+    #[test]
+    fn unintercepted_silent_after_an_escape_mdbook_extends_to_the_line_end() {
+        // mdbook's escape pattern runs greedily to the last `}}` on the
+        // line, so it swallows the quoted include too and expands neither.
+        let content = "\\{{#include a.rs}} and `{{#include listings/foo.rs}}`\n";
+        assert_eq!(unintercepted(content), Vec::new());
+    }
+
+    #[test]
+    fn unintercepted_silent_on_paths_outside_the_intercepted_prefixes() {
+        let content = "`{{#include ../Cargo.toml}}` and `{{#include my-listings/foo.rs}}`\n";
+        assert_eq!(unintercepted(content), Vec::new());
+    }
+
+    #[test]
+    fn unintercepted_silent_on_an_anchor_name_include_left_to_mdbook_on_purpose() {
+        let content = "```rust\n{{#include snippets/foo.rs:setup}}\n```\n";
+        assert_eq!(unintercepted(content), Vec::new());
+    }
+
+    #[test]
+    fn unintercepted_silent_on_other_mdbook_link_kinds() {
+        let content = "`{{#rustdoc_include listings/foo.rs}}` `{{#playground snippets/bar.rs}}`\n";
+        assert_eq!(unintercepted(content), Vec::new());
+    }
+
+    #[test]
+    fn splice_chapter_rejects_an_include_mdbook_would_expand_behind_its_back() {
+        let tmp = TempDir::new().unwrap();
+        let content = "Intro.\n\nQuoting `{{#include listings/foo.rs}}`.\n";
+        let err = splice_chapter(
+            content,
+            tmp.path(),
+            Some(Path::new("ch.md")),
+            &no_manifest(),
+        )
+        .expect_err("an unintercepted include must fail the splice");
+        match err {
+            SpliceError::UninterceptedInclude {
+                include,
+                chapter_path,
+            } => {
+                assert_eq!(include.path, "listings/foo.rs");
+                assert_eq!(include.line, 3);
+                assert_eq!(chapter_path.as_deref(), Some(Path::new("ch.md")));
+            }
+            other => panic!("expected UninterceptedInclude, got {other:?}"),
+        }
     }
 
     /// Included-body content containing literal `{{...}}` (test fixtures

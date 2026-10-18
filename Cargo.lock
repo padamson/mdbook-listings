@@ -1031,6 +1031,7 @@ dependencies = [
  "playwright-rs-trace",
  "predicates",
  "pulldown-cmark",
+ "regex",
  "serde",
  "serde_json",
  "sha2 0.11.1",

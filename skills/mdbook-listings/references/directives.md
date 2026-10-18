@@ -64,6 +64,21 @@ One case is an error either way: a directive that shares its line with other
 text. A code block has to start a line, so there is no rendering for
 `see {{#include listings/foo.rs}} above`.
 
+### Quoting the include syntax
+
+To mention an include in prose rather than embed one, escape it with a
+backslash and keep it on one line: `\{{#include listings/foo.rs}}`. Inline
+backticks are **not** enough. The preprocessor skips an include in inline code,
+but mdBook's `links` preprocessor runs after it and expands `{{#include …}}`
+wherever it appears, inline code and HTML comments included. It does the same
+with spaced forms the preprocessor doesn't read, such as `{{ #include …}}` or a
+tab after `#include`.
+
+So an unescaped `listings/` or `snippets/` include that the preprocessor skips
+is an error: the build fails, and so does `verify`, both naming the chapter and
+line. (An anchor-name include such as `snippets/foo.rs:setup` is handed to
+`links` on purpose and is not affected.)
+
 ### Line ranges
 
 A trailing `:start:end` suffix embeds only part of the file. Endpoints are
@@ -433,6 +448,11 @@ spans (`` `…` ``). But a `{{#diff old new}}` written as *plain prose* (not in
 backticks, not in a fence) is treated as a live directive and will try to
 resolve its operands. When you want to *mention* the directive rather than
 invoke it, wrap it in inline backticks or a fenced block, or use a placeholder
-like `{{#diff …}}`. Backslash-escaping (`\{{#diff …}}`) is **not** reliable —
-mdBook's `links` preprocessor strips the leading `\` before mdbook-listings
-runs. Only write a live `{{#diff a b}}` where you actually intend it to render.
+like `{{#diff …}}`. Backslash-escaping (`\{{#diff …}}`) works only when the
+preprocessor runs before `links` (see the ordering section above); otherwise
+`links` strips the leading `\` before mdbook-listings sees it. Only write a
+live `{{#diff a b}}` where you actually intend it to render.
+
+Inline backticks are safe for `{{#diff}}` because mdBook has no directive of
+that name. They are not safe for `{{#include}}`; see "Quoting the include
+syntax" above.

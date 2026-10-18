@@ -15,6 +15,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   listing. The authoring skill's directives reference now states the
   added-lines-only rule, which it never mentioned.
 
+### Fixed
+- **An include that mdbook expands behind the preprocessor's back now fails
+  the build and `verify`.** The preprocessor leaves a `{{#include listings/…}}`
+  or `{{#include snippets/…}}` alone when it sits in inline code, is written
+  with a space after `{{` or a tab after `#include`, or is escaped with a
+  backslash whose closing `}}` is on a later line. mdBook's own `links`
+  preprocessor runs afterwards and expands it anyway, in inline code and in
+  HTML comments alike. When the file existed, its contents landed in the
+  middle of the prose; when it didn't, mdBook logged an error and still
+  exited 0, and `verify` passed. Both now report the chapter and line, say
+  that mdBook will expand the include, and suggest the `\{{#include …}}`
+  escape, written on one line. Includes that the preprocessor sees and
+  deliberately hands to mdBook (an anchor-name suffix such as
+  `snippets/foo.rs:setup`) are unaffected, and so is text inside a frozen
+  listing.
+
 ## [0.2.2] - 2026-09-27
 
 A documentation release. The preprocessor and the CLI behave exactly as

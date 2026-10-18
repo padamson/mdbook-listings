@@ -174,6 +174,38 @@ fn listing_include_with_missing_file_fails_with_chapter_path_in_diagnostic() {
     );
 }
 
+#[test]
+fn an_include_the_preprocessor_skips_but_mdbook_expands_fails_the_build() {
+    // Inline backticks inside an HTML comment: mdbook-listings leaves the
+    // directive alone, and mdbook's `links` pass expands it anyway.
+    let book = includes_book();
+    let envelope = book.envelope_with_chapter(
+        "Intro.\n\n<!--\nfrozen as a listing (`{{#include listings/<tag>.yaml}}`).\n-->\n",
+    );
+
+    let stderr = mdbook_listings()
+        .write_stdin(envelope)
+        .assert()
+        .failure()
+        .get_output()
+        .stderr
+        .clone();
+    let stderr = String::from_utf8_lossy(&stderr);
+
+    assert!(
+        stderr.contains("chapter.md:4:"),
+        "diagnostic should lead with the chapter path and directive line; got:\n{stderr}",
+    );
+    assert!(
+        stderr.contains("listings/<tag>.yaml"),
+        "diagnostic should name the include's path; got:\n{stderr}",
+    );
+    assert!(
+        stderr.contains(r"\{{#include"),
+        "diagnostic should suggest the backslash escape; got:\n{stderr}",
+    );
+}
+
 /// A frozen listing `sample` plus a second tag `new-tag` to diff it against.
 fn includes_book() -> MinimalBook {
     MinimalBook::new()

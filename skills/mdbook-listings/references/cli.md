@@ -70,6 +70,11 @@ Errors (any one exits non-zero):
 2. Every `{{#include}}` path and `{{#diff}}` tag operand in the book's
    markdown resolves to a manifest record.
 3. Every `<tag>.callouts.toml` sidecar names a frozen listing.
+4. No chapter holds an unescaped `{{#include listings/…}}` or
+   `{{#include snippets/…}}` that the preprocessor skips (in inline code, say,
+   or written as `{{ #include …}}`) but mdBook's `links` preprocessor would
+   still expand. The build fails on the same thing. Escape it as
+   `\{{#include …}}`, on one line, to show the directive literally.
 
 Warnings (reported on stderr, exit stays 0):
 

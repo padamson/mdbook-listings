@@ -319,3 +319,21 @@ fn verify_reports_every_broken_listing_not_just_the_first() {
         .stderr(contains("b-v1"))
         .stdout(contains("2 frozen listings checked"));
 }
+
+#[test]
+fn verify_fails_on_an_include_mdbook_expands_but_the_preprocessor_skips() {
+    let book = FrozenFixtureBook::new();
+    book.write_chapter(
+        "ch",
+        "Intro.\n\n<!--\nfrozen as a listing (`{{#include listings/<tag>.yaml}}`).\n-->\n",
+    );
+
+    mdbook_listings()
+        .args(["verify", "--book-root"])
+        .arg(book.root())
+        .assert()
+        .failure()
+        .stderr(contains("src/ch.md:4:"))
+        .stderr(contains("listings/<tag>.yaml"))
+        .stderr(contains(r"\{{#include"));
+}
