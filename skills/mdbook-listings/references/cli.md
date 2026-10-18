@@ -75,6 +75,9 @@ Errors (any one exits non-zero):
    or written as `{{ #include …}}`) but mdBook's `links` preprocessor would
    still expand. The build fails on the same thing. Escape it as
    `\{{#include …}}`, on one line, to show the directive literally.
+5. No `{{#include listings/…}}` or `{{#include snippets/…}}` outside a fence
+   shares its line with other text. The build rejects the same thing, since
+   the code block the include expands to has to start a line.
 
 Warnings (reported on stderr, exit stays 0):
 

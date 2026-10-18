@@ -30,6 +30,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   deliberately hands to mdBook (an anchor-name suffix such as
   `snippets/foo.rs:setup`) are unaffected, and so is text inside a frozen
   listing.
+- **`verify` fails on an include that shares its line with other text.** The
+  build has always rejected a `{{#include listings/…}}` or
+  `{{#include snippets/…}}` outside a fence with prose on the same line, since
+  the code block it expands to has to start a line, but `verify` passed it. So
+  a book that passed the pre-commit gate could still fail in CI. Both now run
+  the same check, and after the file and line both print the same message,
+  which names the include's path (for a snippet the build used to print a
+  `listings/` path that did not exist).
 
 ## [0.2.2] - 2026-09-27
 

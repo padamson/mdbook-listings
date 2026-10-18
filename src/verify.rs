@@ -16,7 +16,7 @@ use crate::directive::{FencePolicy, line_number, scan_directives, split_caption,
 use crate::fence::FencedBlocks;
 use crate::freeze::hex_sha256;
 use crate::include::{
-    parse_listing_includes, splice_chapter as splice_includes, unintercepted_includes,
+    parse_listing_includes, rejected_includes, splice_chapter as splice_includes,
 };
 use crate::manifest::{Listing, Manifest};
 
@@ -74,7 +74,7 @@ pub fn verify(book_root: &Path) -> Result<VerifyReport> {
     let mut report = VerifyReport::default();
     check_snapshot_integrity(book_root, &manifest, &mut report);
     check_references(book_root, &manifest, &mut report);
-    check_unintercepted_includes(book_root, &mut report);
+    check_rejected_includes(book_root, &mut report);
     check_sidecars(book_root, &manifest, &mut report);
     check_orphans(book_root, &manifest, &mut report);
     check_unreferenced_markers(book_root, &manifest, &mut report);
@@ -183,14 +183,11 @@ fn check_references(book_root: &Path, manifest: &Manifest, report: &mut VerifyRe
     }
 }
 
-/// An include of a `listings/` or `snippets/` path that the preprocessor
-/// skips still reaches mdbook's `links` pass, which expands it into the
-/// page or, when the file is absent, logs an error and builds anyway. The
-/// preprocessor fails the build on the same finding; reporting it here
-/// too means a book that passes verify also builds.
-fn check_unintercepted_includes(book_root: &Path, report: &mut VerifyReport) {
+/// The includes the preprocessor fails the build on, reported from its own
+/// detector so that a book that passes verify also builds.
+fn check_rejected_includes(book_root: &Path, report: &mut VerifyReport) {
     for (rel, content) in chapter_markdown(book_root) {
-        for include in unintercepted_includes(&content) {
+        for include in rejected_includes(&content) {
             report.error(format!("{rel}:{}: {include}", include.line));
         }
     }
@@ -342,7 +339,8 @@ fn check_unreferenced_markers(book_root: &Path, manifest: &Manifest, report: &mu
             .map(Path::to_path_buf)
             .unwrap_or_else(|| src_dir.clone());
         // A chapter the splicers reject is skipped: whatever is broken
-        // there is the reference or integrity pass's finding.
+        // there is the reference, rejected-include or integrity pass's
+        // finding.
         let Ok(expanded) = splice_includes(&content, &src_dir, chapter_path, manifest) else {
             continue;
         };
@@ -947,7 +945,7 @@ mod tests {
     }
 
     #[test]
-    fn check_unintercepted_includes_errors_with_chapter_and_line() {
+    fn check_rejected_includes_flags_an_unintercepted_include_with_chapter_and_line() {
         let (_t, root, _manifest) = book_with_demo();
         fs::write(
             root.join("src/ch.md"),
@@ -956,7 +954,7 @@ mod tests {
         .unwrap();
 
         let mut report = VerifyReport::default();
-        check_unintercepted_includes(&root, &mut report);
+        check_rejected_includes(&root, &mut report);
         assert_eq!(report.error_count(), 1, "got {:?}", report.findings);
         let message = &report.findings[0].message;
         assert!(message.starts_with("src/ch.md:3: "), "got: {message}");
@@ -964,7 +962,7 @@ mod tests {
     }
 
     #[test]
-    fn check_unintercepted_includes_skips_frozen_listing_content() {
+    fn check_rejected_includes_skips_frozen_listing_content() {
         // This repo's own frozen sources quote include syntax in strings
         // and doc comments; that text is shown as code, never expanded.
         let (_t, root, _manifest) = book_with_demo();
@@ -975,7 +973,40 @@ mod tests {
         .unwrap();
 
         let mut report = VerifyReport::default();
-        check_unintercepted_includes(&root, &mut report);
+        check_rejected_includes(&root, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_rejected_includes_flags_a_mid_line_include_with_chapter_and_line() {
+        let (_t, root, _manifest) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "Intro.\n\nSee {{#include listings/demo-v1.rs}} above.\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_rejected_includes(&root, &mut report);
+        assert_eq!(report.error_count(), 1, "got {:?}", report.findings);
+        let message = &report.findings[0].message;
+        assert!(message.starts_with("src/ch.md:3: "), "got: {message}");
+        assert!(message.contains("listings/demo-v1.rs"), "got: {message}");
+    }
+
+    #[test]
+    fn check_rejected_includes_accepts_an_own_line_include_and_a_fenced_one() {
+        // Inside a fence the splicer replaces only the directive's bytes,
+        // so sharing a line there is fine.
+        let (_t, root, _manifest) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "{{#include listings/demo-v1.rs}}\n\n```rust\nlet x = {{#include listings/demo-v1.rs}};\n```\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_rejected_includes(&root, &mut report);
         assert!(report.findings.is_empty(), "got {:?}", report.findings);
     }
 

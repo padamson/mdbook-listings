@@ -43,7 +43,7 @@ pub(crate) enum FencePolicy {
 /// span are skipped so chapters can quote directive syntax verbatim.
 /// mdbook's `links` pass expands `{{#include}}` in inline code all the
 /// same, so for includes only the backslash form is a safe quote; the
-/// include pass reports the rest (`include::unintercepted_includes`).
+/// include pass reports the rest (`include::rejected_includes`).
 pub(crate) fn scan_directives<'a>(
     content: &'a str,
     prefix: &str,

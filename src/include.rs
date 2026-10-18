@@ -121,29 +121,58 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
     out
 }
 
-/// An include with an intercepted path prefix that this preprocessor
-/// leaves alone but mdbook's `links` preprocessor, which runs after it,
-/// will still expand.
+/// A `listings/` or `snippets/` include in chapter source that fails the
+/// build. `verify` reports these from the same detector, so that a book
+/// that passes it also builds.
 #[derive(Debug, PartialEq, Eq)]
-pub struct UninterceptedInclude {
+pub struct RejectedInclude {
     /// The path argument as mdbook reads it: the first word after `#include`.
     pub path: String,
     pub line: usize,
+    pub why: Rejection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rejection {
+    /// This preprocessor leaves it alone, but mdbook's `links` preprocessor,
+    /// which runs after it, will still expand it.
+    Unintercepted,
+    /// Outside a fence and sharing its line with other text, so the code
+    /// block it expands to could not start a line.
+    MidLine,
 }
 
 /// The diagnostic both `verify` and the preprocessor print after their own
 /// `file:line:` prefix, so the two cannot describe the problem differently.
-impl std::fmt::Display for UninterceptedInclude {
+impl std::fmt::Display for RejectedInclude {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "mdbook-listings does not expand {{{{#include {}}}}} here, but mdbook's \
-             `links` preprocessor will expand it anyway, even in inline code or an \
-             HTML comment; to show the directive literally, escape it as \
-             \\{{{{#include …}}}} on a single line",
-            self.path,
-        )
+        match self.why {
+            Rejection::Unintercepted => write!(
+                f,
+                "mdbook-listings does not expand {{{{#include {}}}}} here, but mdbook's \
+                 `links` preprocessor will expand it anyway, even in inline code or an \
+                 HTML comment; to show the directive literally, escape it as \
+                 \\{{{{#include …}}}} on a single line",
+                self.path,
+            ),
+            Rejection::MidLine => write!(
+                f,
+                "{{{{#include {}}}}} shares its line with other text; \
+                 put it on a line of its own so it can render as a code block",
+                self.path,
+            ),
+        }
     }
+}
+
+/// Every include the build rejects, in document order. Run on chapter
+/// source before splicing: a spliced listing's own text is code to show,
+/// not a directive the author wrote.
+pub fn rejected_includes(content: &str) -> Vec<RejectedInclude> {
+    let mut out = unintercepted_includes(content);
+    out.extend(mid_line_includes(content));
+    out.sort_by_key(|r| r.line);
+    out
 }
 
 /// mdbook's own link grammar, copied verbatim from the `links`
@@ -166,14 +195,12 @@ static MDBOOK_LINK: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new
 });
 
 /// Includes of `listings/` or `snippets/` paths that mdbook's `links`
-/// preprocessor will expand but this one skips, in document order. Run on
-/// chapter source before splicing: a spliced listing's own text is code to
-/// show, not a directive the author wrote.
+/// preprocessor will expand but this one skips, in document order.
 ///
 /// An include this preprocessor sees and then hands back on purpose, such
 /// as an anchor-name suffix, is not reported; only ones its scanner never
 /// saw are.
-pub fn unintercepted_includes(content: &str) -> Vec<UninterceptedInclude> {
+fn unintercepted_includes(content: &str) -> Vec<RejectedInclude> {
     let seen: std::collections::HashSet<usize> =
         scan_directives(content, "{{#include ", FencePolicy::Annotate)
             .into_iter()
@@ -185,10 +212,25 @@ pub fn unintercepted_includes(content: &str) -> Vec<UninterceptedInclude> {
         .filter_map(|cap| {
             let start = cap.get(0)?.start();
             let path = cap.get(2)?.as_str().split_whitespace().next()?;
-            (is_intercepted_path(path) && !seen.contains(&start)).then(|| UninterceptedInclude {
+            (is_intercepted_path(path) && !seen.contains(&start)).then(|| RejectedInclude {
                 path: path.to_string(),
                 line: line_number(content, start),
+                why: Rejection::Unintercepted,
             })
+        })
+        .collect()
+}
+
+/// Includes the splicer would have to render as a code block mid-line, in
+/// document order.
+fn mid_line_includes(content: &str) -> Vec<RejectedInclude> {
+    parse_listing_includes(content)
+        .into_iter()
+        .filter(|d| d.fence_close_end.is_none() && !starts_its_own_line(content, d.span.start))
+        .map(|d| RejectedInclude {
+            path: d.rel_path,
+            line: line_number(content, d.span.start),
+            why: Rejection::MidLine,
         })
         .collect()
 }
@@ -206,13 +248,8 @@ pub enum SpliceError {
         line: usize,
         chapter_path: Option<PathBuf>,
     },
-    ListingIncludeMidLine {
-        tag: String,
-        line: usize,
-        chapter_path: Option<PathBuf>,
-    },
-    UninterceptedInclude {
-        include: UninterceptedInclude,
+    RejectedInclude {
+        include: RejectedInclude,
         chapter_path: Option<PathBuf>,
     },
 }
@@ -234,19 +271,7 @@ impl std::fmt::Display for SpliceError {
                     path.display(),
                 )
             }
-            SpliceError::ListingIncludeMidLine {
-                tag,
-                line,
-                chapter_path,
-            } => {
-                write!(
-                    f,
-                    "{}:{line}: {{{{#include listings/{tag}.…}}}} shares its line with other text; \
-                     put it on a line of its own so it can render as a code block",
-                    chapter_label(chapter_path.as_deref()),
-                )
-            }
-            SpliceError::UninterceptedInclude {
+            SpliceError::RejectedInclude {
                 include,
                 chapter_path,
             } => {
@@ -269,8 +294,7 @@ impl std::error::Error for SpliceError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             SpliceError::ListingFileMissing { source, .. } => Some(source),
-            SpliceError::ListingIncludeMidLine { .. }
-            | SpliceError::UninterceptedInclude { .. } => None,
+            SpliceError::RejectedInclude { .. } => None,
         }
     }
 }
@@ -282,8 +306,8 @@ pub fn splice_chapter(
     chapter_path: Option<&Path>,
     manifest: &crate::manifest::Manifest,
 ) -> Result<String, SpliceError> {
-    if let Some(include) = unintercepted_includes(content).into_iter().next() {
-        return Err(SpliceError::UninterceptedInclude {
+    if let Some(include) = rejected_includes(content).into_iter().next() {
+        return Err(SpliceError::RejectedInclude {
             include,
             chapter_path: chapter_path.map(Path::to_path_buf),
         });
@@ -296,13 +320,6 @@ pub fn splice_chapter(
     let mut out = String::with_capacity(content.len() * 2);
     let mut cursor = 0;
     for d in &directives {
-        if d.fence_close_end.is_none() && !starts_its_own_line(content, d.span.start) {
-            return Err(SpliceError::ListingIncludeMidLine {
-                tag: d.tag.clone().unwrap_or_else(|| d.rel_path.clone()),
-                line: line_number(content, d.span.start),
-                chapter_path: chapter_path.map(Path::to_path_buf),
-            });
-        }
         let abs_path = src_dir.join(&d.rel_path);
         let mut body = std::fs::read_to_string(&abs_path).map_err(|source| {
             SpliceError::ListingFileMissing {
@@ -670,24 +687,15 @@ mod tests {
         let cause = missing.source().expect("io cause is part of the chain");
         assert!(cause.to_string().contains("no such file"), "got: {cause}");
 
-        let mid_line = SpliceError::ListingIncludeMidLine {
-            tag: "foo".into(),
-            line: 1,
-            chapter_path: None,
-        };
-        assert!(mid_line.source().is_none(), "nothing underlies this one");
-
-        let unintercepted = SpliceError::UninterceptedInclude {
-            include: UninterceptedInclude {
+        let rejected = SpliceError::RejectedInclude {
+            include: RejectedInclude {
                 path: "listings/foo.rs".into(),
                 line: 1,
+                why: Rejection::MidLine,
             },
             chapter_path: None,
         };
-        assert!(
-            unintercepted.source().is_none(),
-            "nothing underlies this one"
-        );
+        assert!(rejected.source().is_none(), "nothing underlies this one");
     }
 
     #[test]
@@ -700,17 +708,51 @@ mod tests {
         let err = splice_chapter(content, tmp.path(), Some(chapter), &no_manifest())
             .expect_err("should fail");
         match err {
-            SpliceError::ListingIncludeMidLine {
-                tag,
-                line,
+            SpliceError::RejectedInclude {
+                include,
                 chapter_path,
             } => {
-                assert_eq!(tag, "foo");
-                assert_eq!(line, 1);
+                assert_eq!(
+                    include,
+                    RejectedInclude {
+                        path: "listings/foo.rs".into(),
+                        line: 1,
+                        why: Rejection::MidLine,
+                    }
+                );
                 assert_eq!(chapter_path.as_deref(), Some(chapter));
             }
-            other => panic!("expected ListingIncludeMidLine, got {other:?}"),
+            other => panic!("expected a mid-line RejectedInclude, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn mid_line_includes_names_a_snippet_by_its_own_path() {
+        assert_eq!(
+            mid_line_includes("Intro.\nSee {{#include snippets/a.rs:2:3}} here.\n"),
+            vec![RejectedInclude {
+                path: "snippets/a.rs".into(),
+                line: 2,
+                why: Rejection::MidLine,
+            }],
+        );
+    }
+
+    #[test]
+    fn rejected_includes_come_back_in_document_order_whatever_their_kind() {
+        let content = "See {{#include listings/a.rs}} here.\n\nQuoting `{{#include listings/b.rs}}`.\n\nAnd {{#include listings/c.rs}} too.\n";
+        let got: Vec<_> = rejected_includes(content)
+            .into_iter()
+            .map(|r| (r.line, r.why))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                (1, Rejection::MidLine),
+                (3, Rejection::Unintercepted),
+                (5, Rejection::MidLine),
+            ]
+        );
     }
 
     /// A listing on disk plus the chapter text that includes it, spliced.
@@ -884,7 +926,19 @@ mod tests {
             &no_manifest(),
         )
         .expect_err("four spaces of indent should be rejected");
-        assert!(matches!(err, SpliceError::ListingIncludeMidLine { .. }));
+        assert!(
+            matches!(
+                err,
+                SpliceError::RejectedInclude {
+                    include: RejectedInclude {
+                        why: Rejection::MidLine,
+                        ..
+                    },
+                    ..
+                }
+            ),
+            "got {err:?}"
+        );
     }
 
     #[test]
@@ -899,7 +953,19 @@ mod tests {
             &no_manifest(),
         )
         .expect_err("prose before the directive should be rejected");
-        assert!(matches!(err, SpliceError::ListingIncludeMidLine { .. }));
+        assert!(
+            matches!(
+                err,
+                SpliceError::RejectedInclude {
+                    include: RejectedInclude {
+                        why: Rejection::MidLine,
+                        ..
+                    },
+                    ..
+                }
+            ),
+            "got {err:?}"
+        );
     }
 
     #[test]
@@ -1186,15 +1252,16 @@ mod tests {
         )
         .expect_err("an unintercepted include must fail the splice");
         match err {
-            SpliceError::UninterceptedInclude {
+            SpliceError::RejectedInclude {
                 include,
                 chapter_path,
             } => {
                 assert_eq!(include.path, "listings/foo.rs");
                 assert_eq!(include.line, 3);
+                assert_eq!(include.why, Rejection::Unintercepted);
                 assert_eq!(chapter_path.as_deref(), Some(Path::new("ch.md")));
             }
-            other => panic!("expected UninterceptedInclude, got {other:?}"),
+            other => panic!("expected an unintercepted RejectedInclude, got {other:?}"),
         }
     }
 
