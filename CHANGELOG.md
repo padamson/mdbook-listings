@@ -38,6 +38,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   the same check, and after the file and line both print the same message,
   which names the include's path (for a snippet the build used to print a
   `listings/` path that did not exist).
+- **A listing commented out with `<!-- … -->` fails the build and `verify`
+  instead of keeping its number.** The preprocessor spliced an include inside
+  an HTML comment as usual, so the listing took a number and a List of
+  Listings entry that the page never showed, and the next visible listing was
+  numbered as if it were there. Directives inside a comment are now skipped.
+  For an include that is an error, because mdBook's `links` preprocessor would
+  still expand it there: the message names the chapter and line and suggests
+  the `\{{#include …}}` escape, which keeps the include in the comment. A
+  `{{#diff}}`, `{{#callout}}`, `{{#listing-ref}}` or `{{#list-of-listings}}`
+  inside a comment is left as written, hidden with the comment.
 
 ## [0.2.2] - 2026-09-27
 

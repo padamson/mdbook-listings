@@ -1419,6 +1419,15 @@ mod tests {
         );
     }
 
+    #[test]
+    fn splice_chapter_leaves_a_diff_inside_an_html_comment_alone() {
+        // Spliced, it would carry a number the page never shows.
+        let (tmp, manifest, _) = fixture(b"old\n", b"new\n");
+        let content = "<!--\n{{#diff left-tag right-tag}}\n-->\n";
+        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        assert_eq!(out, content);
+    }
+
     fn content_with_diff() -> &'static str {
         "Before.\n\n{{#diff left-tag right-tag}}\n\nAfter.\n"
     }

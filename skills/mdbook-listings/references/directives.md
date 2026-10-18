@@ -79,6 +79,13 @@ is an error: the build fails, and so does `verify`, both naming the chapter and
 line. (An anchor-name include such as `snippets/foo.rs:setup` is handed to
 `links` on purpose and is not affected.)
 
+That covers an include inside an HTML comment too, so commenting out a listing
+with `<!-- … -->` fails the build. To keep one in a comment, escape it there:
+`<!-- \{{#include listings/foo.rs}} -->`. Other directives inside a comment
+(`{{#diff}}`, `{{#callout}}`, `{{#listing-ref}}`, `{{#list-of-listings}}`) are
+left as they are, hidden with the rest of the comment, and a diff there is not
+numbered.
+
 ### Line ranges
 
 A trailing `:start:end` suffix embeds only part of the file. Endpoints are

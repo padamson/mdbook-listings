@@ -1,15 +1,15 @@
 //! Shared scanner for `{{#name …}}` directive occurrences in chapter
 //! markdown. The include, diff, and callout passes each parse different
 //! arguments and apply different fence policies, but the occurrence
-//! grammar — escape handling, inline-code detection, fence membership —
-//! must agree between them or directives get consumed in one pass that
-//! another would have left alone.
+//! grammar — escape handling, inline-code and HTML-comment detection, fence
+//! membership — must agree between them or directives get consumed in one
+//! pass that another would have left alone.
 
 use std::ops::Range;
 
 use crate::fence::FencedBlocks;
 
-/// One unescaped directive occurrence outside inline code.
+/// One unescaped directive occurrence outside inline code and HTML comments.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct DirectiveOccurrence<'a> {
     /// Raw text between the prefix and the closing `}}`, untrimmed —
@@ -40,10 +40,12 @@ pub(crate) enum FencePolicy {
 /// Scan `content` for `prefix` occurrences (`"{{#include "`, `"{{#diff"`,
 /// `"{{#callout "` — exact literals, including any trailing space).
 /// Backslash-escaped occurrences and ones sitting inside an inline code
-/// span are skipped so chapters can quote directive syntax verbatim.
-/// mdbook's `links` pass expands `{{#include}}` in inline code all the
-/// same, so for includes only the backslash form is a safe quote; the
-/// include pass reports the rest (`include::rejected_includes`).
+/// span are skipped so chapters can quote directive syntax verbatim, and so
+/// are ones inside an HTML comment, which the page never shows: a listing
+/// commented out there must not be numbered. mdbook's `links` pass expands
+/// `{{#include}}` in inline code and comments all the same, so for includes
+/// only the backslash form is a safe quote; the include pass reports the
+/// rest (`include::rejected_includes`).
 pub(crate) fn scan_directives<'a>(
     content: &'a str,
     prefix: &str,
@@ -56,6 +58,14 @@ pub(crate) fn scan_directives<'a>(
         fences
             .iter()
             .find(|&&(start, end)| pos >= start && pos < end)
+    };
+    // Parsed only once a candidate turns up: most scans find nothing.
+    let comments = std::cell::OnceCell::new();
+    let in_comment = |pos: usize| {
+        comments
+            .get_or_init(|| html_comments(content))
+            .iter()
+            .any(|c: &Range<usize>| c.contains(&pos))
     };
 
     let bytes = content.as_bytes();
@@ -80,6 +90,10 @@ pub(crate) fn scan_directives<'a>(
             cursor = after_prefix;
             continue;
         }
+        if in_comment(at) {
+            cursor = after_prefix;
+            continue;
+        }
         let fence_close_end = match (in_fence(at), policy) {
             (Some(&(_, close_end)), FencePolicy::Annotate) => Some(close_end),
             (Some(_), FencePolicy::SkipInside) => {
@@ -100,6 +114,32 @@ pub(crate) fn scan_directives<'a>(
             fence_close_end,
         });
         cursor = span_end;
+    }
+    out
+}
+
+/// Byte ranges of the HTML comments in `content`, as a CommonMark parser
+/// reads them, so a `<!--` in code, after a backslash, or in a paragraph
+/// that ends before any `-->` is text. A comment ends at its first `-->`,
+/// or with the HTML block or inline span that holds it.
+fn html_comments(content: &str) -> Vec<Range<usize>> {
+    use pulldown_cmark::{Event, Parser, Tag};
+
+    let mut out = Vec::new();
+    for (event, span) in Parser::new(content).into_offset_iter() {
+        if !matches!(event, Event::Start(Tag::HtmlBlock) | Event::InlineHtml(_)) {
+            continue;
+        }
+        let html = &content[span.clone()];
+        let mut cursor = 0;
+        while let Some(rel) = html[cursor..].find("<!--") {
+            let at = cursor + rel;
+            let end = html[at + 2..]
+                .find("-->")
+                .map_or(html.len(), |e| at + 2 + e + 3);
+            out.push(span.start + at..span.start + end);
+            cursor = end;
+        }
     }
     out
 }
@@ -282,6 +322,117 @@ mod tests {
         let got = scan(s, "{{#demo ");
         assert_eq!(got.len(), 1, "got {got:?}");
         assert_eq!(got[0].args, "c d");
+    }
+
+    #[test]
+    fn scan_skips_occurrence_inside_an_html_comment() {
+        let s = "<!--\n{{#demo a b}}\n-->\n{{#demo c d}}\n";
+        let got = scan(s, "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].args, "c d");
+    }
+
+    #[test]
+    fn scan_annotate_skips_a_fenced_occurrence_inside_an_html_comment() {
+        let s = "<!--\n```rust\n{{#demo a b}}\n```\n-->\n";
+        let got = scan_directives(s, "{{#demo ", FencePolicy::Annotate);
+        assert!(got.is_empty(), "got {got:?}");
+    }
+
+    #[test]
+    fn scan_skips_occurrence_inside_an_inline_html_comment() {
+        let s = "Prose before the comment <!-- {{#demo a b}} --> {{#demo c d}}\n";
+        let got = scan(s, "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].args, "c d");
+    }
+
+    #[test]
+    fn scan_treats_an_unclosed_comment_at_line_start_as_running_to_the_end() {
+        // CommonMark: an HTML block opened by `<!--` ends only at `-->`.
+        assert!(scan("<!--\n{{#demo a b}}\n", "{{#demo ").is_empty());
+    }
+
+    #[test]
+    fn scan_treats_an_unclosed_mid_line_comment_opener_as_text() {
+        // Inline, an unclosed `<!--` is not a comment at all.
+        let got = scan("a <!-- b\n{{#demo a b}}\n", "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
+    }
+
+    #[test]
+    fn scan_counts_the_shortest_comment_as_closed() {
+        // `<!-->` is a complete comment, so it hides nothing after it.
+        let got = scan("<!-->\n{{#demo a b}}\n", "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
+    }
+
+    #[test]
+    fn scan_ignores_a_comment_opener_inside_a_fence() {
+        let got = scan("```html\n<!--\n```\n{{#demo a b}}\n", "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
+    }
+
+    #[test]
+    fn scan_ignores_a_comment_opener_in_inline_code() {
+        let got = scan("Write `<!--` to open.\n{{#demo a b}}\n", "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
+    }
+
+    #[test]
+    fn scan_ignores_a_backslash_escaped_comment_opener() {
+        let got = scan("\\<!-- {{#demo a b}} -->\n", "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
+    }
+
+    #[test]
+    fn scan_finds_raw_html_text_before_a_comment_in_the_same_block() {
+        let got = scan("<div>{{#demo a b}}<!-- c --></div>\n", "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
+    }
+
+    #[test]
+    fn scan_skips_a_comment_partway_into_an_html_block() {
+        let got = scan("Intro.\n\n<div><!-- {{#demo a b}} --></div>\n", "{{#demo ");
+        assert!(got.is_empty(), "got {got:?}");
+    }
+
+    #[test]
+    fn scan_finds_raw_html_text_right_after_a_comment_in_the_same_block() {
+        let got = scan("Intro.\n\n<div><!-- c -->{{#demo a b}}</div>\n", "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
+    }
+
+    #[test]
+    fn scan_ends_an_unclosed_inline_opener_with_its_paragraph() {
+        // The `-->` inside the later fence must not close the prose opener.
+        let s = "Prose mentions <!-- here\n\n{{#demo a b}}\n\n```html\n<!-- x -->\n```\n";
+        let got = scan(s, "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
+    }
+
+    #[test]
+    fn scan_skips_occurrence_inside_a_comment_in_a_blockquote() {
+        let got = scan("> <!--\n> {{#demo a b}}\n> -->\n", "{{#demo ");
+        assert!(got.is_empty(), "got {got:?}");
+    }
+
+    #[test]
+    fn scan_ignores_a_comment_opener_in_an_indented_code_block() {
+        let got = scan("    <!--\n\n{{#demo a b}}\n", "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
+    }
+
+    #[test]
+    fn scan_skips_a_comment_that_opens_where_a_fence_closes() {
+        let got = scan("```\nx\n```\n<!--\n{{#demo a b}}\n-->\n", "{{#demo ");
+        assert!(got.is_empty(), "got {got:?}");
+    }
+
+    #[test]
+    fn scan_finds_a_block_comment_after_an_unclosed_inline_opener() {
+        let got = scan("a <!-- b\n\n<!--\n{{#demo a b}}\n", "{{#demo ");
+        assert!(got.is_empty(), "got {got:?}");
     }
 
     #[test]

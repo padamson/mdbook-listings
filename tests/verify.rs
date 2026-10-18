@@ -339,6 +339,24 @@ fn verify_fails_on_an_include_mdbook_expands_but_the_preprocessor_skips() {
 }
 
 #[test]
+fn verify_fails_on_a_listing_commented_out_in_html() {
+    let book = FrozenFixtureBook::new();
+    book.write_chapter(
+        "ch",
+        "<!--\n```yaml\n{{#include listings/compose-v1.yaml}}\n```\n-->\n\n\
+         ```yaml\n{{#include listings/compose-v1.yaml}}\n```\n",
+    );
+
+    mdbook_listings()
+        .args(["verify", "--book-root"])
+        .arg(book.root())
+        .assert()
+        .failure()
+        .stderr(contains("src/ch.md:3:"))
+        .stderr(contains("src/ch.md:8:").not());
+}
+
+#[test]
 fn verify_fails_on_an_include_that_shares_its_line_with_prose() {
     let book = FrozenFixtureBook::new();
     book.write_chapter(

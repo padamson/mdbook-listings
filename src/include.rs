@@ -739,6 +739,27 @@ mod tests {
     }
 
     #[test]
+    fn splice_chapter_rejects_a_listing_commented_out_in_html() {
+        // Spliced, it would keep its number while the browser hid it; left
+        // alone, mdbook's `links` pass would expand it inside the comment.
+        let tmp = TempDir::new().unwrap();
+        let content = "<!--\n```rust\n{{#include listings/foo.rs}}\n```\n-->\n";
+        let err = splice_chapter(content, tmp.path(), None, &no_manifest())
+            .expect_err("a commented-out include must fail the splice");
+        match err {
+            SpliceError::RejectedInclude { include, .. } => assert_eq!(
+                include,
+                RejectedInclude {
+                    path: "listings/foo.rs".into(),
+                    line: 3,
+                    why: Rejection::Unintercepted,
+                }
+            ),
+            other => panic!("expected an unintercepted RejectedInclude, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn rejected_includes_come_back_in_document_order_whatever_their_kind() {
         let content = "See {{#include listings/a.rs}} here.\n\nQuoting `{{#include listings/b.rs}}`.\n\nAnd {{#include listings/c.rs}} too.\n";
         let got: Vec<_> = rejected_includes(content)
