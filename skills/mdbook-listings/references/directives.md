@@ -326,12 +326,18 @@ Renders a muted line beneath each listing's caption naming where its bytes
 
 ```
 Listing 2.8 — Writing the CSS asset and registering it under `additional-css`
-../src/install.rs  (install-v4)
+src/install.rs  (install-v4)
 ```
 
 The path comes first, and is the manifest's `source` field — the file a
 reader can go and open, not the frozen copy under `src/listings/`, which is
-freezing's bookkeeping. Leading with it follows every comparable toolchain:
+freezing's bookkeeping. The manifest records it relative to the book root
+(`../src/install.rs`), and the line shows it relative to the repository root
+(`src/install.rs`), found as the nearest directory above the book that holds
+a `.git`. A source outside that repository (a sibling checkout, say) shows no
+path at all, since it names a directory on the author's machine; the line
+carries the tag alone. With no `.git` above the book, the path shows as the
+manifest recorded it. Leading with the path follows every comparable toolchain:
 the Rust Book prints `Filename: src/main.rs` above the code, and Docusaurus
 and Material for MkDocs put the filename in the code block's title bar.
 
@@ -351,14 +357,16 @@ collapses the path to one when both tags were frozen from the same file,
 which is the usual case:
 
 ```
-../src/callout.rs  (callout-v9) → (callout-v10)
+src/callout.rs  (callout-v9) → (callout-v10)
 ```
 
 A `live:<path>` operand contributes the live path itself. A tag the manifest
-does not carry contributes no path, and the line shows the tag alone.
+does not carry contributes no path, and the line shows the tag alone. When
+either operand's source lies outside the repository, the line shows neither
+path, since the one left would read as the file both were frozen from.
 
 The PDF backend has no pill, so it parenthesises the tag instead:
-`` `../src/install.rs` (`install-v4`) ``.
+`` `src/install.rs` (`install-v4`) ``.
 
 The List-of-Listings index stays caption-only — its entries are the one place
 a caption has to stand alone, and paths there would bury it.

@@ -28,9 +28,9 @@ screenshots predate all of it.
   every numbered listing, and the sidebar carries the same index for
   whichever page you are on.
 - **Provenance.** Each listing names the file it was frozen from and the tag
-  it was frozen under — `../src/main.rs (main-v1)`. This book demonstrates
+  it was frozen under — `src/main.rs (main-v1)`. This book demonstrates
   the cost of not having it better than any argument could: it freezes
-  `../src/main.rs` sixteen times and `../tests/e2e_callouts.rs` twelve, so
+  `src/main.rs` sixteen times and `tests/e2e_callouts.rs` twelve, so
   the chapters still spend prose identifying listings that now identify
   themselves.
 

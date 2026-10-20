@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::directive::{FencePolicy, line_number, scan_directives};
 use crate::manifest::Manifest;
+use crate::source_path::{SourcePaths, relative_to};
 
 /// `span` covers the directive in full (`{{#diff …}}` inclusive) so callers
 /// can replace the whole substring in one pass.
@@ -329,45 +330,6 @@ fn operand_tag(operand: &str) -> &str {
     }
 }
 
-/// `path` expressed relative to `base`, with `/` separators for display.
-/// Both are normalised lexically rather than through the filesystem: the
-/// result is what an author reading the path would compute, it does not
-/// depend on what exists on disk, and it stays stable across machines.
-fn relative_to(path: &Path, base: &Path) -> String {
-    let path = lexical_normalize(path);
-    let base = lexical_normalize(base);
-    let mut p = path.components().peekable();
-    let mut b = base.components().peekable();
-    while p.peek().is_some() && p.peek() == b.peek() {
-        p.next();
-        b.next();
-    }
-    let mut parts = vec!["..".to_string(); b.count()];
-    parts.extend(p.map(|c| c.as_os_str().to_string_lossy().into_owned()));
-    if parts.is_empty() {
-        ".".to_string()
-    } else {
-        parts.join("/")
-    }
-}
-
-/// Collapse `.` and `..` textually. `..` past the start is dropped rather
-/// than escaping above the root, which cannot happen for the absolute paths
-/// the splicer passes.
-fn lexical_normalize(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::ParentDir => {
-                out.pop();
-            }
-            std::path::Component::CurDir => {}
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
-}
-
 /// Identical inputs return a one-line notice rather than the empty string
 /// `similar` would otherwise produce — a fence body that's just the header
 /// looks broken to a reader.
@@ -491,6 +453,7 @@ pub fn splice_chapter(
     book_root: &Path,
     chapter_path: Option<&Path>,
     chapter_dir: &Path,
+    paths: &SourcePaths,
 ) -> Result<String, SpliceError> {
     let mut out = String::with_capacity(content.len());
     let mut cursor = 0;
@@ -533,8 +496,10 @@ pub fn splice_chapter(
             .map(|n| n - 1)
             .unwrap_or(0);
         let body = shift_hunk_headers(&body, left_offset, right_offset);
-        let left_source = operand_source(&d.left, manifest, book_root, chapter_dir);
-        let right_source = operand_source(&d.right, manifest, book_root, chapter_dir);
+        let (left_source, right_source) = paths.display_pair(
+            operand_source(&d.left, manifest, book_root, chapter_dir).as_deref(),
+            operand_source(&d.right, manifest, book_root, chapter_dir).as_deref(),
+        );
         out.push_str(&content[cursor..d.span.start]);
         out.push_str(&crate::fence::render_block("diff", &body));
         // CALLOUT: diff-anchor-dual Locator anchor for the capture-screenshots tool. Both operands are emitted as separate data-attributes so the tool can locate a diff block by its (LEFT, RIGHT) pair — unique even when multiple diffs share the same RIGHT tag, and unambiguous against the include splicer's `data-listing-tag` anchors.
@@ -1025,6 +990,7 @@ mod tests {
             tmp.path(),
             None,
             tmp.path(),
+            &SourcePaths::Verbatim,
         )
         .unwrap_err();
         assert!(
@@ -1046,6 +1012,7 @@ mod tests {
             tmp.path(),
             None,
             tmp.path(),
+            &SourcePaths::Verbatim,
         )
         .unwrap();
         assert!(
@@ -1118,22 +1085,6 @@ mod tests {
         // says nothing and doubles the line's width.
         assert_eq!(operand_tag("live:../../src/diff.rs"), "live");
         assert_eq!(operand_tag("diff-v5"), "diff-v5");
-    }
-
-    #[test]
-    fn relative_to_walks_up_out_of_the_base() {
-        assert_eq!(
-            relative_to(Path::new("/repo/src/diff.rs"), Path::new("/repo/book")),
-            "../src/diff.rs"
-        );
-        assert_eq!(
-            relative_to(Path::new("/repo/book/src/x.rs"), Path::new("/repo/book")),
-            "src/x.rs"
-        );
-        assert_eq!(
-            relative_to(Path::new("/repo/book"), Path::new("/repo/book")),
-            "."
-        );
     }
 
     #[test]
@@ -1326,6 +1277,7 @@ mod tests {
             tmp.path(),
             None,
             tmp.path(),
+            &SourcePaths::Verbatim,
         )
         .unwrap();
         let wide = splice_chapter(
@@ -1334,6 +1286,7 @@ mod tests {
             tmp.path(),
             None,
             tmp.path(),
+            &SourcePaths::Verbatim,
         )
         .unwrap();
         assert!(
@@ -1357,6 +1310,7 @@ mod tests {
             tmp.path(),
             Some(chapter_path),
             tmp.path(),
+            &SourcePaths::Verbatim,
         )
         .unwrap();
 
@@ -1397,8 +1351,15 @@ mod tests {
             b"Intro.\n\n```rust\nfn old() {}\n```\n",
             b"Intro.\n\n```rust\nfn new() {}\n```\n",
         );
-        let out =
-            splice_chapter(content_with_diff(), &manifest, tmp.path(), None, tmp.path()).unwrap();
+        let out = splice_chapter(
+            content_with_diff(),
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .unwrap();
 
         assert!(
             out.contains("````diff\n"),
@@ -1424,7 +1385,15 @@ mod tests {
         // Spliced, it would carry a number the page never shows.
         let (tmp, manifest, _) = fixture(b"old\n", b"new\n");
         let content = "<!--\n{{#diff left-tag right-tag}}\n-->\n";
-        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        let out = splice_chapter(
+            content,
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .unwrap();
         assert_eq!(out, content);
     }
 
@@ -1442,7 +1411,15 @@ mod tests {
             b"line1\nnew-2\nline3\nnew-4\nline5\n",
         );
         let content = "{{#diff left-tag right-tag 1:2 1:2}}\n";
-        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        let out = splice_chapter(
+            content,
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .unwrap();
         assert!(
             out.contains("-old-2"),
             "expected line-2 removal in slice; got:\n{out}",
@@ -1477,7 +1454,15 @@ mod tests {
         }
         let (tmp, manifest, _) = fixture(left.as_bytes(), right.as_bytes());
         let content = "{{#diff left-tag right-tag 55:65 55:65}}\n";
-        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        let out = splice_chapter(
+            content,
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .unwrap();
         // The hunk header should reference absolute line numbers in the
         // 55-65 window (likely `@@ -57,9 +57,9 @@` since the diff context
         // around line 60 covers 57-63 absolutely).
@@ -1516,7 +1501,15 @@ mod tests {
     fn splice_chapter_emits_range_data_attributes_when_ranges_present() {
         let (tmp, manifest, _) = fixture(b"a\nb\nc\nd\n", b"a\nB\nc\nD\n");
         let content = "{{#diff left-tag right-tag 1:2 1:3}}\n";
-        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        let out = splice_chapter(
+            content,
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .unwrap();
         assert!(
             out.contains(r#"data-listing-diff-left-range="1:2""#),
             "expected left-range data attribute; got:\n{out}",
@@ -1547,7 +1540,15 @@ mod tests {
         }
         let (tmp, manifest, _) = fixture(left.as_bytes(), right.as_bytes());
         let content = "{{#diff left-tag right-tag 10:20 10:20}}\n";
-        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        let out = splice_chapter(
+            content,
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .unwrap();
         assert!(
             out.contains("CALLOUT: sliced-marker"),
             "callout marker on line 15 (inside the 10:20 slice) must survive into the rendered diff body so the callout splicer can pick it up; got:\n{out}",
@@ -1571,7 +1572,15 @@ mod tests {
         }
         let (tmp, manifest, _) = fixture(left.as_bytes(), right.as_bytes());
         let content = "{{#diff left-tag right-tag 1:10 1:10}}\n";
-        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        let out = splice_chapter(
+            content,
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .unwrap();
         assert!(
             !out.contains("outside-slice"),
             "marker outside the 1:10 slice must not appear; got:\n{out}",
@@ -1582,7 +1591,15 @@ mod tests {
     fn splice_chapter_omits_range_data_attributes_when_no_ranges() {
         let (tmp, manifest, _) = fixture(b"a\nb\n", b"a\nB\n");
         let content = "{{#diff left-tag right-tag}}\n";
-        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        let out = splice_chapter(
+            content,
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .unwrap();
         assert!(
             !out.contains("data-listing-diff-left-range"),
             "no left-range attr expected without ranges; got:\n{out}",
@@ -1597,7 +1614,15 @@ mod tests {
     fn splice_chapter_emits_caption_attribute_on_anchor_when_present() {
         let (tmp, manifest, _) = fixture(b"a\nb\n", b"a\nB\n");
         let content = "{{#diff left-tag right-tag caption=\"Method and act\"}}\n";
-        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        let out = splice_chapter(
+            content,
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .unwrap();
         assert!(
             out.contains(r#"data-listing-caption="Method and act""#),
             "expected caption attribute on diff anchor; got:\n{out}",
@@ -1608,7 +1633,15 @@ mod tests {
     fn splice_chapter_omits_caption_attribute_when_absent() {
         let (tmp, manifest, _) = fixture(b"a\nb\n", b"a\nB\n");
         let content = "{{#diff left-tag right-tag}}\n";
-        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        let out = splice_chapter(
+            content,
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .unwrap();
         assert!(
             !out.contains("data-listing-caption"),
             "no caption attr expected without caption=; got:\n{out}",
@@ -1619,7 +1652,15 @@ mod tests {
     fn splice_chapter_html_escapes_caption_attribute() {
         let (tmp, manifest, _) = fixture(b"a\nb\n", b"a\nB\n");
         let content = "{{#diff left-tag right-tag caption=\"A & B <tag>\"}}\n";
-        let out = splice_chapter(content, &manifest, tmp.path(), None, tmp.path()).unwrap();
+        let out = splice_chapter(
+            content,
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .unwrap();
         assert!(
             out.contains(r#"data-listing-caption="A &amp; B &lt;tag&gt;""#),
             "caption attribute should be HTML-escaped; got:\n{out}",
@@ -1637,6 +1678,7 @@ mod tests {
             tmp.path(),
             Some(chapter_path),
             tmp.path(),
+            &SourcePaths::Verbatim,
         )
         .expect_err("err");
         assert_eq!(err.line, 5, "directive sits on line 5; got: {err}");

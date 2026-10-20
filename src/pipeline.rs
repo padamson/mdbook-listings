@@ -30,6 +30,7 @@ use crate::list_of_listings::{
 use crate::listing_ref::{LabelIndex, replace_refs};
 use crate::manifest::Manifest;
 use crate::number::{listing_prefix, splice_chapter as splice_numbers};
+use crate::source_path::SourcePaths;
 
 /// The `[preprocessor.listings]` opt-ins the pipeline consumes. All default
 /// off; a malformed value defaults off rather than failing the build.
@@ -77,6 +78,7 @@ pub fn process_book(
     // label index must exist regardless of the index/sidebar settings.
     let mut collected: Vec<ChapterListings> = Vec::new();
     let mut splice_err: Option<anyhow::Error> = None;
+    let source_paths = SourcePaths::for_book(book_root);
     book.for_each_mut(|item| {
         if splice_err.is_some() {
             return;
@@ -93,6 +95,7 @@ pub fn process_book(
                 src_dir,
                 chapter.source_path.as_deref(),
                 manifest,
+                &source_paths,
             )
             .map_err(|e| {
                 anyhow::Error::new(e).context("expanding {{#include listings/...}} failed")
@@ -104,6 +107,7 @@ pub fn process_book(
                     book_root,
                     chapter.source_path.as_deref(),
                     &chapter_dir,
+                    &source_paths,
                 )
                 .map_err(|e| anyhow::Error::new(e).context("rendering {{#diff}} directive failed"))
             })
@@ -206,11 +210,14 @@ mod tests {
     use mdbook_preprocessor::book::{Chapter, SectionNumber};
     use std::fs;
 
-    /// A minimal on-disk book root: one frozen listing whose source carries
-    /// a `CALLOUT:` marker, registered in listings.toml.
-    fn book_root() -> tempfile::TempDir {
+    /// A minimal repository with a book at `book/`: one frozen listing whose
+    /// source carries a `CALLOUT:` marker, registered in listings.toml. The
+    /// `.git` marker keeps provenance paths from depending on whatever
+    /// happens to sit above the tempdir.
+    fn repo_with_book() -> tempfile::TempDir {
         let tmp = tempfile::TempDir::new().expect("tempdir");
-        let listings = tmp.path().join("src").join("listings");
+        fs::create_dir(tmp.path().join(".git")).unwrap();
+        let listings = tmp.path().join("book").join("src").join("listings");
         fs::create_dir_all(&listings).unwrap();
         fs::write(
             listings.join("sample.rs"),
@@ -218,22 +225,26 @@ mod tests {
         )
         .unwrap();
         fs::write(listings.join("other.rs"), "fn other() {}\n").unwrap();
+        fs::write(listings.join("sibling.rs"), "fn sibling() {}\n").unwrap();
         fs::write(
-            tmp.path().join("listings.toml"),
+            tmp.path().join("book").join("listings.toml"),
             "version = 1\n\n\
              [[listing]]\ntag = \"sample\"\nsource = \"../sample.rs\"\n\
              frozen = \"src/listings/sample.rs\"\nsha256 = \"0\"\n\n\
              [[listing]]\ntag = \"other\"\nsource = \"../other.rs\"\n\
-             frozen = \"src/listings/other.rs\"\nsha256 = \"0\"\n",
+             frozen = \"src/listings/other.rs\"\nsha256 = \"0\"\n\n\
+             [[listing]]\ntag = \"sibling\"\nsource = \"../../elsewhere/sibling.rs\"\n\
+             frozen = \"src/listings/sibling.rs\"\nsha256 = \"0\"\n",
         )
         .unwrap();
         tmp
     }
 
     fn run(content: &str, opts: &PipelineOptions) -> String {
-        let root = book_root();
-        let src_dir = root.path().join("src");
-        let manifest = Manifest::load(root.path()).expect("manifest");
+        let repo = repo_with_book();
+        let root = repo.path().join("book");
+        let src_dir = root.join("src");
+        let manifest = Manifest::load(&root).expect("manifest");
         let sidecars = SidecarCallouts::load(&src_dir.join("listings")).expect("sidecars");
         let mut ch = Chapter::new("Ch", content.to_string(), "ch05.md", vec![]);
         ch.number = Some(SectionNumber::new([5]));
@@ -242,7 +253,7 @@ mod tests {
             &mut book,
             &manifest,
             &sidecars,
-            root.path(),
+            &root,
             &src_dir,
             SupportedRenderer::Html,
             opts,
@@ -330,10 +341,36 @@ mod tests {
         );
         assert!(
             out.contains(
-                "<div class=\"listing-provenance\"><code>../sample.rs</code> \
+                "<div class=\"listing-provenance\"><code>sample.rs</code> \
                  <span class=\"listing-tag\">sample</span></div>"
             ),
-            "the source comes from the manifest, not the frozen path; got:\n{out}"
+            "the source comes from the manifest, not the frozen path, and \
+             reads from the repo root, not the book root; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_source_outside_the_repo_shows_only_its_tag() {
+        let out = run(
+            "{{#include listings/sibling.rs caption=\"S\"}}\n",
+            &PipelineOptions {
+                number_listings: true,
+                list_of_listings: false,
+                sidebar_mode: SidebarMode::Off,
+                show_listing_provenance: true,
+            },
+        );
+        assert!(
+            out.contains(
+                "<div class=\"listing-provenance\">\
+                 <span class=\"listing-tag\">sibling</span></div>"
+            ),
+            "the tag still shows; got:\n{out}"
+        );
+        assert!(
+            !out.contains("elsewhere"),
+            "the sibling checkout's path is neither shown nor carried in the \
+             anchor; got:\n{out}"
         );
     }
 
@@ -371,7 +408,7 @@ mod tests {
         );
         assert!(
             out.contains(
-                "<code>../sample.rs → ../other.rs</code> \
+                "<code>sample.rs → other.rs</code> \
                  <span class=\"listing-tag\">sample</span> → \
                  <span class=\"listing-tag\">other</span>"
             ),

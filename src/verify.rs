@@ -19,6 +19,7 @@ use crate::include::{
     parse_listing_includes, rejected_includes, splice_chapter as splice_includes,
 };
 use crate::manifest::{Listing, Manifest};
+use crate::source_path::SourcePaths;
 
 /// Where frozen listings live, relative to the book root. Matches
 /// `freeze`'s `LISTINGS_SUBDIR` — frozen files always land here regardless
@@ -340,12 +341,25 @@ fn check_unreferenced_markers(book_root: &Path, manifest: &Manifest, report: &mu
             .unwrap_or_else(|| src_dir.clone());
         // A chapter the splicers reject is skipped: whatever is broken
         // there is the reference, rejected-include or integrity pass's
-        // finding.
-        let Ok(expanded) = splice_includes(&content, &src_dir, chapter_path, manifest) else {
+        // finding. Only the expanded listings matter here, so the source
+        // paths stay as recorded.
+        let Ok(expanded) = splice_includes(
+            &content,
+            &src_dir,
+            chapter_path,
+            manifest,
+            &SourcePaths::Verbatim,
+        ) else {
             continue;
         };
-        let Ok(expanded) = splice_diffs(&expanded, manifest, book_root, chapter_path, &chapter_dir)
-        else {
+        let Ok(expanded) = splice_diffs(
+            &expanded,
+            manifest,
+            book_root,
+            chapter_path,
+            &chapter_dir,
+            &SourcePaths::Verbatim,
+        ) else {
             continue;
         };
         for block in FencedBlocks::new(&expanded) {

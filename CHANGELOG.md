@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Changed
+- **The provenance line shows a path a reader can follow.** It used to print
+  the manifest's `source` verbatim, which is relative to the book root, so
+  every listing in a book under `book/` read `../schema/cqa.yaml`, and a
+  listing frozen from a sibling checkout printed a path into the author's
+  machine. The line now shows the path relative to the repository root
+  (`schema/cqa.yaml`), the nearest directory above the book that holds a
+  `.git`, and shows no path at all for a source outside it, leaving the tag.
+  A `{{#diff}}` with either operand outside the repo shows neither path. The
+  hidden `data-listing-source` attribute on each anchor carries the same
+  form, so a book built from a git checkout no longer publishes the sibling
+  path even with provenance off. A book with no `.git` above it shows the
+  path as before. `listings.toml` is
+  unchanged and needs no re-freeze.
 - **A cite of a callout that a diff shows unchanged says why it fails.** A
   `{{#diff}}` badges only added lines, so a marker on an unchanged context
   line renders no badge, and a `{{#callout}}` naming it has nothing to link
