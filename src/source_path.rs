@@ -8,6 +8,16 @@
 
 use std::path::{Path, PathBuf};
 
+/// A listing's source path and the URL recorded for it. Going into
+/// [`SourcePaths::display_pair`] the path is book-root-relative, as the
+/// manifest records it; coming out it is what the provenance line shows,
+/// linked to `url` when there is one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ShownSource {
+    pub(crate) path: String,
+    pub(crate) url: Option<String>,
+}
+
 pub(crate) enum SourcePaths {
     /// No repository was found above the book, so there is nothing better to
     /// say than what the manifest recorded.
@@ -41,31 +51,50 @@ impl SourcePaths {
         }
     }
 
-    /// The paths to show for a diff's two operands. When either operand's
-    /// source is hidden, both are: the provenance line collapses or joins the
-    /// pair, and a lone surviving path would read as the file both operands
-    /// were frozen from.
+    /// The sources to show for a diff's two operands, each as recorded (the
+    /// book-root-relative path and its URL). When either operand's source is
+    /// hidden,
+    /// both are: the provenance line collapses or joins the pair, and a lone
+    /// surviving path would read as the file both operands were frozen from.
     pub(crate) fn display_pair(
         &self,
-        left: Option<&str>,
-        right: Option<&str>,
-    ) -> (Option<String>, Option<String>) {
+        left: Option<ShownSource>,
+        right: Option<ShownSource>,
+    ) -> (Option<ShownSource>, Option<ShownSource>) {
         // `Some(None)` is a source the display withholds, as distinct from a
         // tag with no source at all.
-        match (
-            left.map(|s| self.display(s)),
-            right.map(|s| self.display(s)),
-        ) {
+        let show = |s: ShownSource| self.display(&s.path, s.url.as_deref());
+        match (left.map(show), right.map(show)) {
             (Some(None), _) | (_, Some(None)) => (None, None),
             (l, r) => (l.flatten(), r.flatten()),
         }
     }
 
-    /// The path to show for a book-root-relative `source`. `None` when the
-    /// source lies outside the repository: a path into a sibling checkout
-    /// names a directory on the author's machine, which a reader can neither
-    /// open nor follow, so the provenance line shows the tag alone.
-    pub(crate) fn display(&self, source: &str) -> Option<String> {
+    /// What to show for a book-root-relative `source` recorded with `url`.
+    /// Outside the repository the path names a directory on the author's
+    /// machine, which a reader can neither open nor follow: with a URL the
+    /// line shows the file name linked to it, and without one it shows the
+    /// tag alone (`None`).
+    pub(crate) fn display(&self, source: &str, url: Option<&str>) -> Option<ShownSource> {
+        let path = match self.repo_path(source) {
+            Some(path) => path,
+            None => {
+                url?;
+                Path::new(source)
+                    .file_name()?
+                    .to_string_lossy()
+                    .into_owned()
+            }
+        };
+        Some(ShownSource {
+            path,
+            url: url.map(str::to_string),
+        })
+    }
+
+    /// `source` relative to the repository root, or as recorded when there is
+    /// no repository. `None` when it lies outside the repository.
+    fn repo_path(&self, source: &str) -> Option<String> {
         match self {
             Self::Verbatim => Some(source.to_string()),
             Self::InRepo {
@@ -154,29 +183,44 @@ mod tests {
         }
     }
 
+    fn cqa() -> SourcePaths {
+        in_repo("/work/cqa/book", "/work/cqa")
+    }
+
+    /// The path shown for a source recorded without a URL.
+    fn path(paths: &SourcePaths, source: &str) -> Option<String> {
+        paths.display(source, None).map(|s| s.path)
+    }
+
+    fn shown(path: &str, url: Option<&str>) -> ShownSource {
+        ShownSource {
+            path: path.to_string(),
+            url: url.map(str::to_string),
+        }
+    }
+
+    const URL: &str = "https://example.com/blob/abc/data/wine.yaml";
+
     #[test]
     fn a_source_beside_the_book_shows_its_repo_path() {
-        let paths = in_repo("/work/cqa/book", "/work/cqa");
         assert_eq!(
-            paths.display("../schema/cqa.yaml").as_deref(),
+            path(&cqa(), "../schema/cqa.yaml").as_deref(),
             Some("schema/cqa.yaml")
         );
     }
 
     #[test]
     fn a_source_inside_the_book_keeps_the_book_directory() {
-        let paths = in_repo("/work/cqa/book", "/work/cqa");
         assert_eq!(
-            paths.display("src/listings/a.rs").as_deref(),
+            path(&cqa(), "src/listings/a.rs").as_deref(),
             Some("book/src/listings/a.rs")
         );
     }
 
     #[test]
     fn a_source_in_a_sibling_checkout_shows_no_path() {
-        let paths = in_repo("/work/cqa/book", "/work/cqa");
         assert_eq!(
-            paths.display("../../ontology-authoring-template/data/wine.yaml"),
+            path(&cqa(), "../../ontology-authoring-template/data/wine.yaml"),
             None
         );
     }
@@ -185,17 +229,15 @@ mod tests {
     fn a_sibling_whose_name_extends_the_repos_is_still_outside_it() {
         // A string prefix test would accept `/work/cqa-schema/...` as being
         // inside `/work/cqa`; the path has to match by component.
-        let paths = in_repo("/work/cqa/book", "/work/cqa");
-        assert_eq!(paths.display("../../cqa-schema/x.yaml"), None);
+        assert_eq!(path(&cqa(), "../../cqa-schema/x.yaml"), None);
     }
 
     #[test]
     fn an_absolute_source_inside_the_repo_shows_its_repo_path() {
         // freeze falls back to recording an absolute path when it cannot
         // relativize one.
-        let paths = in_repo("/work/cqa/book", "/work/cqa");
         assert_eq!(
-            paths.display("/work/cqa/schema/cqa.yaml").as_deref(),
+            path(&cqa(), "/work/cqa/schema/cqa.yaml").as_deref(),
             Some("schema/cqa.yaml")
         );
     }
@@ -204,7 +246,7 @@ mod tests {
     fn a_book_at_the_repo_root_shows_the_source_unchanged() {
         let paths = in_repo("/work/cqa", "/work/cqa");
         assert_eq!(
-            paths.display("schema/cqa.yaml").as_deref(),
+            path(&paths, "schema/cqa.yaml").as_deref(),
             Some("schema/cqa.yaml")
         );
     }
@@ -212,10 +254,27 @@ mod tests {
     #[test]
     fn without_a_repo_the_source_shows_as_recorded() {
         assert_eq!(
-            SourcePaths::Verbatim
-                .display("../../elsewhere/x.yaml")
-                .as_deref(),
+            path(&SourcePaths::Verbatim, "../../elsewhere/x.yaml").as_deref(),
             Some("../../elsewhere/x.yaml")
+        );
+    }
+
+    #[test]
+    fn a_url_links_the_repo_path() {
+        assert_eq!(
+            cqa().display("../schema/cqa.yaml", Some(URL)),
+            Some(shown("schema/cqa.yaml", Some(URL)))
+        );
+    }
+
+    #[test]
+    fn a_sibling_source_with_a_url_shows_its_file_name_linked() {
+        assert_eq!(
+            cqa().display(
+                "../../ontology-authoring-template/data/wine.yaml",
+                Some(URL)
+            ),
+            Some(shown("wine.yaml", Some(URL)))
         );
     }
 
@@ -259,30 +318,45 @@ mod tests {
         std::fs::create_dir(root.join("book")).unwrap();
         let paths = SourcePaths::for_book(&root.join("book"));
         assert_eq!(
-            paths.display("../schema/cqa.yaml").as_deref(),
+            path(&paths, "../schema/cqa.yaml").as_deref(),
             Some("schema/cqa.yaml")
         );
     }
 
     #[test]
     fn a_diff_with_one_operand_outside_the_repo_shows_neither_path() {
-        let paths = in_repo("/work/cqa/book", "/work/cqa");
+        let paths = cqa();
+        let outside = || Some(shown("../../other/x.yaml", None));
+        let inside = || Some(shown("../schema/x.yaml", None));
+        assert_eq!(paths.display_pair(outside(), inside()), (None, None));
+        assert_eq!(paths.display_pair(inside(), outside()), (None, None));
+    }
+
+    #[test]
+    fn a_diff_operand_outside_the_repo_with_a_url_does_not_hide_the_other() {
         assert_eq!(
-            paths.display_pair(Some("../../other/x.yaml"), Some("../schema/x.yaml")),
-            (None, None)
-        );
-        assert_eq!(
-            paths.display_pair(Some("../schema/x.yaml"), Some("../../other/x.yaml")),
-            (None, None)
+            cqa().display_pair(
+                Some(shown("../../other/x.yaml", Some(URL))),
+                Some(shown("../schema/x.yaml", None))
+            ),
+            (
+                Some(shown("x.yaml", Some(URL))),
+                Some(shown("schema/x.yaml", None))
+            )
         );
     }
 
     #[test]
     fn a_diff_inside_the_repo_shows_both_paths() {
-        let paths = in_repo("/work/cqa/book", "/work/cqa");
         assert_eq!(
-            paths.display_pair(Some("../schema/a.yaml"), Some("../schema/b.yaml")),
-            (Some("schema/a.yaml".into()), Some("schema/b.yaml".into()))
+            cqa().display_pair(
+                Some(shown("../schema/a.yaml", None)),
+                Some(shown("../schema/b.yaml", None))
+            ),
+            (
+                Some(shown("schema/a.yaml", None)),
+                Some(shown("schema/b.yaml", None))
+            )
         );
     }
 
@@ -290,10 +364,9 @@ mod tests {
     fn a_diff_operand_with_no_source_does_not_hide_the_other() {
         // A tag the manifest lacks has nothing to show, which is not the same
         // as a path withheld; the other side keeps its path, as before.
-        let paths = in_repo("/work/cqa/book", "/work/cqa");
         assert_eq!(
-            paths.display_pair(None, Some("../schema/b.yaml")),
-            (None, Some("schema/b.yaml".into()))
+            cqa().display_pair(None, Some(shown("../schema/b.yaml", None))),
+            (None, Some(shown("schema/b.yaml", None)))
         );
     }
 }

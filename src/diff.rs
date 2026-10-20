@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::directive::{FencePolicy, line_number, scan_directives};
 use crate::manifest::Manifest;
-use crate::source_path::{SourcePaths, relative_to};
+use crate::source_path::{ShownSource, SourcePaths, relative_to};
 
 /// `span` covers the directive in full (`{{#diff …}}` inclusive) so callers
 /// can replace the whole substring in one pass.
@@ -301,8 +301,9 @@ fn resolve_operand(
 }
 
 /// The path a reader can go and open for one diff operand, always expressed
-/// relative to the book root so the two sides are comparable. A frozen tag
-/// contributes the manifest's `source`, which is already book-root-relative;
+/// relative to the book root so the two sides are comparable, with the URL
+/// the manifest records for it. A frozen tag contributes the manifest's
+/// `source`, which is already book-root-relative;
 /// a `live:` operand's path is written relative to the *chapter*, so it is
 /// rebased. Without that, one file diffed against its own live copy renders
 /// as two unrelated paths and never collapses. `None` for a tag the manifest
@@ -312,10 +313,16 @@ fn operand_source(
     manifest: &Manifest,
     book_root: &Path,
     live_base: &Path,
-) -> Option<String> {
+) -> Option<ShownSource> {
     match operand.strip_prefix("live:") {
-        Some(rel_path) => Some(relative_to(&live_base.join(rel_path), book_root)),
-        None => manifest.find(operand).map(|l| l.source.clone()),
+        Some(rel_path) => Some(ShownSource {
+            path: relative_to(&live_base.join(rel_path), book_root),
+            url: None,
+        }),
+        None => manifest.find(operand).map(|l| ShownSource {
+            path: l.source.clone(),
+            url: l.url.clone(),
+        }),
     }
 }
 
@@ -497,8 +504,8 @@ pub fn splice_chapter(
             .unwrap_or(0);
         let body = shift_hunk_headers(&body, left_offset, right_offset);
         let (left_source, right_source) = paths.display_pair(
-            operand_source(&d.left, manifest, book_root, chapter_dir).as_deref(),
-            operand_source(&d.right, manifest, book_root, chapter_dir).as_deref(),
+            operand_source(&d.left, manifest, book_root, chapter_dir),
+            operand_source(&d.right, manifest, book_root, chapter_dir),
         );
         out.push_str(&content[cursor..d.span.start]);
         out.push_str(&crate::fence::render_block("diff", &body));
@@ -506,12 +513,12 @@ pub fn splice_chapter(
         out.push_str(&crate::anchor::diff_anchor(
             &crate::anchor::DiffOperand {
                 tag: operand_tag(&d.left),
-                source: left_source.as_deref(),
+                source: left_source.as_ref(),
                 range: d.left_range.as_ref(),
             },
             &crate::anchor::DiffOperand {
                 tag: operand_tag(&d.right),
-                source: right_source.as_deref(),
+                source: right_source.as_ref(),
                 range: d.right_range.as_ref(),
             },
             &crate::anchor::AnchorMeta {
@@ -1039,12 +1046,14 @@ mod tests {
                     source: "../left.txt".into(),
                     frozen: "src/listings/left-tag.txt".into(),
                     sha256: "0".repeat(64),
+                    url: None,
                 },
                 crate::manifest::Listing {
                     tag: "right-tag".into(),
                     source: "../right.txt".into(),
                     frozen: "src/listings/right-tag.txt".into(),
                     sha256: "0".repeat(64),
+                    url: None,
                 },
             ],
         };
@@ -1074,8 +1083,11 @@ mod tests {
         let book_root = Path::new("/repo/book");
         let chapter_dir = Path::new("/repo/book/src");
         assert_eq!(
-            operand_source("live:../../src/diff.rs", &manifest, book_root, chapter_dir).as_deref(),
-            Some("../src/diff.rs"),
+            operand_source("live:../../src/diff.rs", &manifest, book_root, chapter_dir),
+            Some(ShownSource {
+                path: "../src/diff.rs".to_string(),
+                url: None
+            }),
         );
     }
 

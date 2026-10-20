@@ -10,6 +10,7 @@
 //! points stay with their consumers but are built from these parts.
 
 use crate::diff::LineRange;
+use crate::source_path::ShownSource;
 
 /// How far past the closing fence (plus one optional newline) a parser will
 /// look for the anchor's `<div `. The emitters place it immediately after
@@ -52,11 +53,11 @@ pub(crate) fn ranged_include_header(rel_path: &str, range: &LineRange) -> String
     )
 }
 
-/// One operand of a rendered diff: the tag (or `live:<path>`), the manifest
-/// `source` it was frozen from, and the slice shown.
+/// One operand of a rendered diff: the tag (or `live:<path>`), the source it
+/// was frozen from as the provenance line shows it, and the slice shown.
 pub(crate) struct DiffOperand<'a> {
     pub(crate) tag: &'a str,
-    pub(crate) source: Option<&'a str>,
+    pub(crate) source: Option<&'a ShownSource>,
     pub(crate) range: Option<&'a LineRange>,
 }
 
@@ -74,16 +75,13 @@ pub(crate) struct AnchorMeta<'a> {
 /// included — the anchor is a line of its own after the closing fence.
 pub(crate) fn include_anchor(
     tag: &str,
-    source: Option<&str>,
+    source: Option<&ShownSource>,
     range: Option<&LineRange>,
     meta: &AnchorMeta,
 ) -> String {
     let mut anchor = format!("<div data-listing-tag=\"{tag}\"");
     if let Some(source) = source {
-        anchor.push_str(&format!(
-            " data-listing-source=\"{}\"",
-            crate::callout::html_escape(source)
-        ));
+        push_source(&mut anchor, "data-listing-source", source);
     }
     if let Some(range) = range {
         anchor.push_str(&format!(" data-listing-tag-range=\"{}\"", range.render()));
@@ -104,10 +102,11 @@ pub(crate) fn diff_anchor(left: &DiffOperand, right: &DiffOperand, meta: &Anchor
     );
     for (side, operand) in [("left", left), ("right", right)] {
         if let Some(source) = operand.source {
-            anchor.push_str(&format!(
-                " data-listing-diff-{side}-source=\"{}\"",
-                crate::callout::html_escape(source)
-            ));
+            push_source(
+                &mut anchor,
+                &format!("data-listing-diff-{side}-source"),
+                source,
+            );
         }
     }
     for (side, operand) in [("left", left), ("right", right)] {
@@ -121,6 +120,20 @@ pub(crate) fn diff_anchor(left: &DiffOperand, right: &DiffOperand, meta: &Anchor
     push_meta(&mut anchor, meta);
     anchor.push_str(" aria-hidden=\"true\"></div>");
     anchor
+}
+
+/// `name="path"`, plus `name-url="url"` when the source links somewhere.
+fn push_source(anchor: &mut String, name: &str, source: &ShownSource) {
+    anchor.push_str(&format!(
+        " {name}=\"{}\"",
+        crate::callout::html_escape(&source.path)
+    ));
+    if let Some(url) = &source.url {
+        anchor.push_str(&format!(
+            " {name}-url=\"{}\"",
+            crate::callout::html_escape(url)
+        ));
+    }
 }
 
 fn push_meta(anchor: &mut String, meta: &AnchorMeta) {
@@ -177,7 +190,14 @@ mod tests {
         }
     }
 
-    fn operand<'a>(tag: &'a str, source: Option<&'a str>) -> DiffOperand<'a> {
+    fn src(path: &str) -> ShownSource {
+        ShownSource {
+            path: path.to_string(),
+            url: None,
+        }
+    }
+
+    fn operand<'a>(tag: &'a str, source: Option<&'a ShownSource>) -> DiffOperand<'a> {
         DiffOperand {
             tag,
             source,
@@ -190,7 +210,7 @@ mod tests {
         let range = parse_line_range("1:30").expect("range");
         let anchor = include_anchor(
             "foo-v1",
-            Some("../src/foo.rs"),
+            Some(&src("../src/foo.rs")),
             Some(&range),
             &meta(Some("Cap"), Some("lbl"), None),
         );
@@ -218,6 +238,34 @@ mod tests {
     }
 
     #[test]
+    fn a_source_url_round_trips_through_attr_value_escaped() {
+        let source = ShownSource {
+            path: "src/foo.rs".to_string(),
+            url: Some("https://x/foo.rs?a=1&b=\"2\"".to_string()),
+        };
+        let anchor = include_anchor("foo-v1", Some(&source), None, &meta(None, None, None));
+        assert_eq!(
+            attr_value(&anchor, "data-listing-source-url").as_deref(),
+            Some("https://x/foo.rs?a=1&amp;b=&quot;2&quot;")
+        );
+        assert_eq!(
+            attr_value(&anchor, "data-listing-source").as_deref(),
+            Some("src/foo.rs"),
+            "the url attribute does not shadow the path attribute"
+        );
+        let diff = diff_anchor(
+            &operand("a-v1", None),
+            &operand("a-v2", Some(&source)),
+            &meta(None, None, None),
+        );
+        assert_eq!(attr_value(&diff, "data-listing-diff-left-source-url"), None);
+        assert!(
+            attr_value(&diff, "data-listing-diff-right-source-url").is_some(),
+            "got: {diff}"
+        );
+    }
+
+    #[test]
     fn include_anchor_omits_source_when_the_manifest_has_none() {
         let anchor = include_anchor("foo-v1", None, None, &meta(None, None, None));
         assert_eq!(attr_value(&anchor, "data-listing-source"), None);
@@ -226,8 +274,8 @@ mod tests {
     #[test]
     fn diff_anchor_round_trips_through_attr_value() {
         let anchor = diff_anchor(
-            &operand("a-v1", Some("../a.rs")),
-            &operand("a-v2", Some("../a.rs")),
+            &operand("a-v1", Some(&src("../a.rs"))),
+            &operand("a-v2", Some(&src("../a.rs"))),
             &meta(Some("Cap"), None, None),
         );
         assert_eq!(
@@ -276,8 +324,8 @@ mod tests {
     #[test]
     fn diff_anchor_keeps_left_and_right_sources_distinct() {
         let anchor = diff_anchor(
-            &operand("a-v1", Some("../a.rs")),
-            &operand("b-v1", Some("../b.rs")),
+            &operand("a-v1", Some(&src("../a.rs"))),
+            &operand("b-v1", Some(&src("../b.rs"))),
             &meta(None, None, None),
         );
         assert_eq!(

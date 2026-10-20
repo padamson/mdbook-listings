@@ -11,7 +11,7 @@ description: >-
   with its sources.
 license: MIT OR Apache-2.0
 metadata:
-  version: "0.1.20"
+  version: "0.1.21"
 ---
 
 # Authoring with mdbook-listings
@@ -137,8 +137,9 @@ show-listing-provenance = true    # muted "<source> (<tag>)" line under the capt
   what to write.
 - **`show-listing-provenance`** — each listing gains a muted line beneath its
   caption naming the `source` path from `listings.toml` (shown relative to
-  the repository root, or left out when the source lies outside the repo)
-  followed by its tag as a pill, so the caption need not — and should not — spend words on which
+  the repository root, linked when frozen with `--source-url`, and left out
+  when the source lies outside the repo with no URL) followed by its tag as
+  a pill, so the caption need not — and should not — spend words on which
   artifact this is. A `{{#diff}}` shows
   both tags and collapses the path to one when its operands were frozen from
   the same file. The List-of-Listings index stays caption-only.

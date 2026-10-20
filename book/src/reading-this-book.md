@@ -32,7 +32,10 @@ screenshots predate all of it.
   the cost of not having it better than any argument could: it freezes
   `src/main.rs` sixteen times and `tests/e2e_callouts.rs` twelve, so
   the chapters still spend prose identifying listings that now identify
-  themselves.
+  themselves. A listing frozen with `freeze --source-url` also links its
+  path to the file at the commit it came from: the path on
+  {{#listing-ref freeze-acceptance-tests}} opens `tests/freeze.rs` as it
+  stood at `0eb3f48`.
 
 ## Pointers the chapters make that have moved
 

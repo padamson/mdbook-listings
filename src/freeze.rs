@@ -20,6 +20,9 @@ pub struct FreezeOptions<'a> {
     pub tag: &'a str,
     pub source: &'a Path,
     pub force: bool,
+    /// Recorded as the listing's `url`. On an unchanged source it replaces
+    /// the recorded one without touching the frozen bytes.
+    pub source_url: Option<&'a str>,
 }
 
 /// Outcome of a freeze invocation. Callers use this to render a summary line
@@ -34,6 +37,9 @@ pub enum FreezeOutcome {
     /// Tag already existed and the source differs; frozen file and manifest
     /// entry were overwritten (only possible with `--force`).
     Replaced,
+    /// The source is unchanged, but `--source-url` set or replaced the
+    /// listing's `url`; only the manifest was written.
+    UrlUpdated,
 }
 
 /// Result of a freeze invocation: the outcome plus optional metadata the CLI
@@ -46,11 +52,19 @@ pub struct FreezeReport {
     /// the just-frozen tag (excluding the just-frozen tag itself). `None`
     /// when this is the first listing for the source.
     pub previous_tag: Option<String>,
+    /// The listing's `url` after the freeze.
+    pub url: Option<String>,
+    /// A `url` the replaced listing carried that this freeze dropped: it
+    /// pointed at the old content, and no `--source-url` replaced it.
+    pub dropped_url: Option<String>,
 }
 
 /// Freeze `opts.source` into `<book_root>/src/listings/<tag>.<ext>` and upsert
 /// the corresponding entry in `<book_root>/listings.toml`.
 pub fn freeze(opts: FreezeOptions<'_>) -> Result<FreezeReport> {
+    if let Some(url) = opts.source_url {
+        crate::manifest::check_url(url).map_err(|e| anyhow!("--source-url {e}"))?;
+    }
     let source_bytes = fs::read(opts.source)
         .with_context(|| format!("reading source file {}", opts.source.display()))?;
     let source_sha = hex_sha256(&source_bytes);
@@ -59,11 +73,11 @@ pub fn freeze(opts: FreezeOptions<'_>) -> Result<FreezeReport> {
     let frozen_abs = opts.book_root.join(&frozen_rel);
 
     let mut manifest = Manifest::load(opts.book_root)?;
+    let existing = manifest.find(opts.tag).cloned();
+    let same_bytes = existing.as_ref().is_some_and(|l| l.sha256 == source_sha);
 
-    let outcome = match manifest.find(opts.tag) {
-        Some(existing) if existing.sha256 == source_sha && frozen_abs.exists() => {
-            FreezeOutcome::Unchanged
-        }
+    let outcome = match &existing {
+        Some(_existing) if same_bytes && frozen_abs.exists() => FreezeOutcome::Unchanged,
         Some(_existing) if !opts.force => {
             bail!(
                 "tag `{}` already frozen with different content; re-run with --force to overwrite",
@@ -81,27 +95,53 @@ pub fn freeze(opts: FreezeOptions<'_>) -> Result<FreezeReport> {
     let previous_tag =
         previous_listing_for_source(&manifest, &source_rel_str, opts.tag).map(|l| l.tag.clone());
 
-    if outcome != FreezeOutcome::Unchanged {
-        if let Some(parent) = frozen_abs.parent() {
-            fs::create_dir_all(parent).with_context(|| {
-                format!("creating frozen-listings directory {}", parent.display())
-            })?;
-        }
-        fs::write(&frozen_abs, &source_bytes)
-            .with_context(|| format!("writing frozen file {}", frozen_abs.display()))?;
+    // A recorded URL points at bytes, so it survives any re-freeze of the same
+    // bytes (even one restoring a deleted frozen copy) unless a new one is
+    // given, and goes when the bytes change.
+    let recorded_url = existing.as_ref().and_then(|l| l.url.clone());
+    let url = opts
+        .source_url
+        .map(str::to_string)
+        .or_else(|| recorded_url.clone().filter(|_| same_bytes));
+    let dropped_url = recorded_url.clone().filter(|_| url.is_none());
+    let outcome = match outcome {
+        FreezeOutcome::Unchanged if url != recorded_url => FreezeOutcome::UrlUpdated,
+        other => other,
+    };
 
-        manifest.upsert(Listing {
-            tag: opts.tag.to_string(),
-            source: source_rel_str,
-            frozen: path_to_string(&frozen_rel)?,
-            sha256: source_sha,
-        });
+    let listing = match outcome {
+        FreezeOutcome::Unchanged => None,
+        FreezeOutcome::UrlUpdated => existing.map(|l| Listing {
+            url: url.clone(),
+            ..l
+        }),
+        FreezeOutcome::Created | FreezeOutcome::Replaced => {
+            if let Some(parent) = frozen_abs.parent() {
+                fs::create_dir_all(parent).with_context(|| {
+                    format!("creating frozen-listings directory {}", parent.display())
+                })?;
+            }
+            fs::write(&frozen_abs, &source_bytes)
+                .with_context(|| format!("writing frozen file {}", frozen_abs.display()))?;
+            Some(Listing {
+                tag: opts.tag.to_string(),
+                source: source_rel_str,
+                frozen: path_to_string(&frozen_rel)?,
+                sha256: source_sha,
+                url: url.clone(),
+            })
+        }
+    };
+    if let Some(listing) = listing {
+        manifest.upsert(listing);
         manifest.save(opts.book_root)?;
     }
 
     Ok(FreezeReport {
         outcome,
         previous_tag,
+        url,
+        dropped_url,
     })
 }
 
@@ -331,6 +371,177 @@ pub(crate) fn hex_sha256(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    const URL_A: &str = "https://example.com/blob/aaa/x.yaml";
+    const URL_B: &str = "https://example.com/blob/bbb/x.yaml";
+
+    /// A book under `<tmp>/book` and a source beside it.
+    struct Book {
+        _tmp: tempfile::TempDir,
+        root: PathBuf,
+        source: PathBuf,
+    }
+
+    impl Book {
+        fn new() -> Self {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let root = tmp.path().join("book");
+            fs::create_dir_all(&root).unwrap();
+            let source = tmp.path().join("x.yaml");
+            fs::write(&source, "a: 1\n").unwrap();
+            Self {
+                _tmp: tmp,
+                root,
+                source,
+            }
+        }
+
+        fn freeze(&self, force: bool, source_url: Option<&str>) -> Result<FreezeReport> {
+            freeze(FreezeOptions {
+                book_root: &self.root,
+                tag: "x-v1",
+                source: &self.source,
+                force,
+                source_url,
+            })
+        }
+
+        fn recorded_url(&self) -> Option<String> {
+            Manifest::load(&self.root)
+                .unwrap()
+                .find("x-v1")
+                .and_then(|l| l.url.clone())
+        }
+    }
+
+    #[test]
+    fn a_first_freeze_records_the_source_url() {
+        let book = Book::new();
+        let report = book.freeze(false, Some(URL_A)).unwrap();
+        assert_eq!(report.url.as_deref(), Some(URL_A));
+        assert_eq!(book.recorded_url().as_deref(), Some(URL_A));
+    }
+
+    #[test]
+    fn a_freeze_without_a_source_url_records_none() {
+        let book = Book::new();
+        book.freeze(false, None).unwrap();
+        assert_eq!(book.recorded_url(), None);
+        let toml = fs::read_to_string(book.root.join("listings.toml")).unwrap();
+        assert!(
+            !toml.contains("url"),
+            "an unset url is left out of the manifest; got:\n{toml}"
+        );
+    }
+
+    #[test]
+    fn an_unchanged_refreeze_sets_a_url() {
+        let book = Book::new();
+        book.freeze(false, None).unwrap();
+        let report = book.freeze(false, Some(URL_A)).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::UrlUpdated);
+        assert_eq!(book.recorded_url().as_deref(), Some(URL_A));
+    }
+
+    #[test]
+    fn an_unchanged_refreeze_with_the_same_url_updates_nothing() {
+        let book = Book::new();
+        book.freeze(false, Some(URL_A)).unwrap();
+        let report = book.freeze(false, Some(URL_A)).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::Unchanged);
+    }
+
+    #[test]
+    fn restoring_a_deleted_frozen_copy_keeps_the_url() {
+        // The bytes match the recorded hash, so the URL still points at them,
+        // even though the missing file makes this a forced replace.
+        let book = Book::new();
+        book.freeze(false, Some(URL_A)).unwrap();
+        fs::remove_file(book.root.join("src/listings/x-v1.yaml")).unwrap();
+        let report = book.freeze(true, None).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::Replaced);
+        assert_eq!(report.dropped_url, None);
+        assert_eq!(book.recorded_url().as_deref(), Some(URL_A));
+    }
+
+    #[test]
+    fn an_unchanged_refreeze_replaces_the_url_it_is_given() {
+        let book = Book::new();
+        book.freeze(false, Some(URL_A)).unwrap();
+        book.freeze(false, Some(URL_B)).unwrap();
+        assert_eq!(book.recorded_url().as_deref(), Some(URL_B));
+    }
+
+    #[test]
+    fn an_unchanged_refreeze_without_a_url_keeps_the_recorded_one() {
+        let book = Book::new();
+        book.freeze(false, Some(URL_A)).unwrap();
+        let report = book.freeze(false, None).unwrap();
+        assert_eq!(report.url.as_deref(), Some(URL_A));
+        assert_eq!(report.dropped_url, None);
+        assert_eq!(book.recorded_url().as_deref(), Some(URL_A));
+    }
+
+    #[test]
+    fn a_forced_refreeze_of_changed_content_drops_the_stale_url() {
+        let book = Book::new();
+        book.freeze(false, Some(URL_A)).unwrap();
+        fs::write(&book.source, "a: 2\n").unwrap();
+        let report = book.freeze(true, None).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::Replaced);
+        assert_eq!(report.dropped_url.as_deref(), Some(URL_A));
+        assert_eq!(book.recorded_url(), None);
+    }
+
+    #[test]
+    fn a_forced_refreeze_of_changed_content_takes_the_new_url() {
+        let book = Book::new();
+        book.freeze(false, Some(URL_A)).unwrap();
+        fs::write(&book.source, "a: 2\n").unwrap();
+        let report = book.freeze(true, Some(URL_B)).unwrap();
+        assert_eq!(report.dropped_url, None);
+        assert_eq!(book.recorded_url().as_deref(), Some(URL_B));
+    }
+
+    #[test]
+    fn a_source_url_that_is_not_a_web_address_is_refused() {
+        let book = Book::new();
+        for url in [
+            "javascript:alert(1)",
+            "../x.yaml",
+            "ftp://example.com/x",
+            "https://",
+        ] {
+            let err = book.freeze(false, Some(url)).unwrap_err();
+            assert!(
+                err.to_string().contains("--source-url"),
+                "{url}: the error names the flag; got: {err}"
+            );
+        }
+        assert!(
+            !book.root.join("listings.toml").exists(),
+            "nothing is frozen when the url is refused"
+        );
+    }
+
+    #[test]
+    fn a_source_url_scheme_is_matched_without_regard_to_case() {
+        let book = Book::new();
+        book.freeze(false, Some("HTTPS://example.com/x.yaml"))
+            .unwrap();
+        assert!(book.recorded_url().is_some());
+    }
+
+    #[test]
+    fn an_http_source_url_is_accepted() {
+        let book = Book::new();
+        book.freeze(false, Some("http://example.com/x.yaml"))
+            .unwrap();
+        assert_eq!(
+            book.recorded_url().as_deref(),
+            Some("http://example.com/x.yaml")
+        );
+    }
+
     #[test]
     fn pathdiff_walks_up_from_base_to_a_sibling_and_descends_within_it() {
         let tmp = tempfile::TempDir::new().unwrap();
@@ -398,6 +609,7 @@ mod tests {
             source: source.to_string(),
             frozen: format!("src/listings/{tag}.rs"),
             sha256: String::new(),
+            url: None,
         }
     }
 

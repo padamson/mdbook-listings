@@ -47,13 +47,32 @@ Copies `<SOURCE>` into the book's `listings/` directory and records it in
   on subsequent freezes of the same basename.
 - `--force` — overwrite an existing frozen copy that has the **same tag but
   different bytes**. Without it, a conflicting re-freeze is rejected.
+- `--source-url <URL>` — record where a reader can see this snapshot, as
+  `url` in `listings.toml`. Use the file's URL **at the commit it was frozen
+  from** (a GitHub `blob/<sha>/…` link), not a branch, which moves on while
+  the listing stays put. With `show-listing-provenance` on, the provenance
+  line links the path to it, and for a source outside the book's repository
+  (a sibling checkout) it is the only way to show a path at all. Only
+  `http://` and `https://` URLs with a host are accepted, and none holding
+  whitespace, `<` or `>`. The same check runs whenever `listings.toml` loads,
+  so a hand-edited `url` that fails it stops the build.
+
+  ```
+  mdbook-listings freeze ../../ontology-authoring-template/data/wine.yaml \
+    --tag wine-v1 \
+    --source-url https://github.com/padamson/ontology-authoring-template/blob/20cac5f/data/wine.yaml
+  ```
 
 ### Identity model
 
 - **tag = human identity, sha256 = integrity.**
-- Re-freezing **identical** bytes under the same tag is a **no-op**.
+- Re-freezing **identical** bytes under the same tag is a **no-op**, except
+  that a `--source-url` given on that run sets or replaces the recorded URL.
+  This is how to add a URL to a listing frozen without one.
 - Re-freezing **different** bytes under an existing tag is **rejected** unless
-  `--force` is passed.
+  `--force` is passed. A forced re-freeze drops the recorded URL, since it
+  pointed at the old bytes, and warns; pass `--source-url` again to record
+  the new one.
 
 This is what lets the book detect drift: the manifest's recorded hash must
 match the frozen file's actual hash.

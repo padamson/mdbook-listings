@@ -226,6 +226,7 @@ mod tests {
         .unwrap();
         fs::write(listings.join("other.rs"), "fn other() {}\n").unwrap();
         fs::write(listings.join("sibling.rs"), "fn sibling() {}\n").unwrap();
+        fs::write(listings.join("linked.rs"), "fn linked() {}\n").unwrap();
         fs::write(
             tmp.path().join("book").join("listings.toml"),
             "version = 1\n\n\
@@ -234,7 +235,10 @@ mod tests {
              [[listing]]\ntag = \"other\"\nsource = \"../other.rs\"\n\
              frozen = \"src/listings/other.rs\"\nsha256 = \"0\"\n\n\
              [[listing]]\ntag = \"sibling\"\nsource = \"../../elsewhere/sibling.rs\"\n\
-             frozen = \"src/listings/sibling.rs\"\nsha256 = \"0\"\n",
+             frozen = \"src/listings/sibling.rs\"\nsha256 = \"0\"\n\n\
+             [[listing]]\ntag = \"linked\"\nsource = \"../../elsewhere/linked.rs\"\n\
+             frozen = \"src/listings/linked.rs\"\nsha256 = \"0\"\n\
+             url = \"https://example.com/abc/linked.rs\"\n",
         )
         .unwrap();
         tmp
@@ -396,6 +400,30 @@ mod tests {
     }
 
     #[test]
+    fn a_source_outside_the_repo_with_a_url_shows_its_file_name_linked() {
+        let out = run(
+            "{{#include listings/linked.rs caption=\"S\"}}\n",
+            &PipelineOptions {
+                number_listings: true,
+                list_of_listings: false,
+                sidebar_mode: SidebarMode::Off,
+                show_listing_provenance: true,
+            },
+        );
+        assert!(
+            out.contains(
+                "<a href=\"https://example.com/abc/linked.rs\"><code>linked.rs</code></a> \
+                 <span class=\"listing-tag\">linked</span>"
+            ),
+            "got:\n{out}"
+        );
+        assert!(
+            !out.contains("elsewhere"),
+            "the sibling checkout's path stays out of the page; got:\n{out}"
+        );
+    }
+
+    #[test]
     fn a_diff_names_both_sources_when_its_operands_came_from_different_files() {
         let out = run(
             "{{#diff sample other caption=\"D\"}}\n",
@@ -408,7 +436,7 @@ mod tests {
         );
         assert!(
             out.contains(
-                "<code>sample.rs → other.rs</code> \
+                "<code>sample.rs</code> → <code>other.rs</code> \
                  <span class=\"listing-tag\">sample</span> → \
                  <span class=\"listing-tag\">other</span>"
             ),

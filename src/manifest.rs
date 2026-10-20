@@ -38,6 +38,39 @@ pub struct Listing {
     /// Hex-encoded sha256 of the frozen file's byte content. Used by shallow
     /// verify to detect post-freeze tampering.
     pub sha256: String,
+    /// Where a reader can see this snapshot, typically the source file's URL
+    /// at the commit it was frozen from. The provenance line links the path
+    /// to it; for a source outside the book's repository it is the only
+    /// path shown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+/// Why `url` can't be a listing's `url`, or `Ok` when it can. The provenance
+/// line renders it as a link in HTML and in the PDF's Markdown, so only a web
+/// address with a host is accepted, and nothing that would end the PDF's
+/// `<…>` link destination early. Checked both when `freeze` records a URL and
+/// when the manifest loads, since `listings.toml` is also edited by hand.
+pub(crate) fn check_url(url: &str) -> std::result::Result<(), String> {
+    let rest = ["https://", "http://"].iter().find_map(|scheme| {
+        url.get(..scheme.len())
+            .filter(|s| s.eq_ignore_ascii_case(scheme))
+            .map(|_| &url[scheme.len()..])
+    });
+    match rest {
+        None => Err(format!("must be an http:// or https:// URL, got `{url}`")),
+        Some("") => Err(format!("names no host, got `{url}`")),
+        Some(_)
+            if url
+                .chars()
+                .any(|c| c.is_whitespace() || c.is_control() || c == '<' || c == '>') =>
+        {
+            Err(format!(
+                "must not contain whitespace, `<` or `>`, got `{url}`"
+            ))
+        }
+        Some(_) => Ok(()),
+    }
 }
 
 impl Manifest {
@@ -55,6 +88,17 @@ impl Manifest {
             .with_context(|| format!("reading manifest at {}", path.display()))?;
         let manifest: Manifest = toml::from_str(&text)
             .with_context(|| format!("parsing manifest at {}", path.display()))?;
+        for listing in &manifest.listings {
+            if let Some(url) = &listing.url {
+                check_url(url).map_err(|e| {
+                    anyhow!(
+                        "manifest at {}: listing `{}` has url {e}",
+                        path.display(),
+                        listing.tag
+                    )
+                })?;
+            }
+        }
         if manifest.version != MANIFEST_VERSION {
             return Err(anyhow!(
                 "manifest at {} has version {}, expected {}",
@@ -132,5 +176,45 @@ mod tests {
         let m = Manifest::load(tmp.path()).expect("current-version manifest should load");
         assert_eq!(m.version, MANIFEST_VERSION);
         assert!(m.listings.is_empty());
+    }
+
+    #[test]
+    fn load_rejects_a_hand_edited_url_that_is_not_a_web_address() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join(MANIFEST_FILENAME),
+            format!(
+                "version = {MANIFEST_VERSION}\n\n[[listing]]\n\
+                 tag = \"x-v1\"\nsource = \"a\"\nfrozen = \"b\"\nsha256 = \"c\"\n\
+                 url = \"javascript:alert(1)\"\n"
+            ),
+        )
+        .unwrap();
+        let msg = Manifest::load(tmp.path()).unwrap_err().to_string();
+        assert!(
+            msg.contains("x-v1") && msg.contains("javascript:alert(1)"),
+            "the error names the listing and the url; got: {msg}"
+        );
+    }
+
+    #[test]
+    fn check_url_accepts_a_web_address_with_parentheses() {
+        assert_eq!(
+            check_url("https://en.wikipedia.org/wiki/YAML_(format)"),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn check_url_refuses_what_would_break_the_link_markup() {
+        for url in [
+            "https://example.com/a b",
+            "https://example.com/<a",
+            "https://example.com/a>",
+            "https://example.com/a\tb",
+            "https://example.com/a\u{7}b",
+        ] {
+            assert!(check_url(url).is_err(), "{url:?} should be refused");
+        }
     }
 }

@@ -335,9 +335,22 @@ freezing's bookkeeping. The manifest records it relative to the book root
 (`../src/install.rs`), and the line shows it relative to the repository root
 (`src/install.rs`), found as the nearest directory above the book that holds
 a `.git`. A source outside that repository (a sibling checkout, say) shows no
-path at all, since it names a directory on the author's machine; the line
-carries the tag alone. With no `.git` above the book, the path shows as the
-manifest recorded it. Leading with the path follows every comparable toolchain:
+path, since it names a directory on the author's machine; the line carries
+the tag alone. With no `.git` above the book, the path shows as the manifest
+recorded it.
+
+A listing frozen with `freeze --source-url` (see
+[cli.md](cli.md#freeze)) links its path to that URL. For a source outside the
+repository, the line then shows the file name, linked, in place of no path:
+
+```
+wine.yaml  (wine-v1)        ← wine.yaml links to the URL
+```
+
+A `{{#diff}}` whose operands share a path still shows it once, linked when
+either operand records a URL (a frozen tag diffed against its `live:` copy
+links to the frozen snapshot). Two snapshots of one file linked to different
+commits show the path twice, each linked to its own commit. Leading with the path follows every comparable toolchain:
 the Rust Book prints `Filename: src/main.rs` above the code, and Docusaurus
 and Material for MkDocs put the filename in the code block's title bar.
 
@@ -362,11 +375,12 @@ src/callout.rs  (callout-v9) → (callout-v10)
 
 A `live:<path>` operand contributes the live path itself. A tag the manifest
 does not carry contributes no path, and the line shows the tag alone. When
-either operand's source lies outside the repository, the line shows neither
-path, since the one left would read as the file both were frozen from.
+either operand's source lies outside the repository with no URL, the line
+shows neither path, since the one left would read as the file both were
+frozen from.
 
 The PDF backend has no pill, so it parenthesises the tag instead:
-`` `src/install.rs` (`install-v4`) ``.
+`` `src/install.rs` (`install-v4`) ``, with a linked path as a Markdown link.
 
 The List-of-Listings index stays caption-only — its entries are the one place
 a caption has to stand alone, and paths there would bury it.

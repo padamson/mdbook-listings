@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **`freeze --source-url` links a listing's provenance path.** The URL is
+  recorded as an optional `url` in `listings.toml`, and with
+  `show-listing-provenance` on the line links the path to it. Meant for the
+  file at the commit it was frozen from, so the link shows the same bytes
+  as the listing. A source outside the book's repository, which otherwise
+  shows no path, shows its file name linked. Re-freezing an unchanged source
+  with `--source-url` sets or replaces the URL without touching the frozen
+  copy, and the summary says `url updated`; a forced re-freeze of changed
+  content drops it with a warning. Only `http://` and `https://` URLs are
+  accepted, checked by `freeze` and again whenever `listings.toml` loads, so
+  a hand-edited `url` that fails stops the build. A diff whose two operands
+  show different paths now renders each in its own code span (`a` → `b`,
+  not `a → b` in one).
+
 ### Changed
 - **The provenance line shows a path a reader can follow.** It used to print
   the manifest's `source` verbatim, which is relative to the book root, so

@@ -561,6 +561,7 @@ mod tests {
             source: "../src/demo.rs".to_string(),
             frozen: frozen.to_string(),
             sha256: hex_sha256(bytes),
+            url: None,
         }
     }
 

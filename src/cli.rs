@@ -62,6 +62,12 @@ enum Command {
         #[arg(long)]
         force: bool,
 
+        /// Where a reader can see this snapshot, such as the file's URL at
+        /// the commit it was frozen from. The provenance line links to it.
+        /// Re-run with an unchanged source to set or replace it.
+        #[arg(long, value_name = "URL")]
+        source_url: Option<String>,
+
         /// Path to the source file to freeze.
         source: PathBuf,
     },
@@ -110,6 +116,7 @@ pub fn run() -> Result<()> {
             tag,
             book_root,
             force,
+            source_url,
             source,
         }) => {
             let book_root = book_root.unwrap_or_else(|| PathBuf::from("."));
@@ -126,10 +133,12 @@ pub fn run() -> Result<()> {
                 tag: &tag,
                 source: &source,
                 force,
+                source_url: source_url.as_deref(),
             })?;
             let verb = match report.outcome {
                 FreezeOutcome::Created => "created",
                 FreezeOutcome::Unchanged => "unchanged",
+                FreezeOutcome::UrlUpdated => "url updated",
                 FreezeOutcome::Replaced => "replaced",
             };
             println!("{verb}: {tag}");
@@ -151,6 +160,15 @@ pub fn run() -> Result<()> {
             );
             if let Some(prev) = report.previous_tag {
                 println!("  diff:    {{{{#diff {prev} {tag}}}}}");
+            }
+            if let Some(url) = report.url {
+                println!("  url:     {url}");
+            }
+            if let Some(url) = report.dropped_url {
+                eprintln!(
+                    "warning: dropped the url recorded for `{tag}` ({url}); it pointed at the \
+                     replaced content. Pass --source-url to record a new one."
+                );
             }
             Ok(())
         }

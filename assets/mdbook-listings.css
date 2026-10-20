@@ -70,8 +70,17 @@
  * space in the markup reads as too tight -- the pill looks welded to the
  * filename. Only the pill directly following the path needs this; the arrow
  * between a diff's two pills already separates them. */
-.listing-provenance code + .listing-tag {
+.listing-provenance code + .listing-tag,
+.listing-provenance a + .listing-tag {
   margin-left: 0.4em;
+}
+
+/* A linked path stays as muted as the rest of the line; the underline is
+ * what says it can be followed. */
+.listing-provenance a:link,
+.listing-provenance a:visited {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .callout-overlay {

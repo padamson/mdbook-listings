@@ -288,3 +288,94 @@ fn freeze_without_tag_errors_when_priors_use_unrecognised_convention() {
         .stderr(contains("compose-yaml-ch02-phase1"))
         .stderr(contains("--tag"));
 }
+
+#[test]
+fn freeze_records_and_echoes_a_source_url() {
+    let tmp = TempDir::new().expect("tempdir");
+    let book_root = tmp.path().join("book");
+    fs::create_dir_all(&book_root).unwrap();
+    let source = tmp.path().join("compose.yaml");
+    fs::write(&source, "a: 1\n").unwrap();
+    let url = "https://example.com/blob/abc/compose.yaml";
+
+    mdbook_listings()
+        .args([
+            "freeze",
+            "--tag",
+            "demo",
+            "--source-url",
+            url,
+            "--book-root",
+        ])
+        .arg(&book_root)
+        .arg(&source)
+        .assert()
+        .success()
+        .stdout(contains(format!("url:     {url}")));
+    let manifest = fs::read_to_string(book_root.join("listings.toml")).unwrap();
+    assert!(
+        manifest.contains(&format!("url = \"{url}\"")),
+        "got:\n{manifest}"
+    );
+}
+
+/// A forced re-freeze of changed content drops a URL pinned to the old bytes,
+/// and says so rather than leaving the link to go stale or vanish silently.
+#[test]
+fn freeze_warns_when_a_forced_refreeze_drops_the_url() {
+    let tmp = TempDir::new().expect("tempdir");
+    let book_root = tmp.path().join("book");
+    fs::create_dir_all(&book_root).unwrap();
+    let source = tmp.path().join("compose.yaml");
+    fs::write(&source, "a: 1\n").unwrap();
+    let url = "https://example.com/blob/abc/compose.yaml";
+
+    mdbook_listings()
+        .args([
+            "freeze",
+            "--tag",
+            "demo",
+            "--source-url",
+            url,
+            "--book-root",
+        ])
+        .arg(&book_root)
+        .arg(&source)
+        .assert()
+        .success();
+    fs::write(&source, "a: 2\n").unwrap();
+    mdbook_listings()
+        .args(["freeze", "--tag", "demo", "--force", "--book-root"])
+        .arg(&book_root)
+        .arg(&source)
+        .assert()
+        .success()
+        .stderr(contains(url))
+        .stderr(contains("--source-url"));
+}
+
+/// Setting a URL on an unchanged source rewrites listings.toml, so the summary
+/// must not say "unchanged".
+#[test]
+fn freeze_reports_a_url_only_update() {
+    let tmp = TempDir::new().expect("tempdir");
+    let book_root = tmp.path().join("book");
+    fs::create_dir_all(&book_root).unwrap();
+    let source = tmp.path().join("compose.yaml");
+    fs::write(&source, "a: 1\n").unwrap();
+
+    mdbook_listings()
+        .args(["freeze", "--tag", "demo", "--book-root"])
+        .arg(&book_root)
+        .arg(&source)
+        .assert()
+        .success();
+    mdbook_listings()
+        .args(["freeze", "--tag", "demo", "--book-root"])
+        .arg(&book_root)
+        .args(["--source-url", "https://example.com/abc/compose.yaml"])
+        .arg(&source)
+        .assert()
+        .success()
+        .stdout(contains("url updated: demo"));
+}

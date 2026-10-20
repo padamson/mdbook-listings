@@ -387,11 +387,13 @@ pub fn splice_chapter(
             // bookkeeping. An include whose tag is not in the manifest still
             // gets an anchor -- verify reports the mismatch -- just without a
             // source to show.
-            let source = manifest.find(tag).and_then(|l| paths.display(&l.source));
+            let source = manifest
+                .find(tag)
+                .and_then(|l| paths.display(&l.source, l.url.as_deref()));
             // CALLOUT: include-anchor-emit One `<div data-listing-tag="...">` per `listings/` include, dropped just past the closing fence so the screenshot tool can find the rendered `<pre>` via `previousElementSibling`.
             out.push_str(&crate::anchor::include_anchor(
                 tag,
-                source.as_deref(),
+                source.as_ref(),
                 d.range.as_ref(),
                 &crate::anchor::AnchorMeta {
                     caption: d.caption.as_deref(),
@@ -429,6 +431,7 @@ mod tests {
                 source: source.to_string(),
                 frozen: format!("src/listings/{tag}.rs"),
                 sha256: "0".to_string(),
+                url: None,
             }],
         }
     }

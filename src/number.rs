@@ -11,6 +11,7 @@
 
 use crate::callout::SupportedRenderer;
 use crate::fence::FencedBlocks;
+use crate::source_path::ShownSource;
 
 /// A numbered listing's locator anchor.
 struct Anchor {
@@ -25,9 +26,9 @@ struct Anchor {
     /// What the listing *is*: its tag, or both tags for a diff. Frees the
     /// caption from carrying identity. Empty when the anchor names none.
     tags: Vec<String>,
-    /// Where the bytes came from: the manifest `source` path, or both paths
-    /// when a diff's operands disagree. Still HTML-escaped.
-    source: Option<String>,
+    /// Where the bytes came from: one source, or both when a diff's operands
+    /// disagree. Paths and URLs still HTML-escaped.
+    sources: Vec<ShownSource>,
     /// `show-provenance="..."` on the directive, overriding the book flag.
     show_provenance: Option<bool>,
 }
@@ -108,8 +109,7 @@ pub fn splice_chapter(
         )
         .unwrap_or_default();
         if anchor.show_provenance.unwrap_or(show_listing_provenance)
-            && let Some(element) =
-                render_provenance(anchor.source.as_deref(), &anchor.tags, renderer)
+            && let Some(element) = render_provenance(&anchor.sources, &anchor.tags, renderer)
         {
             chrome.push_str(&element);
         }
@@ -254,19 +254,30 @@ pub(crate) fn label_text(number: Option<&str>, caption: Option<&str>) -> String 
 /// and Material for MkDocs give it the block's title bar. The tag trails as a
 /// pill: no toolchain has a precedent for a snapshot revision, so it has to
 /// read as metadata about the path rather than as a second path.
+///
+/// A source with a URL links its path there.
 fn render_provenance(
-    source: Option<&str>,
+    sources: &[ShownSource],
     tags: &[String],
     renderer: SupportedRenderer,
 ) -> Option<String> {
-    if source.is_none() && tags.is_empty() {
+    if sources.is_empty() && tags.is_empty() {
         return None;
     }
     match renderer {
         SupportedRenderer::Html => {
             let mut parts: Vec<String> = Vec::new();
-            if let Some(source) = source {
-                parts.push(format!("<code>{source}</code>"));
+            if !sources.is_empty() {
+                parts.push(
+                    sources
+                        .iter()
+                        .map(|s| match &s.url {
+                            Some(url) => format!("<a href=\"{url}\"><code>{}</code></a>", s.path),
+                            None => format!("<code>{}</code>", s.path),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" → "),
+                );
             }
             if !tags.is_empty() {
                 parts.push(
@@ -289,10 +300,24 @@ fn render_provenance(
                 .map(|t| format!("`{}`", crate::callout::html_unescape(t)))
                 .collect::<Vec<_>>()
                 .join(" → ");
-            let line = match (source, tags.is_empty()) {
-                (Some(s), false) => format!("`{}` ({tags})", crate::callout::html_unescape(s)),
-                (Some(s), true) => format!("`{}`", crate::callout::html_unescape(s)),
-                (None, _) => tags,
+            let paths = sources
+                .iter()
+                .map(|s| {
+                    let path = format!("`{}`", crate::callout::html_unescape(&s.path));
+                    match &s.url {
+                        // The `<…>` destination keeps a `)` in the URL from
+                        // ending the link; check_url refuses `<`, `>` and
+                        // whitespace, the only things that could end it.
+                        Some(url) => format!("[{path}](<{}>)", crate::callout::html_unescape(url)),
+                        None => path,
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" → ");
+            let line = match (paths.is_empty(), tags.is_empty()) {
+                (false, false) => format!("{paths} ({tags})"),
+                (false, true) => paths,
+                (true, _) => tags,
             };
             Some(format!("{line}\n\n"))
         }
@@ -319,16 +344,25 @@ fn anchor_after_fence(content: &str, close_end: usize) -> Option<Anchor> {
     // pair of each. A diff whose operands share a source shows it once —
     // two versions of one file is the common case, and repeating the path
     // would say nothing.
-    let (tags, source) = match attr("data-listing-tag") {
-        Some(tag) => (vec![tag], attr("data-listing-source")),
+    let source = |name: &str| {
+        attr(name).map(|path| ShownSource {
+            path,
+            url: attr(&format!("{name}-url")),
+        })
+    };
+    let (tags, sources) = match attr("data-listing-tag") {
+        Some(tag) => (
+            vec![tag],
+            source("data-listing-source").into_iter().collect(),
+        ),
         None => (
             collapse_equal(
                 attr("data-listing-diff-left"),
                 attr("data-listing-diff-right"),
             ),
             join_sources(
-                attr("data-listing-diff-left-source"),
-                attr("data-listing-diff-right-source"),
+                source("data-listing-diff-left-source"),
+                source("data-listing-diff-right-source"),
             ),
         ),
     };
@@ -337,7 +371,7 @@ fn anchor_after_fence(content: &str, close_end: usize) -> Option<Anchor> {
         caption: attr("data-listing-caption"),
         label: attr("data-listing-label"),
         tags,
-        source,
+        sources,
         show_provenance: attr("data-listing-show-provenance").and_then(|v| v.parse::<bool>().ok()),
     })
 }
@@ -352,14 +386,22 @@ fn collapse_equal(left: Option<String>, right: Option<String>) -> Vec<String> {
     }
 }
 
-/// A diff's two source paths as one string: collapsed when its operands were
-/// frozen from the same file (the usual case — two versions of one thing),
-/// and `a → b` when they genuinely differ.
-fn join_sources(left: Option<String>, right: Option<String>) -> Option<String> {
+/// A diff's two sources as the ones to show. Operands frozen from the same
+/// file (the usual case, two versions of one thing) show its path once,
+/// linked when either side records a URL. Two different URLs for one path
+/// are two snapshots at different commits, so each keeps its own link.
+fn join_sources(left: Option<ShownSource>, right: Option<ShownSource>) -> Vec<ShownSource> {
     match (left, right) {
-        (Some(l), Some(r)) if l == r => Some(l),
-        (Some(l), Some(r)) => Some(format!("{l} → {r}")),
-        (one, None) | (None, one) => one,
+        (Some(l), Some(r))
+            if l.path == r.path && (l.url.is_none() || r.url.is_none() || l.url == r.url) =>
+        {
+            vec![ShownSource {
+                url: l.url.or(r.url),
+                path: l.path,
+            }]
+        }
+        (Some(l), Some(r)) => vec![l, r],
+        (one, None) | (None, one) => one.into_iter().collect(),
     }
 }
 
@@ -600,11 +642,78 @@ mod tests {
         let (out, _) = splice_chapter(&content, Some("5"), true, true, Html);
         assert!(
             out.contains(
-                "<code>../data/a.yaml → ../data/b.yaml</code> \
+                "<code>../data/a.yaml</code> → <code>../data/b.yaml</code> \
                  <span class=\"listing-tag\">a-v1</span> → \
                  <span class=\"listing-tag\">b-v1</span>"
             ),
             "different files name both paths; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_source_with_a_url_links_its_path() {
+        let content = sourced_include_block("bench-v1", "data/bench.yaml", None).replace(
+            "aria-hidden",
+            "data-listing-source-url=\"https://example.com/b.yaml\" aria-hidden",
+        );
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html);
+        assert!(
+            out.contains(
+                "<a href=\"https://example.com/b.yaml\"><code>data/bench.yaml</code></a> \
+                 <span class=\"listing-tag\">bench-v1</span>"
+            ),
+            "got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_diff_whose_operands_link_to_different_snapshots_keeps_both_links() {
+        // Same file, frozen at two commits: collapsing to one path would have
+        // to drop one of the two links.
+        let content = sourced_diff_block("b-v1", "b-v2", "b.yaml", "b.yaml").replace(
+            "aria-hidden",
+            "data-listing-diff-left-source-url=\"https://x/aaa/b.yaml\" \
+             data-listing-diff-right-source-url=\"https://x/bbb/b.yaml\" aria-hidden",
+        );
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html);
+        assert!(
+            out.contains(
+                "<a href=\"https://x/aaa/b.yaml\"><code>b.yaml</code></a> → \
+                 <a href=\"https://x/bbb/b.yaml\"><code>b.yaml</code></a>"
+            ),
+            "got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_diff_of_a_linked_snapshot_against_an_unlinked_one_shows_the_path_once() {
+        // A frozen tag diffed against its live copy: the live side never
+        // carries a URL, and naming the file twice would read as two files.
+        let content = sourced_diff_block("b-v1", "live", "b.yaml", "b.yaml").replace(
+            "aria-hidden",
+            "data-listing-diff-left-source-url=\"https://x/aaa/b.yaml\" aria-hidden",
+        );
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html);
+        assert!(
+            out.contains(
+                "<div class=\"listing-provenance\">\
+                 <a href=\"https://x/aaa/b.yaml\"><code>b.yaml</code></a> \
+                 <span class=\"listing-tag\">b-v1</span>"
+            ),
+            "got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn typst_renders_a_linked_source_as_a_markdown_link() {
+        let content = sourced_include_block("bench-v1", "data/bench.yaml", None).replace(
+            "aria-hidden",
+            "data-listing-source-url=\"https://example.com/b.yaml?a=1&amp;b=2\" aria-hidden",
+        );
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, TypstPdf);
+        assert!(
+            out.contains("[`data/bench.yaml`](<https://example.com/b.yaml?a=1&b=2>) (`bench-v1`)"),
+            "the URL is unescaped from its attribute form; got:\n{out}"
         );
     }
 

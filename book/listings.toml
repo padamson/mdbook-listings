@@ -29,6 +29,7 @@ tag = "freeze-tests-v1"
 source = "../tests/freeze.rs"
 frozen = "src/listings/freeze-tests-v1.rs"
 sha256 = "34b8b09bc6d084b5e40034bd2e82a3c3e2e67167ffd277350c99e8ace4b2bf48"
+url = "https://github.com/padamson/mdbook-listings/blob/0eb3f48e64db697d8fd2d30ac01d6889c990aaf1/tests/freeze.rs"
 
 [[listing]]
 tag = "install-tests-v1"

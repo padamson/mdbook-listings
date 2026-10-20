@@ -1233,3 +1233,51 @@ async fn listing_ref_renders_as_link_to_current_number() {
     )
     .await;
 }
+
+// Provenance links: `freeze-tests-v1` in ch03 was frozen with
+// `--source-url`, so its provenance path links to `tests/freeze.rs` at the
+// commit it came from. The stylesheet keeps the link as muted as the rest of
+// the line and spaces the tag pill off it as it does a bare path; both rules
+// key on markup only a linked path produces.
+#[tokio::test]
+async fn a_provenance_path_frozen_with_a_url_renders_as_a_muted_link() {
+    with_traced_chapter(
+        "a_provenance_path_frozen_with_a_url_renders_as_a_muted_link",
+        "ch03-freeze-a-listing",
+        |page| async move {
+            let link = page.locator(locator!(
+                r#".listing-provenance a[href$="/blob/0eb3f48e64db697d8fd2d30ac01d6889c990aaf1/tests/freeze.rs"]"#
+            ));
+            expect(link.clone())
+                .to_have_text("tests/freeze.rs")
+                .await
+                .expect("the linked text is the repo-relative path");
+            expect(link)
+                .to_have_css("text-decoration-line", "underline")
+                .await
+                .expect("the underline is what marks the muted path as a link");
+            let pill = page.locator(locator!(".listing-provenance a + .listing-tag"));
+            expect(pill)
+                .not()
+                .to_have_css("margin-left", "0px")
+                .await
+                .expect("the pill keeps its gap after a linked path");
+            let colours: String = page
+                .evaluate_value(
+                    r#"(() => {
+                        const a = document.querySelector('.listing-provenance a');
+                        const line = a.closest('.listing-provenance');
+                        return getComputedStyle(a).color + ' | ' + getComputedStyle(line).color;
+                    })()"#,
+                )
+                .await
+                .expect("read link and line colours");
+            let (link_colour, line_colour) = colours.split_once(" | ").expect("two colours");
+            assert_eq!(
+                link_colour, line_colour,
+                "the link inherits the line's muted colour, not the theme's link colour"
+            );
+        },
+    )
+    .await;
+}
