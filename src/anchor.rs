@@ -71,8 +71,10 @@ pub(crate) struct AnchorMeta<'a> {
     pub(crate) show_provenance: Option<bool>,
 }
 
-/// The locator anchor for a frozen-listing include. Trailing newline
-/// included — the anchor is a line of its own after the closing fence.
+/// The locator anchor for a frozen-listing include, a line of its own after
+/// the closing fence. A blank line follows it: the `<div` opens a CommonMark
+/// HTML block that runs to the next blank line, and without one a listing or
+/// paragraph right after it would render as raw text inside that block.
 pub(crate) fn include_anchor(
     tag: &str,
     source: Option<&ShownSource>,
@@ -87,7 +89,7 @@ pub(crate) fn include_anchor(
         anchor.push_str(&format!(" data-listing-tag-range=\"{}\"", range.render()));
     }
     push_meta(&mut anchor, meta);
-    anchor.push_str(" aria-hidden=\"true\"></div>\n");
+    anchor.push_str(" aria-hidden=\"true\"></div>\n\n");
     anchor
 }
 
@@ -118,7 +120,9 @@ pub(crate) fn diff_anchor(left: &DiffOperand, right: &DiffOperand, meta: &Anchor
         }
     }
     push_meta(&mut anchor, meta);
-    anchor.push_str(" aria-hidden=\"true\"></div>");
+    // The directive's own line break follows, so this newline leaves the
+    // blank line that ends the anchor's HTML block (see [`include_anchor`]).
+    anchor.push_str(" aria-hidden=\"true\"></div>\n");
     anchor
 }
 
@@ -234,7 +238,10 @@ mod tests {
             attr_value(&anchor, "data-listing-label").as_deref(),
             Some("lbl")
         );
-        assert!(anchor.ends_with("</div>\n"), "anchor is its own line");
+        assert!(
+            anchor.ends_with("</div>\n\n"),
+            "anchor is its own line, then a blank line ends its HTML block"
+        );
     }
 
     #[test]

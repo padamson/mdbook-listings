@@ -959,7 +959,7 @@ mod tests {
             "{{#include listings/foo.rs}}\nAfter.\n",
         );
         assert_eq!(padded, clean, "padded:\n{padded}\nclean:\n{clean}");
-        assert!(padded.ends_with("</div>\nAfter.\n"), "got:\n{padded}");
+        assert!(padded.ends_with("</div>\n\nAfter.\n"), "got:\n{padded}");
     }
 
     #[test]

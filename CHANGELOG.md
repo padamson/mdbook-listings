@@ -76,6 +76,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   the `\{{#include …}}` escape, which keeps the include in the comment. A
   `{{#diff}}`, `{{#callout}}`, `{{#listing-ref}}` or `{{#list-of-listings}}`
   inside a comment is left as written, hidden with the comment.
+- **A fence line inside an HTML comment no longer swallows the code block
+  after it.** Fenced blocks were found by pairing fence lines, so a
+  ```` ``` ```` left inside `<!-- … -->` (or a raw HTML block) opened a block
+  that ran on through the next real one: that listing lost its language,
+  its callout markers were not rendered, and directives in it were judged
+  against the wrong block. Fenced blocks are now read with the same
+  CommonMark parse mdBook renders with, so they match the code blocks on the
+  page.
+- **A listing or paragraph written right after an include renders.** The
+  anchor `<div>` the preprocessor leaves after each listing opens an HTML
+  block, which runs to the next blank line. With none after it, a second
+  include on the next line, or prose directly below a listing, landed inside
+  that block and showed as raw text. A blank line now follows every anchor.
 
 ## [0.2.2] - 2026-09-27
 

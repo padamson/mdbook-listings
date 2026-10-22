@@ -51,15 +51,19 @@ pub(crate) fn scan_directives<'a>(
     prefix: &str,
     policy: FencePolicy,
 ) -> Vec<DirectiveOccurrence<'a>> {
-    let fences: Vec<(usize, usize)> = FencedBlocks::new(content)
-        .map(|b| (b.body_start, b.close_end))
-        .collect();
+    // Both parsed only once a candidate turns up: most scans find nothing.
+    let fences = std::cell::OnceCell::new();
     let in_fence = |pos: usize| {
         fences
+            .get_or_init(|| {
+                FencedBlocks::new(content)
+                    .map(|b| (b.body_start, b.close_end))
+                    .collect::<Vec<_>>()
+            })
             .iter()
             .find(|&&(start, end)| pos >= start && pos < end)
+            .copied()
     };
-    // Parsed only once a candidate turns up: most scans find nothing.
     let comments = std::cell::OnceCell::new();
     let in_comment = |pos: usize| {
         comments
@@ -95,7 +99,7 @@ pub(crate) fn scan_directives<'a>(
             continue;
         }
         let fence_close_end = match (in_fence(at), policy) {
-            (Some(&(_, close_end)), FencePolicy::Annotate) => Some(close_end),
+            (Some((_, close_end)), FencePolicy::Annotate) => Some(close_end),
             (Some(_), FencePolicy::SkipInside) => {
                 cursor = after_prefix;
                 continue;
@@ -123,10 +127,10 @@ pub(crate) fn scan_directives<'a>(
 /// that ends before any `-->` is text. A comment ends at its first `-->`,
 /// or with the HTML block or inline span that holds it.
 fn html_comments(content: &str) -> Vec<Range<usize>> {
-    use pulldown_cmark::{Event, Parser, Tag};
+    use pulldown_cmark::{Event, Tag};
 
     let mut out = Vec::new();
-    for (event, span) in Parser::new(content).into_offset_iter() {
+    for (event, span) in crate::fence::cmark_parser(content).into_offset_iter() {
         if !matches!(event, Event::Start(Tag::HtmlBlock) | Event::InlineHtml(_)) {
             continue;
         }

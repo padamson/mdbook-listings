@@ -11,13 +11,6 @@ pub(crate) struct Fence {
     pub(crate) count: usize,
 }
 
-#[derive(Clone, Copy)]
-struct OpenFence<'a> {
-    info: &'a str,
-    opener: Fence,
-    body_start: usize,
-}
-
 /// One closed fenced block, with byte offsets into the scanned content.
 ///
 /// Span semantics: the block's membership range is
@@ -39,70 +32,86 @@ pub(crate) struct FencedBlock<'a> {
     pub(crate) close_end: usize,
 }
 
-/// Iterator over the closed fenced blocks of a chapter. An unclosed fence
-/// at end-of-input yields nothing — without a closer there is no block.
+/// A CommonMark parser with the options mdBook's renderer uses by default
+/// (`mdbook_markdown::new_cmark_parser`), so every pass that asks "is this
+/// code?" or "where does this block end?" reads the chapter as the page
+/// does. Footnotes and definition lists are block containers that can end a
+/// fence early; tables split a row before reading its code spans.
+pub(crate) fn cmark_parser(content: &str) -> pulldown_cmark::Parser<'_> {
+    use pulldown_cmark::Options;
+    let mut opts = Options::empty();
+    opts.insert(Options::ENABLE_TABLES);
+    opts.insert(Options::ENABLE_FOOTNOTES);
+    opts.insert(Options::ENABLE_STRIKETHROUGH);
+    opts.insert(Options::ENABLE_TASKLISTS);
+    opts.insert(Options::ENABLE_HEADING_ATTRIBUTES);
+    opts.insert(Options::ENABLE_SMART_PUNCTUATION);
+    opts.insert(Options::ENABLE_DEFINITION_LIST);
+    opts.insert(Options::ENABLE_GFM);
+    pulldown_cmark::Parser::new_ext(content, opts)
+}
+
+/// The closed fenced blocks of a chapter, in order. Blocks come from the
+/// CommonMark parse, so a fence line inside an HTML comment or HTML block is
+/// text, as it is on the page. Two limits keep the passes' byte-level
+/// edits sound: the opener line itself must be a fence (indented at most 3
+/// spaces, no `>` or list marker before it), since the passes do not strip
+/// container prefixes from a body; and an unclosed fence yields nothing,
+/// since without a closer there is no block.
 pub(crate) struct FencedBlocks<'a> {
-    content: &'a str,
-    line_start: usize,
-    open: Option<OpenFence<'a>>,
+    blocks: std::vec::IntoIter<FencedBlock<'a>>,
 }
 
 impl<'a> FencedBlocks<'a> {
     pub(crate) fn new(content: &'a str) -> Self {
+        use pulldown_cmark::{CodeBlockKind, Event, Tag};
+
+        let mut blocks = Vec::new();
+        for (event, range) in cmark_parser(content).into_offset_iter() {
+            if !matches!(
+                event,
+                Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(_)))
+            ) {
+                continue;
+            }
+            if let Some(block) = closed_block(content, range) {
+                blocks.push(block);
+            }
+        }
         FencedBlocks {
-            content,
-            line_start: 0,
-            open: None,
+            blocks: blocks.into_iter(),
         }
     }
+}
+
+/// The block a parsed fenced code block spans, when its opener line is a
+/// bare fence and its last line closes it.
+fn closed_block(content: &str, range: std::ops::Range<usize>) -> Option<FencedBlock<'_>> {
+    let line_start = content[..range.start].rfind('\n').map_or(0, |i| i + 1);
+    let opener_end = content[line_start..]
+        .find('\n')
+        .map_or(content.len(), |i| line_start + i);
+    let (info, opener) = fence_open_info(&content[line_start..opener_end])?;
+    let block = content[..range.end].trim_end_matches('\n');
+    let close_start = block.rfind('\n').map_or(0, |i| i + 1);
+    if close_start <= line_start || !line_closes_fence(&block[close_start..], opener) {
+        return None;
+    }
+    let close_end = (block.len() + 1).min(content.len());
+    let body_start = opener_end + 1;
+    Some(FencedBlock {
+        info,
+        body: &content[body_start..close_start],
+        body_start,
+        close_end,
+    })
 }
 
 impl<'a> Iterator for FencedBlocks<'a> {
     type Item = FencedBlock<'a>;
 
     fn next(&mut self) -> Option<FencedBlock<'a>> {
-        let content = self.content;
-        let len = content.len();
-        while self.line_start < len {
-            let line_end = match content[self.line_start..].find('\n') {
-                Some(off) => self.line_start + off,
-                None => len,
-            };
-            let line = &content[self.line_start..line_end];
-            let mut block = None;
-            match self.open {
-                None => {
-                    if let Some((info, opener)) = fence_open_info(line) {
-                        self.open = Some(OpenFence {
-                            info,
-                            opener,
-                            body_start: line_end + 1,
-                        });
-                    }
-                }
-                Some(o) => {
-                    if line_closes_fence(line, o.opener) {
-                        let close_end = if line_end < len {
-                            line_end + 1
-                        } else {
-                            line_end
-                        };
-                        block = Some(FencedBlock {
-                            info: o.info,
-                            body: &content[o.body_start..self.line_start],
-                            body_start: o.body_start,
-                            close_end,
-                        });
-                        self.open = None;
-                    }
-                }
-            }
-            self.line_start = if line_end == len { len } else { line_end + 1 };
-            if block.is_some() {
-                return block;
-            }
-        }
-        None
+        self.blocks.next()
     }
 }
 
@@ -327,6 +336,54 @@ mod tests {
         let got = blocks("```\n```\n");
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].body, "");
+    }
+
+    #[test]
+    fn a_fence_line_inside_an_html_comment_opens_nothing() {
+        let s = "<!--\n```\nold\n-->\n\n```rust\n// CALLOUT: x Note.\nfn a() {}\n```\n";
+        let got = blocks(s);
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].info, "rust");
+        assert_eq!(got[0].body, "// CALLOUT: x Note.\nfn a() {}\n");
+    }
+
+    #[test]
+    fn a_fence_line_inside_an_html_block_opens_nothing() {
+        let s = "<div>\n```\n</div>\n\n```rust\nfn a() {}\n```\n";
+        let got = blocks(s);
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].info, "rust");
+    }
+
+    #[test]
+    fn a_fence_in_a_list_item_indented_under_four_spaces_is_a_block() {
+        let got = blocks("- item\n\n  ```rust\n  fn a() {}\n  ```\n");
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].body, "  fn a() {}\n");
+    }
+
+    #[test]
+    fn a_fence_behind_a_blockquote_marker_is_not_walked() {
+        // Its lines carry `> ` prefixes the passes do not strip.
+        assert_eq!(blocks("> ```rust\n> fn a() {}\n> ```\n"), vec![]);
+    }
+
+    #[test]
+    fn a_fence_inside_a_markdown_fence_is_body_text() {
+        let s = "````markdown\n```rust\nfn a() {}\n```\n````\n";
+        let got = blocks(s);
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].info, "markdown");
+    }
+
+    #[test]
+    fn a_fence_that_outlives_its_definition_list_item_is_not_closed() {
+        // As mdBook renders it, the definition ends the indented block early
+        // and the column-0 fence opens a new one that never closes.
+        assert_eq!(
+            blocks("Term\n: Def\n\n  ```rust\n  fn a() {}\n```\n"),
+            vec![]
+        );
     }
 
     #[test]

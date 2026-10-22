@@ -331,6 +331,45 @@ mod tests {
     }
 
     #[test]
+    fn a_listing_after_a_commented_out_fence_keeps_its_language_and_callouts() {
+        // The ``` inside the comment must not open a block that runs on
+        // through the listing: that would strip its `rust` info string and
+        // with it the comment prefix its CALLOUT marker is found by.
+        let out = run(
+            "<!--\n```\nold\n-->\n\n{{#include listings/sample.rs caption=\"S\"}}\n",
+            &PipelineOptions {
+                number_listings: true,
+                show_listing_provenance: false,
+                list_of_listings: false,
+                sidebar_mode: SidebarMode::Off,
+            },
+        );
+        assert!(out.contains("Listing 5.1"), "numbered; got:\n{out}");
+        assert!(
+            !out.contains("CALLOUT: entry"),
+            "marker found and stripped; got:\n{out}"
+        );
+        assert!(out.contains(">5.1.1<"), "badge rendered; got:\n{out}");
+    }
+
+    #[test]
+    fn includes_on_adjacent_lines_are_both_numbered() {
+        // Each anchor opens an HTML block; the blank line after it is what
+        // keeps the next listing out of that block.
+        let out = run(
+            "{{#include listings/sample.rs}}\n{{#include listings/other.rs}}\n",
+            &PipelineOptions {
+                number_listings: true,
+                show_listing_provenance: false,
+                list_of_listings: false,
+                sidebar_mode: SidebarMode::Off,
+            },
+        );
+        assert!(out.contains("Listing 5.1"), "got:\n{out}");
+        assert!(out.contains("Listing 5.2"), "got:\n{out}");
+    }
+
+    #[test]
     fn provenance_reaches_the_page_from_the_manifest() {
         // End to end: the flag is read, the include splicer looks the tag up
         // in listings.toml, and the numbering pass renders what it found.
