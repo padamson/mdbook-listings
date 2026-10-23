@@ -89,6 +89,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   block, which runs to the next blank line. With none after it, a second
   include on the next line, or prose directly below a listing, landed inside
   that block and showed as raw text. A blank line now follows every anchor.
+- **Inline code is recognised the way the page renders it.** Whether a
+  directive in prose is a quoted example used to be decided by counting
+  backticks before it on its line, which misread four cases. A directive
+  inside a double-backtick span (``` ``{{#diff a b}}`` ```) was rendered, and
+  so was one inside a code span that starts on the line before. One after a
+  double-backtick span holding a literal backtick was left as text, and so
+  was one after a backslash-escaped backtick. Prose is now read with the
+  same CommonMark parse that finds HTML comments and fenced blocks, so all
+  four follow the code spans the page shows. Inside a code block or raw HTML
+  block, where CommonMark reads no inline code, a directive after an odd
+  number of backticks on its line is still treated as a quoted example.
 
 ## [0.2.2] - 2026-09-27
 

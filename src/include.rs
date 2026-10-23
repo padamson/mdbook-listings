@@ -1243,11 +1243,16 @@ mod tests {
     }
 
     #[test]
-    fn unintercepted_flags_a_double_backtick_span_holding_a_literal_backtick() {
-        // Three backticks precede the directive, so the single-backtick
-        // parity check reads it as inside code; mdbook does not care.
+    fn an_include_after_a_double_backtick_span_holding_a_backtick_is_intercepted() {
+        // The span closes before the directive, so the preprocessor sees it
+        // and reports it for sharing its line, not for slipping past.
         let content = "``a ` b`` then {{#include listings/foo.rs}}\n";
-        assert_eq!(unintercepted(content), found("listings/foo.rs", 1));
+        assert_eq!(unintercepted(content), vec![]);
+        let rejected = rejected_includes(content);
+        assert!(
+            matches!(rejected.as_slice(), [r] if matches!(r.why, Rejection::MidLine)),
+            "got {rejected:?}"
+        );
     }
 
     #[test]

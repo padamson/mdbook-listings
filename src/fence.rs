@@ -64,23 +64,28 @@ pub(crate) struct FencedBlocks<'a> {
 
 impl<'a> FencedBlocks<'a> {
     pub(crate) fn new(content: &'a str) -> Self {
-        use pulldown_cmark::{CodeBlockKind, Event, Tag};
-
-        let mut blocks = Vec::new();
-        for (event, range) in cmark_parser(content).into_offset_iter() {
-            if !matches!(
-                event,
-                Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(_)))
-            ) {
-                continue;
-            }
-            if let Some(block) = closed_block(content, range) {
-                blocks.push(block);
-            }
-        }
+        let blocks: Vec<_> = cmark_parser(content)
+            .into_offset_iter()
+            .filter_map(|(event, range)| fenced_block(content, &event, range))
+            .collect();
         FencedBlocks {
             blocks: blocks.into_iter(),
         }
+    }
+}
+
+/// The block `event` starts, when it is a fenced code block that the passes
+/// walk (see [`FencedBlocks`]). The one definition of "a fence" shared by
+/// [`FencedBlocks`] and the directive scanner, which reads the same parse.
+pub(crate) fn fenced_block<'a>(
+    content: &'a str,
+    event: &pulldown_cmark::Event,
+    range: std::ops::Range<usize>,
+) -> Option<FencedBlock<'a>> {
+    use pulldown_cmark::{CodeBlockKind, Event, Tag};
+    match event {
+        Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(_))) => closed_block(content, range),
+        _ => None,
     }
 }
 

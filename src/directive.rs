@@ -7,8 +7,6 @@
 
 use std::ops::Range;
 
-use crate::fence::FencedBlocks;
-
 /// One unescaped directive occurrence outside inline code and HTML comments.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct DirectiveOccurrence<'a> {
@@ -51,26 +49,9 @@ pub(crate) fn scan_directives<'a>(
     prefix: &str,
     policy: FencePolicy,
 ) -> Vec<DirectiveOccurrence<'a>> {
-    // Both parsed only once a candidate turns up: most scans find nothing.
-    let fences = std::cell::OnceCell::new();
-    let in_fence = |pos: usize| {
-        fences
-            .get_or_init(|| {
-                FencedBlocks::new(content)
-                    .map(|b| (b.body_start, b.close_end))
-                    .collect::<Vec<_>>()
-            })
-            .iter()
-            .find(|&&(start, end)| pos >= start && pos < end)
-            .copied()
-    };
-    let comments = std::cell::OnceCell::new();
-    let in_comment = |pos: usize| {
-        comments
-            .get_or_init(|| html_comments(content))
-            .iter()
-            .any(|c: &Range<usize>| c.contains(&pos))
-    };
+    // Parsed only once a candidate turns up: most scans find nothing.
+    let parsed = std::cell::OnceCell::new();
+    let regions = || parsed.get_or_init(|| Regions::of(content));
 
     let bytes = content.as_bytes();
     let mut out = Vec::new();
@@ -82,24 +63,12 @@ pub(crate) fn scan_directives<'a>(
             cursor = after_prefix;
             continue;
         }
-        // Count single backticks between the line start and the
-        // occurrence: an odd count means it sits between `…` markers — a
-        // quoted example in prose, not a directive. (Heuristic: double-
-        // backtick spans are not modelled.)
-        let line = content[..at]
-            .rsplit_once('\n')
-            .map_or(&content[..at], |(_, t)| t);
-        let backticks_before = line.bytes().filter(|&b| b == b'`').count();
-        if backticks_before % 2 == 1 {
+        if regions().skips(at) {
             cursor = after_prefix;
             continue;
         }
-        if in_comment(at) {
-            cursor = after_prefix;
-            continue;
-        }
-        let fence_close_end = match (in_fence(at), policy) {
-            (Some((_, close_end)), FencePolicy::Annotate) => Some(close_end),
+        let fence_close_end = match (regions().fence_close_end(at), policy) {
+            (Some(close_end), FencePolicy::Annotate) => Some(close_end),
             (Some(_), FencePolicy::SkipInside) => {
                 cursor = after_prefix;
                 continue;
@@ -122,30 +91,88 @@ pub(crate) fn scan_directives<'a>(
     out
 }
 
-/// Byte ranges of the HTML comments in `content`, as a CommonMark parser
-/// reads them, so a `<!--` in code, after a backslash, or in a paragraph
-/// that ends before any `-->` is text. A comment ends at its first `-->`,
-/// or with the HTML block or inline span that holds it.
-fn html_comments(content: &str) -> Vec<Range<usize>> {
-    use pulldown_cmark::{Event, Tag};
+/// Where CommonMark leaves a directive unrendered, and which fenced block
+/// holds it, from one parse of the chapter.
+struct Regions<'a> {
+    content: &'a str,
+    /// Inline code spans and HTML comments: a directive there is a quoted
+    /// example or hidden, however many backticks open the span and whatever
+    /// line it ends on.
+    hidden: Vec<Range<usize>>,
+    /// Code blocks and HTML blocks, where CommonMark reads no inline
+    /// markdown at all.
+    literal: Vec<Range<usize>>,
+    /// The `[body_start, close_end)` of each block `fence::fenced_block`
+    /// accepts, the same blocks `FencedBlocks` yields.
+    fences: Vec<Range<usize>>,
+}
 
-    let mut out = Vec::new();
-    for (event, span) in crate::fence::cmark_parser(content).into_offset_iter() {
-        if !matches!(event, Event::Start(Tag::HtmlBlock) | Event::InlineHtml(_)) {
-            continue;
+impl<'a> Regions<'a> {
+    fn of(content: &'a str) -> Self {
+        use pulldown_cmark::{Event, Tag};
+
+        let mut hidden = Vec::new();
+        let mut literal = Vec::new();
+        let mut fences = Vec::new();
+        for (event, span) in crate::fence::cmark_parser(content).into_offset_iter() {
+            if let Some(b) = crate::fence::fenced_block(content, &event, span.clone()) {
+                fences.push(b.body_start..b.close_end);
+            }
+            match event {
+                Event::Code(_) => hidden.push(span),
+                Event::Start(Tag::CodeBlock(_)) => literal.push(span),
+                Event::Start(Tag::HtmlBlock) => {
+                    push_comments(content, span.clone(), &mut hidden);
+                    literal.push(span);
+                }
+                Event::InlineHtml(_) => push_comments(content, span, &mut hidden),
+                _ => {}
+            }
         }
-        let html = &content[span.clone()];
-        let mut cursor = 0;
-        while let Some(rel) = html[cursor..].find("<!--") {
-            let at = cursor + rel;
-            let end = html[at + 2..]
-                .find("-->")
-                .map_or(html.len(), |e| at + 2 + e + 3);
-            out.push(span.start + at..span.start + end);
-            cursor = end;
+        Regions {
+            content,
+            hidden,
+            literal,
+            fences,
         }
     }
-    out
+
+    /// Whether a directive at `pos` is hidden or quoted. Inside a literal
+    /// block the backticks are the sample's own quoting (a markdown example
+    /// showing `` `{{#diff a b}}` ``), so an odd count before the directive
+    /// on its line marks it as quoted.
+    fn skips(&self, pos: usize) -> bool {
+        if self.hidden.iter().any(|r| r.contains(&pos)) {
+            return true;
+        }
+        if !self.literal.iter().any(|r| r.contains(&pos)) {
+            return false;
+        }
+        let before = &self.content[..pos];
+        let line = before.rsplit_once('\n').map_or(before, |(_, t)| t);
+        line.bytes().filter(|&b| b == b'`').count() % 2 == 1
+    }
+
+    fn fence_close_end(&self, pos: usize) -> Option<usize> {
+        self.fences.iter().find(|r| r.contains(&pos)).map(|r| r.end)
+    }
+}
+
+/// Push the HTML comments in an HTML block or inline span onto `out`. A comment ends at its
+/// first `-->`, or with the block or span that holds it; a `<!--` anywhere
+/// CommonMark reads as text (in code, after a backslash, in a paragraph that
+/// ends before any `-->`) never reaches here.
+fn push_comments(content: &str, span: Range<usize>, out: &mut Vec<Range<usize>>) {
+    let html = &content[span.clone()];
+    let mut cursor = 0;
+    while let Some(rel) = html[cursor..].find("<!--") {
+        let at = cursor + rel;
+        let end = html[at + 2..]
+            .find("-->")
+            .map_or(html.len(), |e| at + 2 + e + 3);
+        out.push(span.start + at..span.start + end);
+        cursor = end;
+    }
 }
 
 /// 1-based line number of `byte_offset` in `content`, for diagnostics.
@@ -289,6 +316,79 @@ mod tests {
         let got = scan(s, "{{#demo ");
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].args, "c d");
+    }
+
+    #[test]
+    fn scan_skips_occurrence_inside_a_double_backtick_span() {
+        // Two backticks precede the directive, an even count, but it sits
+        // inside the ``…`` span.
+        assert!(scan("quote ``{{#demo a b}}`` here\n", "{{#demo ").is_empty());
+    }
+
+    #[test]
+    fn scan_finds_occurrence_after_a_double_backtick_span_holding_a_backtick() {
+        let got = scan("``a ` b`` then {{#demo a b}}\n", "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
+    }
+
+    #[test]
+    fn scan_skips_occurrence_inside_a_code_span_that_crosses_a_line_break() {
+        let got = scan(
+            "A span `quoting\n{{#demo a b}}` across lines.\n",
+            "{{#demo ",
+        );
+        assert!(got.is_empty(), "got {got:?}");
+    }
+
+    #[test]
+    fn scan_finds_occurrence_after_a_backslash_escaped_backtick() {
+        let got = scan("A literal \\` then {{#demo a b}}\n", "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
+    }
+
+    #[test]
+    fn scan_annotate_skips_a_backtick_quoted_occurrence_inside_a_fence() {
+        // A markdown sample quoting the directive; CommonMark has no code
+        // spans inside a fence, so the line's own backticks decide.
+        let s = "```markdown\nUse `{{#demo a b}}` here.\n{{#demo c d}}\n```\n";
+        let got = scan_directives(s, "{{#demo ", FencePolicy::Annotate);
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].args, "c d");
+    }
+
+    #[test]
+    fn scan_skips_a_backtick_quoted_occurrence_in_every_literal_block() {
+        // Code blocks and HTML blocks have no inline code to parse, so the
+        // sample's own backticks mark the directive as quoted wherever
+        // CommonMark leaves the text literal.
+        for (what, s) in [
+            (
+                "indented code",
+                "Example:\n\n    Write `{{#demo a b}}` to compare.\n",
+            ),
+            ("html block", "<div>\nUse `{{#demo a b}}`\n</div>\n"),
+            (
+                "blockquoted fence",
+                "> ```markdown\n> Use `{{#demo a b}}`\n> ```\n",
+            ),
+            (
+                "deep list fence",
+                "- item\n  - sub\n\n        ```markdown\n        Use `{{#demo a b}}`\n        ```\n",
+            ),
+            ("unclosed fence", "```markdown\nUse `{{#demo a b}}`\n"),
+        ] {
+            let got = scan(s, "{{#demo ");
+            assert!(got.is_empty(), "{what}: got {got:?}");
+        }
+    }
+
+    #[test]
+    fn scan_splits_a_table_row_before_reading_its_code_spans() {
+        // mdBook renders with tables on: the pipe ends the cell, so the
+        // backticks on either side never pair into a span.
+        let s = "| a | b |\n|---|---|\n| `x | {{#demo a b}} y` |\n";
+        let got = scan(s, "{{#demo ");
+        assert_eq!(got.len(), 1, "got {got:?}");
     }
 
     #[test]
