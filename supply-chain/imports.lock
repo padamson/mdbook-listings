@@ -1032,6 +1032,12 @@ criteria = "safe-to-deploy"
 delta = "0.103.13 -> 0.103.15"
 notes = "Minor updates and feature shufflings."
 
+[[audits.bytecode-alliance.audits.rustls-webpki]]
+who = "Alex Crichton <alex@alexcrichton.com>"
+criteria = "safe-to-deploy"
+delta = "0.103.15 -> 0.103.16"
+notes = "Updated with new certificates"
+
 [[audits.bytecode-alliance.audits.semver]]
 who = "Pat Hickey <phickey@fastly.com>"
 criteria = "safe-to-deploy"
@@ -1158,6 +1164,12 @@ who = "Alex Crichton <alex@alexcrichton.com>"
 criteria = "safe-to-deploy"
 delta = "0.243.0 -> 0.244.0"
 notes = "The Bytecode Alliance is the author of this crate"
+
+[[audits.bytecode-alliance.audits.webpki-roots]]
+who = "Alex Crichton <alex@alexcrichton.com>"
+criteria = "safe-to-deploy"
+delta = "1.0.7 -> 1.0.10"
+notes = "Only contains updated certs"
 
 [[audits.bytecode-alliance.audits.xattr]]
 who = "Andrew Brown <andrew.brown@intel.com>"

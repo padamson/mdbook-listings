@@ -99,6 +99,12 @@ criteria = "safe-to-deploy"
 delta = "3.1.2 -> 3.2.0"
 notes = "New TextMerge three-way merge module, WhitespaceMode line comparisons, Myers algorithm rework (Git-style bounded splits) plus RawMyers for the old behavior, and performance work. Pure algorithm/API code: no unsafe anywhere in src, no build script, no I/O, no dependency changes."
 
+[[audits.webpki-roots]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "1.0.10 -> 1.0.11"
+notes = "Removes two trust anchors from TLS_SERVER_ROOTS (emSign Root CA - C1 and emSign ECC Root CA - C3) and bumps the version. Data-only: no code, no unsafe, no build script or dependency changes. Taken for RUSTSEC-2026-0381 (fixed in 1.0.10, which imported audits cover)."
+
 [[trusted.aho-corasick]]
 criteria = "safe-to-deploy"
 user-id = 189 # Andrew Gallant (BurntSushi)
