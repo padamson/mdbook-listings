@@ -66,10 +66,6 @@ criteria = "safe-to-deploy"
 version = "0.2.0"
 criteria = "safe-to-run"
 
-[[exemptions.chacha20]]
-version = "0.10.1"
-criteria = "safe-to-deploy"
-
 [[exemptions.const-oid]]
 version = "0.10.2"
 criteria = "safe-to-deploy"
@@ -139,10 +135,6 @@ version = "0.3.33"
 criteria = "safe-to-run"
 
 [[exemptions.futures-channel]]
-version = "0.3.33"
-criteria = "safe-to-deploy"
-
-[[exemptions.futures-core]]
 version = "0.3.33"
 criteria = "safe-to-deploy"
 
@@ -314,10 +306,6 @@ criteria = "safe-to-deploy"
 version = "0.10.2"
 criteria = "safe-to-deploy"
 
-[[exemptions.rand_core]]
-version = "0.10.1"
-criteria = "safe-to-deploy"
-
 [[exemptions.rangemap]]
 version = "1.7.1"
 criteria = "safe-to-run"
@@ -390,11 +378,6 @@ criteria = "safe-to-deploy"
 version = "0.1.5"
 criteria = "safe-to-run"
 
-[[exemptions.sync_wrapper]]
-version = "0.1.2"
-criteria = "safe-to-deploy"
-notes = "dev-only: reached through playwright-rs 0.18's route_service (tower) and used by the e2e suite and the screenshot tool, never the shipped binary. 496 lines; no trusted publisher to lean on."
-
 [[exemptions.tempfile]]
 version = "3.6.0"
 criteria = "safe-to-deploy"
@@ -415,11 +398,6 @@ criteria = "safe-to-deploy"
 version = "0.30.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.tower-layer]]
-version = "0.3.2"
-criteria = "safe-to-deploy"
-notes = "dev-only: the tower layer trait behind playwright-rs 0.18's route_service, used by the e2e suite and the screenshot tool, never the shipped binary. 690-line delta; 0.3.2 is published by davidpdrsn, whom no imported audit set trusts (carllerche, whom mozilla trusts, published only earlier versions)."
-
 [[exemptions.tower-service]]
 version = "0.3.2"
 criteria = "safe-to-deploy"
@@ -431,10 +409,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.tracing-attributes]]
 version = "0.1.31"
-criteria = "safe-to-deploy"
-
-[[exemptions.tracing-core]]
-version = "0.1.36"
 criteria = "safe-to-deploy"
 
 [[exemptions.tracing-subscriber]]
@@ -459,10 +433,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.typenum]]
 version = "1.20.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.untrusted]]
-version = "0.9.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.ureq]]
