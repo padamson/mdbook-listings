@@ -124,11 +124,7 @@ impl<'a> Iterator for FencedBlocks<'a> {
 /// backticks or tildes. Returns the trimmed info string and the fence
 /// shape, or `None` when the line opens nothing.
 pub(crate) fn fence_open_info(line: &str) -> Option<(&str, Fence)> {
-    let trimmed = line.trim_start();
-    let leading_spaces = line.len() - trimmed.len();
-    if leading_spaces > 3 {
-        return None;
-    }
+    let trimmed = unindented_fence_line(line)?;
     let bytes = trimmed.as_bytes();
     let fence_char = match bytes.first()? {
         b'`' => b'`',
@@ -154,17 +150,22 @@ pub(crate) fn fence_open_info(line: &str) -> Option<(&str, Fence)> {
 /// which is what lets included source files contain `\`\`\`yaml` inside
 /// string literals without prematurely terminating the outer fence.
 pub(crate) fn line_closes_fence(line: &str, opener: Fence) -> bool {
-    let trimmed = line.trim_start();
-    let leading_spaces = line.len() - trimmed.len();
-    if leading_spaces > 3 {
+    let Some(trimmed) = unindented_fence_line(line) else {
         return false;
-    }
+    };
     let bytes = trimmed.as_bytes();
     let count = bytes.iter().take_while(|&&b| b == opener.char).count();
     if count < opener.count {
         return false;
     }
     trimmed[count..].trim().is_empty()
+}
+
+/// `line` without its indent, when that indent is within the 3 spaces a
+/// fence line may carry.
+fn unindented_fence_line(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    (line.len() - trimmed.len() <= 3).then_some(trimmed)
 }
 
 /// The fence to wrap `body` in so the body cannot close it: one longer
@@ -181,11 +182,9 @@ pub(crate) fn fence_for_body(body: &str, char: u8) -> Fence {
     let longest_run = body
         .lines()
         .map(|line| {
-            let trimmed = line.trim_start();
-            if line.len() - trimmed.len() > 3 {
-                return 0;
-            }
-            trimmed.bytes().take_while(|&b| b == char).count()
+            unindented_fence_line(line).map_or(0, |trimmed| {
+                trimmed.bytes().take_while(|&b| b == char).count()
+            })
         })
         .filter(|&run| run >= 3)
         .max()
@@ -312,6 +311,11 @@ mod tests {
         let got = blocks("```\nbody\n    ```\nmore\n```\n");
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].body, "body\n    ```\nmore\n");
+    }
+
+    #[test]
+    fn fenced_blocks_four_space_indented_last_line_at_eof_does_not_close() {
+        assert_eq!(blocks("```\nbody\n    ```\n"), vec![]);
     }
 
     #[test]
