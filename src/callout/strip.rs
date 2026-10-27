@@ -1,3 +1,4 @@
+use std::ops::Range;
 use std::path::Path;
 
 use super::SpliceError;
@@ -119,6 +120,24 @@ pub(super) struct ListingAnchor<'c> {
     pub(super) range_start_source_line: Option<usize>,
 }
 
+impl ListingAnchor<'_> {
+    /// The listing's source lines that `block_text` shows: the whole file for
+    /// a full include, the slice (less its header lines) for a ranged one.
+    pub(super) fn shown_source_lines(&self, block_text: &str) -> Range<usize> {
+        let (start, header) = self.first_line_and_header();
+        start..start + block_text.lines().count().saturating_sub(header)
+    }
+
+    /// The first source line the block shows, and how many header lines the
+    /// include splicer put above it.
+    fn first_line_and_header(&self) -> (usize, usize) {
+        match self.range_start_source_line {
+            None => (1, 0),
+            Some(start) => (start, RANGED_INCLUDE_HEADER_LINES),
+        }
+    }
+}
+
 /// Peek past the closing fence at `close_end` for the include
 /// splicer's `<div data-listing-tag="<tag>"[ data-listing-tag-range="A:B"]...>`
 /// anchor. Returns `None` when no anchor is present. Tolerates one
@@ -157,19 +176,17 @@ pub(super) fn listing_anchor_after_fence<'c>(
             let r_value_start = r_open + "data-listing-tag-range=\"".len();
             let r_value_end = div_text[r_value_start..].find('"')?;
             let r_value = &div_text[r_value_start..r_value_start + r_value_end];
-            // Range render shape is `<start>:<end>` or `<start>:` —
-            // parse the start integer; ignore the rest.
-            r_value.split(':').next()?.parse::<usize>().ok()
+            // Range render shape is `<start>:<end>`, `<start>:` or `:<end>`;
+            // only the start matters, and an open one is line 1.
+            match r_value.split(':').next()? {
+                "" => Some(1),
+                start => start.parse::<usize>().ok(),
+            }
         });
     Some(ListingAnchor {
         tag,
         range_start_source_line,
     })
-}
-
-/// Back-compat shim for the ordinal pass + tests that only need the tag.
-pub(super) fn listing_tag_after_fence(content: &str, close_end: usize) -> Option<&str> {
-    listing_anchor_after_fence(content, close_end).map(|a| a.tag)
 }
 
 use crate::anchor::RANGED_INCLUDE_HEADER_LINES;
@@ -181,11 +198,8 @@ use crate::anchor::RANGED_INCLUDE_HEADER_LINES;
 /// source line S, source line N is at block_text line
 /// (N - S + 1) + 2 (the 2 prepended header lines).
 pub(super) fn source_line_to_block_line(source_line: usize, anchor: &ListingAnchor<'_>) -> usize {
-    match anchor.range_start_source_line {
-        None => source_line,
-        Some(start) => (source_line.saturating_sub(start).saturating_add(1))
-            .saturating_add(RANGED_INCLUDE_HEADER_LINES),
-    }
+    let (start, header) = anchor.first_line_and_header();
+    (source_line.saturating_sub(start).saturating_add(1)).saturating_add(header)
 }
 
 /// Translate a sidecar entry's block-text line (already mapped from
@@ -255,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn listing_tag_after_fence_finds_anchor_immediately_after_fence() {
+    fn listing_anchor_after_fence_finds_anchor_immediately_after_fence() {
         let content = concat!(
             "```rust\n",
             "let x = 1;\n",
@@ -268,15 +282,18 @@ mod tests {
                 .map(|i| i + "```".len())
                 .unwrap();
         let close_end = close_end + 1; // include the trailing newline of the close-fence line
-        let tag = listing_tag_after_fence(content, close_end);
+        let tag = listing_anchor_after_fence(content, close_end).map(|a| a.tag);
         assert_eq!(tag, Some("compose-v1"));
     }
 
     #[test]
-    fn listing_tag_after_fence_returns_none_when_no_anchor() {
+    fn listing_anchor_after_fence_returns_none_when_no_anchor() {
         let content = "```rust\nlet x = 1;\n```\n\nSome prose.\n";
         let close = content.find("```\n").unwrap() + 4;
-        assert_eq!(listing_tag_after_fence(content, close), None);
+        assert_eq!(
+            listing_anchor_after_fence(content, close).map(|a| a.tag),
+            None
+        );
     }
 
     #[test]

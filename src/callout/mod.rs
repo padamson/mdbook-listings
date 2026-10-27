@@ -21,7 +21,7 @@ pub(crate) use sidecar::SidecarCallouts;
 use parse::is_valid_label;
 use render_html::splice_callout_lists_html;
 use render_pdf::splice_callout_lists_pdf;
-use strip::listing_tag_after_fence;
+use strip::listing_anchor_after_fence;
 
 /// Errors raised by the callout splicer.
 #[derive(Debug)]
@@ -296,8 +296,14 @@ fn listing_number_after_fence(content: &str, close_end: usize) -> Option<String>
 /// translation from source-line to post-strip via
 /// [`StripResult::stripped_source_lines`]).
 ///
+/// The sidecar half holds only entries for lines the block shows, so a
+/// ranged include leaves out the rest and a `{{#callout}}` naming one finds
+/// nothing here.
+///
 /// Errors on cross-source label collisions (same label both inline AND
-/// sidecar) — silently shadowing one would hide a rendered badge.
+/// sidecar) — silently shadowing one would hide a rendered badge. The check
+/// covers the whole sidecar, not just the shown entries, since a label names
+/// one line of the listing however much of it a block shows.
 fn split_callouts_for_block(
     info: &str,
     block_text: &str,
@@ -306,9 +312,10 @@ fn split_callouts_for_block(
     sidecars: &SidecarCallouts,
 ) -> Result<(Vec<Callout>, Vec<Callout>), SpliceError> {
     let inline = callouts_for_block(info, block_text);
-    let Some(tag) = listing_tag_after_fence(content, close_end) else {
+    let Some(anchor) = listing_anchor_after_fence(content, close_end) else {
         return Ok((inline, Vec::new()));
     };
+    let tag = anchor.tag;
     let sidecar = sidecars.for_tag(tag);
     if sidecar.is_empty() {
         return Ok((inline, Vec::new()));
@@ -326,7 +333,13 @@ fn split_callouts_for_block(
             });
         }
     }
-    Ok((inline, sidecar.to_vec()))
+    let shown = anchor.shown_source_lines(block_text);
+    let sidecar = sidecar
+        .iter()
+        .filter(|c| shown.contains(&c.line))
+        .cloned()
+        .collect();
+    Ok((inline, sidecar))
 }
 
 #[cfg(test)]
@@ -921,5 +934,153 @@ body = "Attached via sidecar."
             inline_pos < sidecar_pos,
             "inline badge (line 1) should render before sidecar badge (line 3); got:\n{out}",
         );
+    }
+
+    fn sidecars_with(entries: &[(usize, &str)]) -> (tempfile::TempDir, SidecarCallouts) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let toml: String = entries
+            .iter()
+            .map(|(line, label)| format!("[[callout]]\nline = {line}\nlabel = \"{label}\"\n\n"))
+            .collect();
+        write_sidecar(tmp.path(), "demo-v1", &toml);
+        let sidecars = SidecarCallouts::load(tmp.path()).unwrap();
+        (tmp, sidecars)
+    }
+
+    /// The source line whose badge carries `label`, read from the overlay
+    /// entry that wraps it.
+    fn badge_line<'a>(out: &'a str, label: &str) -> Option<&'a str> {
+        let badge = out.find(&format!(r#"data-callout-badge="{label}""#))?;
+        let key = r#"data-callout-line=""#;
+        let at = out[..badge].rfind(key)? + key.len();
+        Some(&out[at..at + out[at..].find('"')?])
+    }
+
+    // `demo-v1.rs` is nine lines, `let lN = N;`. `RANGED_DEMO` is an include
+    // of `demo-v1.rs:5:7` as the include splicer emits it: two header lines,
+    // then source lines 5 to 7.
+    const RANGED_DEMO: &str = concat!(
+        "```rust\n",
+        "// demo.rs\n",
+        "// @@ 5,7 @@\n",
+        "let l5 = 5;\n",
+        "let l6 = 6;\n",
+        "let l7 = 7;\n",
+        "```\n",
+        "<div data-listing-tag=\"demo-v1\" data-listing-tag-range=\"5:7\" aria-hidden=\"true\"></div>\n",
+    );
+
+    const FULL_DEMO: &str = concat!(
+        "```rust\n",
+        "let l1 = 1;\nlet l2 = 2;\nlet l3 = 3;\nlet l4 = 4;\nlet l5 = 5;\n",
+        "let l6 = 6;\nlet l7 = 7;\nlet l8 = 8;\nlet l9 = 9;\n",
+        "```\n",
+        "<div data-listing-tag=\"demo-v1\" aria-hidden=\"true\"></div>\n",
+    );
+
+    const AROUND_SLICE: &[(usize, &str)] = &[
+        (4, "before-slice"),
+        (5, "first-line"),
+        (6, "mid-slice"),
+        (7, "last-line"),
+        (8, "after-slice"),
+    ];
+
+    #[test]
+    fn ranged_include_badges_only_the_sidecar_entries_inside_its_slice() {
+        let (_tmp, sidecars) = sidecars_with(AROUND_SLICE);
+        for renderer in [SupportedRenderer::Html, SupportedRenderer::TypstPdf] {
+            let out = splice_chapter(RANGED_DEMO, renderer, &sidecars).unwrap();
+            for inside in ["first-line", "mid-slice", "last-line"] {
+                assert!(
+                    out.contains(inside),
+                    "{renderer:?}: `{inside}`; got:\n{out}"
+                );
+            }
+            for outside in ["before-slice", "after-slice"] {
+                assert!(
+                    !out.contains(outside),
+                    "{renderer:?}: `{outside}` annotates a line the slice leaves out; got:\n{out}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ranged_include_lands_each_sidecar_badge_on_its_source_line() {
+        let (_tmp, sidecars) = sidecars_with(AROUND_SLICE);
+        let out = splice_chapter(RANGED_DEMO, SupportedRenderer::Html, &sidecars).unwrap();
+        // Source line N of a slice from 5 is block line N - 5 + 1, after
+        // the two header lines.
+        assert_eq!(badge_line(&out, "first-line"), Some("3"), "got:\n{out}");
+        assert_eq!(badge_line(&out, "mid-slice"), Some("4"), "got:\n{out}");
+        assert_eq!(badge_line(&out, "last-line"), Some("5"), "got:\n{out}");
+    }
+
+    #[test]
+    fn open_start_slice_counts_from_line_one_under_its_header() {
+        let (_tmp, sidecars) = sidecars_with(&[(2, "in-slice"), (4, "after-slice")]);
+        // `demo-v1.rs::3`: the header, then source lines 1 to 3.
+        let content = concat!(
+            "```rust\n",
+            "// demo.rs\n",
+            "// @@ 1,3 @@\n",
+            "let l1 = 1;\nlet l2 = 2;\nlet l3 = 3;\n",
+            "```\n",
+            "<div data-listing-tag=\"demo-v1\" data-listing-tag-range=\":3\" aria-hidden=\"true\"></div>\n",
+        );
+        let out = splice_chapter(content, SupportedRenderer::Html, &sidecars).unwrap();
+        assert_eq!(badge_line(&out, "in-slice"), Some("4"), "got:\n{out}");
+        assert!(!out.contains("after-slice"), "got:\n{out}");
+    }
+
+    #[test]
+    fn full_include_leaves_out_a_sidecar_entry_past_the_last_line() {
+        let (_tmp, sidecars) = sidecars_with(&[(9, "last-line"), (10, "past-end")]);
+        let out = splice_chapter(FULL_DEMO, SupportedRenderer::Html, &sidecars).unwrap();
+        assert_eq!(badge_line(&out, "last-line"), Some("9"), "got:\n{out}");
+        assert!(!out.contains("past-end"), "got:\n{out}");
+    }
+
+    #[test]
+    fn a_cite_of_a_sidecar_entry_outside_the_slice_is_an_unknown_label() {
+        let (_tmp, sidecars) = sidecars_with(AROUND_SLICE);
+        let content = format!("{RANGED_DEMO}\nSee {{{{#callout before-slice}}}}.\n");
+        match splice_chapter(&content, SupportedRenderer::Html, &sidecars) {
+            Err(SpliceError::UnknownLabel { label }) => assert_eq!(label, "before-slice"),
+            other => panic!("expected UnknownLabel, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_cite_of_a_sidecar_entry_resolves_where_another_include_shows_its_line() {
+        let (_tmp, sidecars) = sidecars_with(AROUND_SLICE);
+        let content = format!("{FULL_DEMO}\n{RANGED_DEMO}\nSee {{{{#callout before-slice}}}}.\n");
+        let out = splice_chapter(&content, SupportedRenderer::Html, &sidecars).unwrap();
+        assert!(
+            out.contains(r#"data-callout-ref="before-slice""#),
+            "got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_slice_numbers_its_sidecar_badges_from_the_first_entry_it_shows() {
+        let (_tmp, sidecars) = sidecars_with(AROUND_SLICE);
+        let content = format!("{RANGED_DEMO}\nSee {{{{#callout first-line}}}}.\n");
+        let out = splice_chapter(&content, SupportedRenderer::Html, &sidecars).unwrap();
+        assert!(
+            out.contains(r#"data-callout-ref="first-line" data-callout-ordinal="1""#),
+            "got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn an_inline_marker_collides_with_a_sidecar_label_the_slice_leaves_out() {
+        let (_tmp, sidecars) = sidecars_with(AROUND_SLICE);
+        let content = RANGED_DEMO.replace("let l6 = 6;\n", "// CALLOUT: before-slice Inline.\n");
+        match splice_chapter(&content, SupportedRenderer::Html, &sidecars) {
+            Err(SpliceError::LabelCollision { label, .. }) => assert_eq!(label, "before-slice"),
+            other => panic!("expected LabelCollision, got {other:?}"),
+        }
     }
 }

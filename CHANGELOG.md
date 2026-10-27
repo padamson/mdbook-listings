@@ -44,6 +44,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   added-lines-only rule, which it never mentioned.
 
 ### Fixed
+- **A sliced include badges only the sidecar callouts inside its slice.** An
+  `{{#include listings/<tag>.<ext>:A:B}}` used to render every entry in
+  `<tag>.callouts.toml`. An entry for a line before `A` landed on line `A`,
+  and one after `B` got a badge past the end of the listing. The PDF listed
+  their bodies under the listing too. Entries outside the slice are now
+  left out, as an inline marker outside it already is, and so is an entry
+  past the last line of a whole-file include. A `{{#callout}}` naming one
+  now fails as an unknown label, unless the chapter shows that line in
+  another include. A slice with an open start (`::B`) also put each sidecar
+  badge two lines above its line; it now lands on it.
 - **An include that mdbook expands behind the preprocessor's back now fails
   the build and `verify`.** The preprocessor leaves a `{{#include listings/…}}`
   or `{{#include snippets/…}}` alone when it sits in inline code, is written
