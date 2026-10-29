@@ -111,6 +111,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   block, where CommonMark reads no inline code, a directive after an odd
   number of backticks on its line is still treated as a quoted example.
 
+### Security
+- **pulldown-cmark 0.13.5** in `Cargo.lock`, for RUSTSEC-2026-0414
+  (exponential event growth with `ENABLE_WIKILINKS`). mdbook-listings never
+  sets that option, so no release was exposed; the bump clears the advisory
+  for `cargo install --locked`.
+
 ## [0.2.2] - 2026-09-27
 
 A documentation release. The preprocessor and the CLI behave exactly as
