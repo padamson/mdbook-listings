@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **A line-width budget for listings.** `max-line-width = N` under
+  `[preprocessor.listings]` sets the widest line a listing may render.
+  `freeze` refuses a source with a line over it, naming each line and its
+  width, and `verify` fails on any frozen listing over it, so a listing
+  frozen before the budget was set is caught too. Lines are measured as the
+  listing renders them: `CALLOUT:` marker lines are left out, and width is
+  display columns (an em dash is one, a CJK character two, a tab advances to
+  the next multiple of 8). For content the book can't reflow,
+  `freeze --allow-long-lines` records `allow-long-lines = true` on the
+  listing's record in `listings.toml`, which can also be added by hand. It
+  is recorded only for a source with a line over the budget. Like `url`, it
+  survives an unchanged re-freeze and is dropped when a forced re-freeze
+  changes the content.
 - **`freeze --source-url` links a listing's provenance path.** The URL is
   recorded as an optional `url` in `listings.toml`, and with
   `show-listing-provenance` on the line links the path to it. Meant for the

@@ -18,6 +18,7 @@ use crate::freeze::hex_sha256;
 use crate::include::{
     parse_listing_includes, rejected_includes, splice_chapter as splice_includes,
 };
+use crate::line_width::{describe, long_lines_in, max_line_width};
 use crate::manifest::{Listing, Manifest};
 use crate::source_path::SourcePaths;
 
@@ -82,6 +83,7 @@ pub fn verify(book_root: &Path) -> Result<VerifyReport> {
     check_slice_ends_on_marker(book_root, &mut report);
     check_live_operands(book_root, &mut report);
     check_snippet_arguments(book_root, &mut report);
+    check_line_width(book_root, &manifest, &mut report);
     Ok(report)
 }
 
@@ -190,6 +192,35 @@ fn check_rejected_includes(book_root: &Path, report: &mut VerifyReport) {
     for (rel, content) in chapter_markdown(book_root) {
         for include in rejected_includes(&content) {
             report.error(format!("{rel}:{}: {include}", include.line));
+        }
+    }
+}
+
+/// Every frozen listing must fit the book's `max-line-width`, unless its
+/// record allows long lines. `freeze` already refuses a snapshot over the
+/// budget; this catches the ones frozen before the budget was set or
+/// lowered, and a frozen file whose record lost its exemption.
+fn check_line_width(book_root: &Path, manifest: &Manifest, report: &mut VerifyReport) {
+    let budget = match max_line_width(book_root) {
+        Ok(Some(budget)) => budget,
+        Ok(None) => return,
+        Err(err) => return report.error(format!("{err:#}")),
+    };
+    for listing in manifest.listings.iter().filter(|l| !l.allow_long_lines) {
+        // A missing frozen file is the integrity pass's finding.
+        let Ok(bytes) = fs::read(book_root.join(&listing.frozen)) else {
+            continue;
+        };
+        let long = long_lines_in(Path::new(&listing.frozen), &bytes, budget);
+        if !long.is_empty() {
+            report.error(format!(
+                "frozen listing `{}` ({}) has lines wider than max-line-width of {budget} \
+                 columns: {}. Refreeze it within the budget, or set \
+                 `allow-long-lines = true` on its record in listings.toml",
+                listing.tag,
+                listing.frozen,
+                describe(&long),
+            ));
         }
     }
 }
@@ -562,6 +593,7 @@ mod tests {
             frozen: frozen.to_string(),
             sha256: hex_sha256(bytes),
             url: None,
+            allow_long_lines: false,
         }
     }
 
@@ -1038,6 +1070,117 @@ mod tests {
         let mut report = VerifyReport::default();
         check_references(&root, &manifest, &mut report);
         assert_eq!(report.error_count(), 0, "got {:?}", report.findings);
+    }
+
+    /// A book with `max-line-width = 9` and the listings given as
+    /// `(tag, file name, content, allow_long_lines)`.
+    fn book_with_budget(listings: &[(&str, &str, &str, bool)]) -> (TempDir, Manifest) {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        fs::write(
+            root.join("book.toml"),
+            "[preprocessor.listings]\nmax-line-width = 9\n",
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("src/listings")).unwrap();
+        let listings = listings
+            .iter()
+            .map(|(tag, file, content, allow)| {
+                let frozen = format!("src/listings/{file}");
+                fs::write(root.join(&frozen), content).unwrap();
+                Listing {
+                    allow_long_lines: *allow,
+                    ..listing_for(tag, &frozen, content.as_bytes())
+                }
+            })
+            .collect();
+        (tmp, manifest_with(listings))
+    }
+
+    #[test]
+    fn check_line_width_errors_on_a_listing_over_the_budget() {
+        let (tmp, manifest) = book_with_budget(&[
+            (
+                "wide-v1",
+                "wide-v1.yaml",
+                "a: 1\nb: 1234567\nc: 12345678\n",
+                false,
+            ),
+            ("narrow-v1", "narrow-v1.yaml", "a: 1\n", false),
+        ]);
+        let mut report = VerifyReport::default();
+        check_line_width(tmp.path(), &manifest, &mut report);
+        assert_eq!(report.error_count(), 1, "got {:?}", report.findings);
+        let m = &report.findings[0].message;
+        for needle in [
+            "wide-v1",
+            "src/listings/wide-v1.yaml",
+            "max-line-width",
+            "9 columns",
+            "line 2 (10 columns), line 3 (11 columns)",
+            "allow-long-lines = true",
+        ] {
+            assert!(m.contains(needle), "the error says `{needle}`; got: {m}");
+        }
+    }
+
+    #[test]
+    fn check_line_width_accepts_an_exempt_listing() {
+        let (tmp, manifest) =
+            book_with_budget(&[("wide-v1", "wide-v1.yaml", "b: 1234567\n", true)]);
+        let mut report = VerifyReport::default();
+        check_line_width(tmp.path(), &manifest, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_line_width_is_silent_without_a_budget() {
+        let (tmp, manifest) =
+            book_with_budget(&[("wide-v1", "wide-v1.yaml", "b: 1234567\n", false)]);
+        fs::write(tmp.path().join("book.toml"), "[book]\ntitle = \"t\"\n").unwrap();
+        let mut report = VerifyReport::default();
+        check_line_width(tmp.path(), &manifest, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_line_width_skips_the_markers_the_frozen_files_language_strips() {
+        let (tmp, manifest) = book_with_budget(&[(
+            "demo-v1",
+            "demo-v1.rs",
+            "fn a() {}\n// CALLOUT: why A body well past nine columns.\n",
+            false,
+        )]);
+        let mut report = VerifyReport::default();
+        check_line_width(tmp.path(), &manifest, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_line_width_reports_an_invalid_budget_once() {
+        let (tmp, manifest) = book_with_budget(&[
+            ("a-v1", "a-v1.yaml", "a: 1\n", false),
+            ("b-v1", "b-v1.yaml", "b: 1\n", false),
+        ]);
+        fs::write(
+            tmp.path().join("book.toml"),
+            "[preprocessor.listings]\nmax-line-width = \"wide\"\n",
+        )
+        .unwrap();
+        let mut report = VerifyReport::default();
+        check_line_width(tmp.path(), &manifest, &mut report);
+        assert_eq!(report.error_count(), 1, "got {:?}", report.findings);
+        let m = &report.findings[0].message;
+        assert!(m.contains("max-line-width"), "got: {m}");
+    }
+
+    #[test]
+    fn check_line_width_leaves_a_missing_frozen_file_to_the_integrity_pass() {
+        let (tmp, manifest) = book_with_budget(&[("a-v1", "a-v1.yaml", "a: 1\n", false)]);
+        fs::remove_file(tmp.path().join("src/listings/a-v1.yaml")).unwrap();
+        let mut report = VerifyReport::default();
+        check_line_width(tmp.path(), &manifest, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
     }
 
     #[test]

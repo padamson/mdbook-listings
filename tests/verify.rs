@@ -372,3 +372,38 @@ fn verify_fails_on_an_include_that_shares_its_line_with_prose() {
         .stderr(contains("src/ch.md:3:"))
         .stderr(contains("listings/compose-v1.yaml"));
 }
+
+/// A listing frozen before the book set its budget fails `verify` once the
+/// budget is set, and passes again when its record allows long lines.
+#[test]
+fn verify_fails_on_a_listing_wider_than_max_line_width() {
+    let book = FrozenFixtureBook::new();
+    fs::write(
+        book.root().join("book.toml"),
+        "[preprocessor.listings]\nmax-line-width = 12\n",
+    )
+    .unwrap();
+    mdbook_listings()
+        .args(["verify", "--book-root"])
+        .arg(book.root())
+        .assert()
+        .failure()
+        .stderr(contains("compose-v1"))
+        .stderr(contains("line 3 (16 columns)"));
+
+    let manifest_path = book.root().join("listings.toml");
+    let manifest = fs::read_to_string(&manifest_path).unwrap();
+    fs::write(
+        &manifest_path,
+        manifest.replace(
+            "tag = \"compose-v1\"",
+            "tag = \"compose-v1\"\nallow-long-lines = true",
+        ),
+    )
+    .unwrap();
+    mdbook_listings()
+        .args(["verify", "--book-root"])
+        .arg(book.root())
+        .assert()
+        .success();
+}

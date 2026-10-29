@@ -379,3 +379,58 @@ fn freeze_reports_a_url_only_update() {
         .success()
         .stdout(contains("url updated: demo"));
 }
+
+/// The budget is the book's: a source over it is refused at the command
+/// line, and `--allow-long-lines` freezes it with the exemption recorded.
+/// Re-running on the unchanged source with the flag is how a listing frozen
+/// before the budget existed gets its exemption.
+#[test]
+fn freeze_enforces_max_line_width_and_allow_long_lines_exempts() {
+    let tmp = TempDir::new().expect("tempdir");
+    let book_root = tmp.path().join("book");
+    fs::create_dir_all(&book_root).unwrap();
+    let source = tmp.path().join("wide.yaml");
+    fs::write(&source, "a: 1234567890\n").unwrap();
+
+    mdbook_listings()
+        .args(["freeze", "--tag", "wide", "--book-root"])
+        .arg(&book_root)
+        .arg(&source)
+        .assert()
+        .success();
+
+    fs::write(
+        book_root.join("book.toml"),
+        "[preprocessor.listings]\nmax-line-width = 9\n",
+    )
+    .unwrap();
+    mdbook_listings()
+        .args(["freeze", "--tag", "wide2", "--book-root"])
+        .arg(&book_root)
+        .arg(&source)
+        .assert()
+        .failure()
+        .stderr(contains("line 1 (13 columns)"))
+        .stderr(contains("--allow-long-lines"));
+
+    mdbook_listings()
+        .args([
+            "freeze",
+            "--tag",
+            "wide",
+            "--allow-long-lines",
+            "--book-root",
+        ])
+        .arg(&book_root)
+        .arg(&source)
+        .assert()
+        .success()
+        .stdout(contains("long lines allowed: wide"));
+    let manifest = fs::read_to_string(book_root.join("listings.toml")).unwrap();
+    assert!(
+        manifest.contains("allow-long-lines = true"),
+        "got:\n{manifest}"
+    );
+    assert!(!manifest.contains("wide2"), "got:\n{manifest}");
+    assert!(!book_root.join("src/listings/wide2.yaml").exists());
+}

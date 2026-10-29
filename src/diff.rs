@@ -1047,6 +1047,7 @@ mod tests {
                     frozen: "src/listings/left-tag.txt".into(),
                     sha256: "0".repeat(64),
                     url: None,
+                    allow_long_lines: false,
                 },
                 crate::manifest::Listing {
                     tag: "right-tag".into(),
@@ -1054,6 +1055,7 @@ mod tests {
                     frozen: "src/listings/right-tag.txt".into(),
                     sha256: "0".repeat(64),
                     url: None,
+                    allow_long_lines: false,
                 },
             ],
         };

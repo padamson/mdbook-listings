@@ -21,7 +21,13 @@ pub(crate) use sidecar::SidecarCallouts;
 use parse::is_valid_label;
 use render_html::splice_callout_lists_html;
 use render_pdf::splice_callout_lists_pdf;
-use strip::listing_anchor_after_fence;
+use strip::{listing_anchor_after_fence, strip_marker_lines};
+
+/// The lines of a listing with extension `ext` that the renderer strips as
+/// callout markers when an include shows it.
+pub(crate) fn marker_lines(content: &str, ext: &str) -> Vec<usize> {
+    strip_marker_lines(content, lang_for_extension(ext)).stripped_source_lines
+}
 
 /// Errors raised by the callout splicer.
 #[derive(Debug)]

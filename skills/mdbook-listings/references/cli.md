@@ -62,6 +62,10 @@ Copies `<SOURCE>` into the book's `listings/` directory and records it in
     --tag wine-v1 \
     --source-url https://github.com/padamson/ontology-authoring-template/blob/20cac5f/data/wine.yaml
   ```
+- `--allow-long-lines` — freeze a source with lines wider than the book's
+  `max-line-width` (see [Line-width budget](#line-width-budget)), recording
+  `allow-long-lines = true` in `listings.toml` so `verify` accepts it. Meant
+  for content the book can't reflow, such as a file from another project.
 
 ### Identity model
 
@@ -73,6 +77,40 @@ Copies `<SOURCE>` into the book's `listings/` directory and records it in
   `--force` is passed. A forced re-freeze drops the recorded URL, since it
   pointed at the old bytes, and warns; pass `--source-url` again to record
   the new one.
+- `allow-long-lines` follows the same rule as the URL. An unchanged re-freeze
+  keeps it, and one with `--allow-long-lines` records it (the summary says
+  `long lines allowed`). A forced re-freeze of different bytes drops it and
+  checks the new bytes against the budget, unless `--allow-long-lines` is
+  passed again. The flag records the exemption only for a source with a line
+  over the budget; on one that fits, it does nothing.
+
+### Line-width budget
+
+```toml
+[preprocessor.listings]
+max-line-width = 72
+```
+
+With a budget set, `freeze` refuses a source with a line wider than it,
+naming each line and its width, and writes nothing. That includes an
+unchanged re-freeze of a listing frozen before the budget was set. `verify` reports the
+same thing for every frozen listing, which catches the ones frozen before
+the budget was set. A line is measured as the listing renders it:
+
+- `CALLOUT:` marker lines are left out, since the renderer strips them. The
+  comment prefix comes from the frozen file's extension, as for callouts.
+- Width is display columns, not bytes or characters: an em dash is one
+  column, a CJK character two, a combining accent none, and a tab advances
+  to the next multiple of 8 (the browser default, which mdBook's theme
+  keeps).
+- Only the listing's own lines count. A `{{#diff}}` adds a one-column
+  `+`/`-` marker and a sliced include adds a two-line header, neither of
+  which is measured.
+
+A listing over the budget gets an exemption, `allow-long-lines = true` on
+its record in `listings.toml`. Pass `--allow-long-lines` to `freeze`, or,
+for a listing already frozen whose source has moved on, add the line by
+hand. A budget that isn't a positive integer fails both commands.
 
 This is what lets the book detect drift: the manifest's recorded hash must
 match the frozen file's actual hash.
@@ -97,6 +135,8 @@ Errors (any one exits non-zero):
 5. No `{{#include listings/…}}` or `{{#include snippets/…}}` outside a fence
    shares its line with other text. The build rejects the same thing, since
    the code block the include expands to has to start a line.
+6. With `max-line-width` set, every frozen listing whose record doesn't
+   allow long lines fits it (see [Line-width budget](#line-width-budget)).
 
 Warnings (reported on stderr, exit stays 0):
 

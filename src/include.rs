@@ -432,6 +432,7 @@ mod tests {
                 frozen: format!("src/listings/{tag}.rs"),
                 sha256: "0".to_string(),
                 url: None,
+                allow_long_lines: false,
             }],
         }
     }

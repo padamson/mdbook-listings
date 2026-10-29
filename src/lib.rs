@@ -16,6 +16,7 @@ pub(crate) mod directive;
 pub(crate) mod fence;
 pub(crate) mod freeze;
 pub(crate) mod include;
+pub(crate) mod line_width;
 pub(crate) mod list_of_listings;
 pub(crate) mod listing_ref;
 pub(crate) mod manifest;

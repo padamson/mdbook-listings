@@ -68,6 +68,12 @@ enum Command {
         #[arg(long, value_name = "URL")]
         source_url: Option<String>,
 
+        /// Freeze lines wider than the book's `max-line-width` (content the
+        /// book can't reflow), recording `allow-long-lines = true` in
+        /// `listings.toml` so `verify` accepts them.
+        #[arg(long)]
+        allow_long_lines: bool,
+
         /// Path to the source file to freeze.
         source: PathBuf,
     },
@@ -117,6 +123,7 @@ pub fn run() -> Result<()> {
             book_root,
             force,
             source_url,
+            allow_long_lines,
             source,
         }) => {
             let book_root = book_root.unwrap_or_else(|| PathBuf::from("."));
@@ -134,11 +141,13 @@ pub fn run() -> Result<()> {
                 source: &source,
                 force,
                 source_url: source_url.as_deref(),
+                allow_long_lines,
             })?;
             let verb = match report.outcome {
                 FreezeOutcome::Created => "created",
                 FreezeOutcome::Unchanged => "unchanged",
                 FreezeOutcome::UrlUpdated => "url updated",
+                FreezeOutcome::LongLinesAllowed => "long lines allowed",
                 FreezeOutcome::Replaced => "replaced",
             };
             println!("{verb}: {tag}");

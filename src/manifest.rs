@@ -44,6 +44,14 @@ pub struct Listing {
     /// path shown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// Exempts this listing from the book's `max-line-width`, for content
+    /// the book can't reflow. Set by `freeze --allow-long-lines` or by hand.
+    #[serde(
+        default,
+        rename = "allow-long-lines",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub allow_long_lines: bool,
 }
 
 /// Why `url` can't be a listing's `url`, or `Ok` when it can. The provenance

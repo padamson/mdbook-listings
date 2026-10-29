@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow, bail};
 use sha2::{Digest, Sha256};
 
+use crate::line_width::{describe, long_lines_in, max_line_width};
 use crate::manifest::{Listing, Manifest};
 
 /// Relative path from a book root to the frozen-listings directory.
@@ -23,6 +24,9 @@ pub struct FreezeOptions<'a> {
     /// Recorded as the listing's `url`. On an unchanged source it replaces
     /// the recorded one without touching the frozen bytes.
     pub source_url: Option<&'a str>,
+    /// Freeze lines wider than the book's `max-line-width`, recording the
+    /// exemption so `verify` accepts them.
+    pub allow_long_lines: bool,
 }
 
 /// Outcome of a freeze invocation. Callers use this to render a summary line
@@ -40,6 +44,9 @@ pub enum FreezeOutcome {
     /// The source is unchanged, but `--source-url` set or replaced the
     /// listing's `url`; only the manifest was written.
     UrlUpdated,
+    /// The source is unchanged, but `--allow-long-lines` recorded the
+    /// exemption; only the manifest was written.
+    LongLinesAllowed,
 }
 
 /// Result of a freeze invocation: the outcome plus optional metadata the CLI
@@ -65,6 +72,7 @@ pub fn freeze(opts: FreezeOptions<'_>) -> Result<FreezeReport> {
     if let Some(url) = opts.source_url {
         crate::manifest::check_url(url).map_err(|e| anyhow!("--source-url {e}"))?;
     }
+    let budget = max_line_width(opts.book_root)?;
     let source_bytes = fs::read(opts.source)
         .with_context(|| format!("reading source file {}", opts.source.display()))?;
     let source_sha = hex_sha256(&source_bytes);
@@ -104,15 +112,38 @@ pub fn freeze(opts: FreezeOptions<'_>) -> Result<FreezeReport> {
         .map(str::to_string)
         .or_else(|| recorded_url.clone().filter(|_| same_bytes));
     let dropped_url = recorded_url.clone().filter(|_| url.is_none());
+    // The exemption is about these bytes too, so it follows the same rule,
+    // and the flag records one only for bytes that need it.
+    let over_budget = budget
+        .map(|budget| (budget, long_lines_in(&frozen_rel, &source_bytes, budget)))
+        .filter(|(_, long)| !long.is_empty());
+    let recorded_allow = existing.as_ref().is_some_and(|l| l.allow_long_lines);
+    let allow_long_lines =
+        (recorded_allow && same_bytes) || (opts.allow_long_lines && over_budget.is_some());
+    if let Some((budget, long)) = &over_budget
+        && !allow_long_lines
+    {
+        bail!(
+            "{} has lines wider than the book's max-line-width of {budget} columns: {}. \
+             Reflow them, or pass --allow-long-lines to freeze it anyway (recorded as \
+             `allow-long-lines = true` in listings.toml)",
+            opts.source.display(),
+            describe(long),
+        );
+    }
     let outcome = match outcome {
         FreezeOutcome::Unchanged if url != recorded_url => FreezeOutcome::UrlUpdated,
+        FreezeOutcome::Unchanged if allow_long_lines != recorded_allow => {
+            FreezeOutcome::LongLinesAllowed
+        }
         other => other,
     };
 
     let listing = match outcome {
         FreezeOutcome::Unchanged => None,
-        FreezeOutcome::UrlUpdated => existing.map(|l| Listing {
+        FreezeOutcome::UrlUpdated | FreezeOutcome::LongLinesAllowed => existing.map(|l| Listing {
             url: url.clone(),
+            allow_long_lines,
             ..l
         }),
         FreezeOutcome::Created | FreezeOutcome::Replaced => {
@@ -129,6 +160,7 @@ pub fn freeze(opts: FreezeOptions<'_>) -> Result<FreezeReport> {
                 frozen: path_to_string(&frozen_rel)?,
                 sha256: source_sha,
                 url: url.clone(),
+                allow_long_lines,
             })
         }
     };
@@ -396,13 +428,44 @@ mod tests {
         }
 
         fn freeze(&self, force: bool, source_url: Option<&str>) -> Result<FreezeReport> {
+            self.freeze_with(force, source_url, false)
+        }
+
+        fn freeze_with(
+            &self,
+            force: bool,
+            source_url: Option<&str>,
+            allow_long_lines: bool,
+        ) -> Result<FreezeReport> {
             freeze(FreezeOptions {
                 book_root: &self.root,
                 tag: "x-v1",
                 source: &self.source,
                 force,
                 source_url,
+                allow_long_lines,
             })
+        }
+
+        /// A book with `max-line-width = 9`, whose source has one line of
+        /// ten columns.
+        fn over_budget() -> Self {
+            let book = Self::new();
+            fs::write(
+                book.root.join("book.toml"),
+                "[preprocessor.listings]\nmax-line-width = 9\n",
+            )
+            .unwrap();
+            fs::write(&book.source, "a: 1\nb: 1234567\n").unwrap();
+            book
+        }
+
+        fn recorded_allow_long_lines(&self) -> bool {
+            Manifest::load(&self.root)
+                .unwrap()
+                .find("x-v1")
+                .expect("x-v1 is frozen")
+                .allow_long_lines
         }
 
         fn recorded_url(&self) -> Option<String> {
@@ -543,6 +606,205 @@ mod tests {
     }
 
     #[test]
+    fn a_source_over_the_budget_is_refused_and_nothing_is_written() {
+        let book = Book::over_budget();
+        let err = format!("{:#}", book.freeze(false, None).unwrap_err());
+        for needle in [
+            "max-line-width",
+            "9 columns",
+            "line 2 (10 columns)",
+            "--allow-long-lines",
+        ] {
+            assert!(
+                err.contains(needle),
+                "the error says `{needle}`; got: {err}"
+            );
+        }
+        for path in ["listings.toml", "src/listings/x-v1.yaml"] {
+            assert!(!book.root.join(path).exists(), "{path} was written");
+        }
+    }
+
+    #[test]
+    fn a_callout_marker_over_the_budget_does_not_stop_the_freeze() {
+        let book = Book::over_budget();
+        fs::write(
+            &book.source,
+            "a: 1\n# CALLOUT: why A body well past nine columns.\n",
+        )
+        .unwrap();
+        book.freeze(false, None).unwrap();
+        assert!(!book.recorded_allow_long_lines());
+    }
+
+    #[test]
+    fn allow_long_lines_freezes_over_the_budget_and_records_the_exemption() {
+        let book = Book::over_budget();
+        let report = book.freeze_with(false, None, true).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::Created);
+        assert!(book.recorded_allow_long_lines());
+        let toml = fs::read_to_string(book.root.join("listings.toml")).unwrap();
+        assert!(toml.contains("allow-long-lines = true"), "got:\n{toml}");
+    }
+
+    #[test]
+    fn a_source_within_the_budget_records_no_exemption() {
+        let book = Book::over_budget();
+        fs::write(&book.source, "a: 1\nb: 12345\n").unwrap();
+        book.freeze(false, None).unwrap();
+        assert!(!book.recorded_allow_long_lines());
+        let toml = fs::read_to_string(book.root.join("listings.toml")).unwrap();
+        assert!(!toml.contains("allow-long-lines"), "got:\n{toml}");
+    }
+
+    #[test]
+    fn a_book_with_no_budget_freezes_any_width() {
+        let book = Book::new();
+        fs::write(
+            &book.source,
+            "b: 1234567890123456789012345678901234567890\n",
+        )
+        .unwrap();
+        book.freeze(false, None).unwrap();
+        assert!(!book.recorded_allow_long_lines());
+    }
+
+    #[test]
+    fn an_invalid_budget_stops_the_freeze() {
+        let book = Book::new();
+        fs::write(
+            book.root.join("book.toml"),
+            "[preprocessor.listings]\nmax-line-width = 0\n",
+        )
+        .unwrap();
+        let err = format!("{:#}", book.freeze(false, None).unwrap_err());
+        assert!(err.contains("max-line-width"), "got: {err}");
+        assert!(!book.root.join("listings.toml").exists());
+    }
+
+    /// Freezes the over-budget source before the book sets its budget.
+    fn frozen_before_the_budget() -> Book {
+        let book = Book::over_budget();
+        let toml = fs::read_to_string(book.root.join("book.toml")).unwrap();
+        fs::remove_file(book.root.join("book.toml")).unwrap();
+        book.freeze(false, None).unwrap();
+        fs::write(book.root.join("book.toml"), toml).unwrap();
+        book
+    }
+
+    #[test]
+    fn an_unchanged_refreeze_over_the_budget_is_refused() {
+        let book = frozen_before_the_budget();
+        let err = format!("{:#}", book.freeze(false, None).unwrap_err());
+        assert!(err.contains("--allow-long-lines"), "got: {err}");
+        assert!(!book.recorded_allow_long_lines());
+    }
+
+    #[test]
+    fn an_unchanged_refreeze_with_allow_long_lines_records_the_exemption() {
+        let book = frozen_before_the_budget();
+        let report = book.freeze_with(false, None, true).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::LongLinesAllowed);
+        assert!(book.recorded_allow_long_lines());
+    }
+
+    #[test]
+    fn allow_long_lines_on_a_source_that_fits_the_budget_records_nothing() {
+        let book = Book::over_budget();
+        fs::write(&book.source, "a: 1\n").unwrap();
+        let report = book.freeze_with(false, None, true).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::Created);
+        assert!(!book.recorded_allow_long_lines());
+        let report = book.freeze_with(false, None, true).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::Unchanged);
+    }
+
+    #[test]
+    fn allow_long_lines_in_a_book_with_no_budget_records_nothing() {
+        let book = Book::new();
+        let report = book.freeze_with(false, None, true).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::Created);
+        assert!(!book.recorded_allow_long_lines());
+        let report = book.freeze_with(false, None, true).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::Unchanged);
+    }
+
+    #[test]
+    fn an_unchanged_refreeze_keeps_an_exemption_the_budget_no_longer_needs() {
+        let book = Book::over_budget();
+        book.freeze_with(false, None, true).unwrap();
+        fs::write(
+            book.root.join("book.toml"),
+            "[preprocessor.listings]\nmax-line-width = 80\n",
+        )
+        .unwrap();
+        let report = book.freeze(false, None).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::Unchanged);
+        assert!(book.recorded_allow_long_lines());
+    }
+
+    #[test]
+    fn an_unchanged_refreeze_that_records_a_url_and_the_exemption_says_url_updated() {
+        let book = frozen_before_the_budget();
+        let report = book.freeze_with(false, Some(URL_A), true).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::UrlUpdated);
+        assert!(book.recorded_allow_long_lines());
+        assert_eq!(book.recorded_url().as_deref(), Some(URL_A));
+    }
+
+    #[test]
+    fn an_unchanged_refreeze_keeps_a_recorded_exemption() {
+        let book = Book::over_budget();
+        book.freeze_with(false, None, true).unwrap();
+        let report = book.freeze(false, None).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::Unchanged);
+        assert!(book.recorded_allow_long_lines());
+    }
+
+    #[test]
+    fn restoring_a_deleted_frozen_copy_keeps_the_exemption() {
+        let book = Book::over_budget();
+        book.freeze_with(false, None, true).unwrap();
+        fs::remove_file(book.root.join("src/listings/x-v1.yaml")).unwrap();
+        let report = book.freeze(true, None).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::Replaced);
+        assert!(book.recorded_allow_long_lines());
+    }
+
+    #[test]
+    fn a_forced_refreeze_of_changed_content_rechecks_the_budget() {
+        let book = Book::over_budget();
+        book.freeze_with(false, None, true).unwrap();
+        fs::write(&book.source, "a: 1\nb: 12345678\n").unwrap();
+        let err = format!("{:#}", book.freeze(true, None).unwrap_err());
+        assert!(err.contains("line 2 (11 columns)"), "got: {err}");
+        assert!(book.recorded_allow_long_lines());
+        assert_eq!(
+            fs::read_to_string(book.root.join("src/listings/x-v1.yaml")).unwrap(),
+            "a: 1\nb: 1234567\n",
+            "the refused freeze left the frozen copy as it was"
+        );
+    }
+
+    #[test]
+    fn a_forced_refreeze_of_changed_content_that_fits_drops_the_exemption() {
+        let book = Book::over_budget();
+        book.freeze_with(false, None, true).unwrap();
+        fs::write(&book.source, "a: 1\n").unwrap();
+        book.freeze(true, None).unwrap();
+        assert!(!book.recorded_allow_long_lines());
+    }
+
+    #[test]
+    fn a_forced_refreeze_of_changed_content_keeps_the_exemption_it_is_given() {
+        let book = Book::over_budget();
+        book.freeze_with(false, None, true).unwrap();
+        fs::write(&book.source, "a: 1\nb: 12345678\n").unwrap();
+        book.freeze_with(true, None, true).unwrap();
+        assert!(book.recorded_allow_long_lines());
+    }
+
+    #[test]
     fn pathdiff_walks_up_from_base_to_a_sibling_and_descends_within_it() {
         let tmp = tempfile::TempDir::new().unwrap();
         let base = tmp.path().join("book");
@@ -610,6 +872,7 @@ mod tests {
             frozen: format!("src/listings/{tag}.rs"),
             sha256: String::new(),
             url: None,
+            allow_long_lines: false,
         }
     }
 

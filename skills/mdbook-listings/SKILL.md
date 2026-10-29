@@ -11,7 +11,7 @@ description: >-
   with its sources.
 license: MIT OR Apache-2.0
 metadata:
-  version: "0.1.22"
+  version: "0.1.23"
 ---
 
 # Authoring with mdbook-listings
@@ -36,7 +36,8 @@ Two identities govern every listing:
   tag is a no-op; re-freezing *different* bytes under an existing tag is
   **rejected** unless you pass `--force`.
 
-You never hand-edit frozen files or `listings.toml` — the CLI owns them. You
+You never hand-edit frozen files or `listings.toml` — the CLI owns them
+(the one exception is adding `allow-long-lines = true` to a record). You
 *do* hand-write the `{{#include}}` / `{{#listing}}` / `{{#callout}}` /
 `{{#diff}}` directives in chapter prose, and any `<tag>.callouts.toml`
 sidecar.
@@ -127,6 +128,7 @@ number-listings = true            # "Listing N.M" labels + scoped badges
 list-of-listings = true           # enables the {{#list-of-listings}} marker
 list-of-listings-sidebar = "nested"  # "off" (default) | "append" | "nested"
 show-listing-provenance = true    # muted "<source> (<tag>)" line under the caption
+max-line-width = 72               # freeze refuses, verify fails, wider lines
 ```
 
 - **`number-listings`** — every listing gets a `Listing N.M` label (`N` =
@@ -148,6 +150,13 @@ show-listing-provenance = true    # muted "<source> (<tag>)" line under the capt
   the same file. The List-of-Listings index stays caption-only.
   `show-provenance="true"` / `show-provenance="false"` on an individual
   `{{#include}}` or `{{#diff}}` overrides it either way.
+- **`max-line-width`** — a budget for the lines a listing renders (marker
+  lines left out, measured in display columns). `freeze` refuses a source
+  over it and `verify` fails on a frozen listing over it. For content the
+  book can't reflow, `freeze --allow-long-lines` records an exemption,
+  `allow-long-lines = true` in `listings.toml`; add that line by hand for a
+  listing already frozen. Details in
+  [references/cli.md](references/cli.md#line-width-budget).
 - **`list-of-listings`** — the `{{#list-of-listings}}` marker renders the
   index; link the hosting page from `SUMMARY.md`.
 - **`list-of-listings-sidebar`** — a browser-built sidebar view (HTML only).
