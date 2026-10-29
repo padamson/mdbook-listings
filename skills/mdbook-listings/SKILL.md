@@ -11,7 +11,7 @@ description: >-
   with its sources.
 license: MIT OR Apache-2.0
 metadata:
-  version: "0.1.21"
+  version: "0.1.22"
 ---
 
 # Authoring with mdbook-listings
@@ -38,7 +38,8 @@ Two identities govern every listing:
 
 You never hand-edit frozen files or `listings.toml` — the CLI owns them. You
 *do* hand-write the `{{#include}}` / `{{#listing}}` / `{{#callout}}` /
-`{{#diff}}` directives in chapter prose.
+`{{#diff}}` directives in chapter prose, and any `<tag>.callouts.toml`
+sidecar.
 
 ## The core workflow
 
@@ -77,8 +78,10 @@ All CLI commands are run **from the book root** (the directory containing
 
 4. **(Optional) Annotate** lines by adding `// CALLOUT: <label> <body>` marker
    comments *in the source file* before you freeze it, then reference them from
-   prose with `{{#callout <label>}}`. Or **show a diff** between two frozen
-   slices with `{{#diff <old-tag> <new-tag>}}`. Full syntax in
+   prose with `{{#callout <label>}}`. For code you can't edit, put the
+   callouts in a `listings/<tag>.callouts.toml` sidecar instead. Or **show a
+   diff** between two frozen slices with `{{#diff <old-tag> <new-tag>}}`.
+   Full syntax in
    [references/directives.md](references/directives.md).
 
 5. **Verify** that every frozen listing still matches its hash and every
@@ -155,6 +158,14 @@ show-listing-provenance = true    # muted "<source> (<tag>)" line under the capt
   the source* (comment prefix is language-specific). On render the marker line
   is stripped and replaced with a numbered badge; the body shows on hover (HTML)
   or as a note (PDF). A label-only marker is a bare cross-reference target.
+- **Sidecar callouts** — `listings/<tag>.callouts.toml`, hand-written beside
+  the frozen file, attaches callouts without editing the source: one
+  `[[callout]]` table per badge with `line` (a line of the frozen file),
+  `label`, and an optional `body`. Use it for code you don't own, generated
+  code, and languages with no line comment. It applies to `{{#include}}`
+  only, not to `{{#diff}}`, and a sliced include shows only the entries
+  inside its slice.
+  See [references/directives.md](references/directives.md#sidecar-callouts-tagcalloutstoml).
 - `{{#callout <label>}}` — *prose-side* reference to a marker by label, rendered
   as the same numbered badge, hyperlinked to the listing. Unknown label fails
   the build.

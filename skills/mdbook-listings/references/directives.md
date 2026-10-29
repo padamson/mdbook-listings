@@ -2,7 +2,8 @@
 
 There are five directives — `{{#include}}`, `{{#diff}}`, `{{#callout}}`,
 `{{#listing-ref}}`, and `{{#list-of-listings}}` — plus the `// CALLOUT:`
-source-marker syntax. They are
+source-marker syntax and its out-of-file form, the `<tag>.callouts.toml`
+sidecar. They are
 written by hand in chapter markdown and expanded by the preprocessor at build
 time. Code samples below use four-backtick fences so the inner three-backtick
 block is shown literally.
@@ -268,6 +269,57 @@ fn greet(name: &str) -> String {
     format!("Hello, {name}!")
 }
 ```
+
+### Sidecar callouts: `<tag>.callouts.toml`
+
+When the source can't carry a marker, put its callouts in a sidecar file
+next to the frozen listing instead. That covers code you don't own and want
+frozen unedited (a dependency's source, say), generated code, and languages
+with no line comment (CSS, plain Markdown). The sidecar for tag `main-v1` is
+`listings/main-v1.callouts.toml`, beside `listings/main-v1.rs`. You write it
+by hand; `freeze` neither creates nor reads it.
+
+```toml
+[[callout]]
+line = 39
+label = "parse-entry"
+body = "Called once for each line of the listing."
+
+[[callout]]
+line = 47
+label = "label-check"    # no body: a bare cross-reference target
+```
+
+- `line` is a 1-based line of the **frozen file**, as
+  `listings/<tag>.<ext>` holds it, not a line of the rendered block. A slice
+  that starts later, or a marker stripped above it, doesn't move it.
+  Refreezing the tag with `--force` can, so check the sidecar after one.
+- `label` follows the marker rule (`[A-Za-z0-9_-]+`) and `body` is optional,
+  as for a marker. Badges, hover text, the PDF note, numbering, and
+  `{{#callout <label>}}` all work as they do for a marker, and one listing
+  can mix sidecar entries with inline markers.
+
+Where a sidecar applies:
+
+- Only to `{{#include listings/<tag>…}}`. A `snippets/` include and either
+  side of a `{{#diff}}` show no sidecar badges.
+- A sliced include (`:A:B`) shows only the entries for lines inside its
+  slice, and a whole-file include leaves out an entry past the last line. A
+  `{{#callout}}` naming an entry that no include in the chapter shows fails
+  as an unknown label.
+
+The build fails on:
+
+- a sidecar that isn't valid TOML, an invalid label, or a label used twice in
+  one sidecar (reported when the book loads, before any chapter renders);
+- a sidecar label that matches an inline marker the same block shows, even
+  when the slice leaves the sidecar entry out;
+- an entry whose `line` is a `CALLOUT:` marker line, since that line is
+  stripped and the badge would have nowhere to land.
+
+`verify` fails on a sidecar whose `<tag>` names no frozen listing. Its
+unreferenced-callout warning covers inline markers only: a sidecar entry no
+`{{#callout}}` cites draws no warning.
 
 ### Prose cross-reference: `{{#callout <label>}}`
 
