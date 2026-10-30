@@ -99,11 +99,23 @@ criteria = "safe-to-deploy"
 delta = "3.1.2 -> 3.2.0"
 notes = "New TextMerge three-way merge module, WhitespaceMode line comparisons, Myers algorithm rework (Git-style bounded splits) plus RawMyers for the old behavior, and performance work. Pure algorithm/API code: no unsafe anywhere in src, no build script, no I/O, no dependency changes."
 
+[[audits.typed-path]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.12.3 -> 0.13.0"
+notes = "Adds optional serde Serialize/Deserialize impls behind a new off-by-default serde feature (serde_core without default features), and a nightly-wasip2 feature gating the unstable wasip2 cfg. set_extension now truncates at the end of the file stem, computing the offset by pointer subtraction in safe code (the stem borrows from the same buffer), so trailing separators are dropped. Windows is_absolute treats a drive-only prefix (C:foo) as relative and a complete UNC prefix as absolute; absolutize returns an error instead of a non-absolute path. The rest is where-clause simplification, tests, docs, CI config, and an AGENTS.md. No unsafe, no build script, no new filesystem, network, or env access."
+
 [[audits.webpki-roots]]
 who = "Paul Adamson <paul.adamson.01@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "1.0.10 -> 1.0.11"
 notes = "Removes two trust anchors from TLS_SERVER_ROOTS (emSign Root CA - C1 and emSign ECC Root CA - C3) and bumps the version. Data-only: no code, no unsafe, no build script or dependency changes. Taken for RUSTSEC-2026-0381 (fixed in 1.0.10, which imported audits cover)."
+
+[[audits.zip]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "9.0.5 -> 9.1.3"
+notes = "Hardening release series (9.1.0-9.1.3). Extraction opens output files through create_outfile, which removes a pre-existing symlink at the path, opens with FILE_FLAG_OPEN_REPARSE_POINT on Windows, and refuses a result that is a symlink. ZipStreamReader::extract with header-consistency checking extracts into a random-named private staging directory inside the destination (mode 0700 on Unix; on Windows created with a protected DACL for owner, SYSTEM and Administrators), validates the ZIP64/EOCD footer, then moves entries into place, re-resolving each path with resolve_enclosed. On Windows, path components with reserved characters, ADS colons, trailing dots or spaces, DOS device names, or over 255 UTF-16 units are rejected or sanitized, and a drive prefix inside a later component is split off. New ExtractOptions::with_size_limit and enforce_header_consistency. Central-directory parsing caps preallocation by directory size, rejects multi-disk archives, and checks data and seek ranges for u64 overflow; the Shrink decoder caps consecutive control codes instead of recursing. Decompressors are created lazily. AES round keys and the CTR keystream are zeroized on drop; CTR blocks are encrypted in batches. The writer reuses a cached DEFLATE encoder, deep-copies through a 64 KiB buffer, blanks stale bytes after the footer, and keeps raw-copied names and the language encoding flag as stored. New unsafe is Windows-only FFI (GetFileInformationByHandle, ConvertStringSecurityDescriptorToSecurityDescriptorW, CreateDirectoryW, LocalFree) with NUL-terminated buffers, a zeroed POD struct, a live handle, and a matching free; an icacls subprocess appears only in a cfg(windows) test. getrandom becomes required (staging names); windows-sys added for cfg(windows). No build script, no network or env access."
 
 [[trusted.aho-corasick]]
 criteria = "safe-to-deploy"
