@@ -5,6 +5,7 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
+use crate::anchor::ListingWidth;
 use crate::directive::{FencePolicy, line_number, scan_directives};
 use crate::manifest::Manifest;
 use crate::source_path::{ShownSource, SourcePaths, relative_to};
@@ -34,6 +35,9 @@ pub struct DiffDirective {
     /// `show-provenance="true|false"`, overriding the book-level flag for
     /// this one diff. `None` when unset.
     pub show_provenance: Option<bool>,
+    /// `width="normal|wide"`, overriding the book-level `listing-width` for
+    /// this one diff. `None` when unset.
+    pub width: Option<ListingWidth>,
     pub span: Range<usize>,
 }
 
@@ -134,6 +138,7 @@ pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
         let (args, caption) = crate::directive::split_caption(occ.args);
         let (args, label) = crate::directive::split_label(&args);
         let (args, show_provenance) = crate::directive::split_show_provenance(&args);
+        let (args, width) = crate::directive::split_width(&args);
         // Lift an optional `context=N` token out of the operands. A malformed
         // value (`context=x`) is ignored — it falls back to the default
         // context window rather than skipping the directive, since the window
@@ -169,6 +174,7 @@ pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
                 label,
                 context,
                 show_provenance,
+                width,
                 span: occ.span,
             });
         }
@@ -525,6 +531,7 @@ pub fn splice_chapter(
                 caption: d.caption.as_deref(),
                 label: d.label.as_deref(),
                 show_provenance: d.show_provenance,
+                width: d.width,
             },
         ));
         cursor = d.span.end;
@@ -657,6 +664,41 @@ mod tests {
         );
         assert_eq!(got[0].context, Some(6));
         assert_eq!(got[0].caption.as_deref(), Some("Slots"));
+    }
+
+    #[test]
+    fn parse_directives_lifts_width_and_keeps_the_operands() {
+        let got = parse_directives("{{#diff a b 1:5 1:6 width=\"wide\" context=2}}");
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!((got[0].left.as_str(), got[0].right.as_str()), ("a", "b"));
+        assert_eq!(
+            got[0].left_range,
+            Some(LineRange {
+                start: Some(1),
+                end: Some(5)
+            })
+        );
+        assert_eq!(got[0].width, Some(ListingWidth::Wide));
+        assert_eq!(got[0].context, Some(2));
+    }
+
+    #[test]
+    fn splice_chapter_puts_the_directive_width_on_the_anchor() {
+        let (tmp, manifest, _) = fixture(b"a\n", b"b\n");
+        let out = splice_chapter(
+            "{{#diff left-tag right-tag width=\"wide\"}}\n",
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .expect("splice");
+        assert_eq!(
+            crate::anchor::attr_value(&out, "data-listing-width").as_deref(),
+            Some("wide"),
+            "got:\n{out}"
+        );
     }
 
     #[test]
@@ -1069,6 +1111,7 @@ mod tests {
             caption: None,
             context: None,
             show_provenance: None,
+            width: None,
             span: 0..0,
         };
 

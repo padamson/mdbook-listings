@@ -11,8 +11,11 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 
 use crate::callout::{callouts_for_block, comment_prefix_for_extension, parse_callouts};
-use crate::diff::splice_chapter as splice_diffs;
-use crate::directive::{FencePolicy, line_number, scan_directives, split_caption, split_label};
+use crate::diff::{parse_directives, splice_chapter as splice_diffs};
+use crate::directive::{
+    FencePolicy, line_number, scan_directives, split_caption, split_label, split_lang,
+    split_show_provenance, split_width,
+};
 use crate::fence::FencedBlocks;
 use crate::freeze::hex_sha256;
 use crate::include::{
@@ -129,8 +132,15 @@ fn check_references(book_root: &Path, manifest: &Manifest, report: &mut VerifyRe
     let tags: HashSet<&str> = manifest.listings.iter().map(|l| l.tag.as_str()).collect();
     for (rel, content) in chapter_markdown(book_root) {
         for occ in scan_directives(&content, "{{#include ", FencePolicy::Annotate) {
+            // Every argument the include parser lifts, so none is read as
+            // part of the path. `parse_listing_includes` itself would skip
+            // an anchor-name suffix (`foo.rs:name`), which mdbook's links
+            // pass still resolves against this file.
             let (args, _caption) = split_caption(occ.args);
             let (args, _label) = split_label(&args);
+            let (args, _lang) = split_lang(&args);
+            let (args, _show) = split_show_provenance(&args);
+            let (args, _width) = split_width(&args);
             let path = args.trim();
             // Only listings/ includes resolve to a frozen tag; snippets/
             // and other paths are not manifest records.
@@ -156,29 +166,17 @@ fn check_references(book_root: &Path, manifest: &Manifest, report: &mut VerifyRe
                 ));
             }
         }
-        for occ in scan_directives(&content, "{{#diff", FencePolicy::SkipInside) {
-            let (args, _caption) = split_caption(occ.args);
-            let (args, _label) = split_label(&args);
-            // Drop a `context=N` token so it isn't miscounted as an operand,
-            // matching the diff parser.
-            let tokens: Vec<&str> = args
-                .split_whitespace()
-                .filter(|t| !t.starts_with("context="))
-                .collect();
-            // The diff splicer only processes 2-token (whole-file) or
-            // 4-token (with ranges) forms; the first two tokens are the
-            // operands. Other arities are left literal, so don't validate.
-            if tokens.len() != 2 && tokens.len() != 4 {
-                continue;
-            }
-            for operand in &tokens[..2] {
+        // The splicer's own parser, so verify checks exactly the diffs the
+        // build renders, whatever arguments follow the operands.
+        for d in parse_directives(&content) {
+            for operand in [&d.left, &d.right] {
                 if operand.starts_with("live:") {
                     continue;
                 }
                 if manifest.find(operand).is_none() {
                     report.error(format!(
                         "{rel}:{}: {{{{#diff}}}} operand `{operand}` names no frozen listing",
-                        line_number(&content, occ.span.start),
+                        line_number(&content, d.span.start),
                     ));
                 }
             }
@@ -276,23 +274,14 @@ fn check_orphans(book_root: &Path, manifest: &Manifest, report: &mut VerifyRepor
 /// should simply be able to see at a glance.
 fn check_live_operands(book_root: &Path, report: &mut VerifyReport) {
     for (rel, content) in chapter_markdown(book_root) {
-        for occ in scan_directives(&content, "{{#diff", FencePolicy::SkipInside) {
-            let (args, _caption) = split_caption(occ.args);
-            let (args, _label) = split_label(&args);
-            let tokens: Vec<&str> = args
-                .split_whitespace()
-                .filter(|t| !t.starts_with("context="))
-                .collect();
-            if tokens.len() != 2 && tokens.len() != 4 {
-                continue;
-            }
-            for operand in &tokens[..2] {
+        for d in parse_directives(&content) {
+            for operand in [&d.left, &d.right] {
                 if let Some(path) = operand.strip_prefix("live:") {
                     report.warning(format!(
                         "{rel}:{}: {{{{#diff}}}} uses a live operand `live:{path}` — \
                          shows current source, not a frozen snapshot, so freeze \
                          stability is traded away here",
-                        line_number(&content, occ.span.start),
+                        line_number(&content, d.span.start),
                     ));
                 }
             }
@@ -300,9 +289,9 @@ fn check_live_operands(book_root: &Path, report: &mut VerifyReport) {
     }
 }
 
-/// A `snippets/` include emits no locator anchor, and everything the
-/// numbering pass renders — the caption, the label it registers, the
-/// provenance line — is driven off that anchor. All three arguments are
+/// A `snippets/` include emits no locator anchor, and everything that rides
+/// on one — the caption, the label it registers, the provenance line, the
+/// width the runtime script reads — is driven off that anchor. All four are
 /// therefore parsed, accepted, and silently dropped on a snippet, which on
 /// the page is indistinguishable from an argument the author forgot to
 /// write. `lang=` is not affected: it sets the emitted fence's info string,
@@ -338,6 +327,13 @@ fn check_snippet_arguments(book_root: &Path, report: &mut VerifyReport) {
                     "{rel}:{line}: show-provenance on `{}` has no effect — the \
                      provenance line renders from the anchor a snippets/ include \
                      never emits",
+                    d.rel_path,
+                ));
+            }
+            if d.width.is_some() {
+                report.warning(format!(
+                    "{rel}:{line}: width on `{}` has no effect — a listing is \
+                     widened through the anchor a snippets/ include never emits",
                     d.rel_path,
                 ));
             }
@@ -786,6 +782,21 @@ mod tests {
     }
 
     #[test]
+    fn check_references_reads_an_include_path_whatever_display_arguments_follow() {
+        // A value with a `/` in it, left on the path, reads as a directory.
+        let (_t, root, manifest) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "{{#include listings/demo-v1.rs lang=\"c/c++\" show-provenance=\"false\" width=\"wide\"}}\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_references(&root, &manifest, &mut report);
+        assert_eq!(report.error_count(), 0, "got {:?}", report.findings);
+    }
+
+    #[test]
     fn check_references_tolerates_caption_on_include_and_diff() {
         let (_t, root, manifest) = book_with_demo();
         fs::write(
@@ -892,6 +903,24 @@ mod tests {
     }
 
     #[test]
+    fn check_snippet_arguments_warns_on_width() {
+        let (_t, root, _m) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "{{#include snippets/demo.rs width=\"wide\"}}\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_snippet_arguments(&root, &mut report);
+        let msg = single_warning(&report);
+        assert!(
+            msg.starts_with("src/ch.md:1:") && msg.contains("width"),
+            "warning names the line and the argument; got: {msg}"
+        );
+    }
+
+    #[test]
     fn check_snippet_arguments_leaves_lang_alone() {
         // `lang=` sets the emitted fence's info string, which snippets do
         // get -- it is the one argument that still works on a snippet.
@@ -949,6 +978,34 @@ mod tests {
         let m = &report.findings[0].message;
         assert!(m.contains("live:../src/foo.rs"), "got: {m}");
         assert!(m.contains("ch.md:3"), "got: {m}");
+    }
+
+    #[test]
+    fn diff_checks_read_the_operands_whatever_display_arguments_follow() {
+        // The diff splicer lifts these before counting operands, so verify
+        // must too, or a diff carrying one goes unchecked.
+        for arg in ["width=\"wide\"", "show-provenance=\"true\""] {
+            let (_t, root, manifest) = book_with_demo();
+            fs::write(
+                root.join("src/ch.md"),
+                format!("{{{{#diff demo-v1 ghost {arg}}}}}\n{{{{#diff demo-v1 live:../src/foo.rs {arg}}}}}\n"),
+            )
+            .unwrap();
+
+            let mut report = VerifyReport::default();
+            check_references(&root, &manifest, &mut report);
+            assert_eq!(report.error_count(), 1, "{arg}: got {:?}", report.findings);
+            assert!(report.findings[0].message.contains("ghost"), "{arg}");
+
+            let mut report = VerifyReport::default();
+            check_live_operands(&root, &mut report);
+            assert_eq!(report.findings.len(), 1, "{arg}: got {:?}", report.findings);
+            assert!(
+                report.findings[0].message.contains("live:../src/foo.rs"),
+                "{arg}: got {:?}",
+                report.findings
+            );
+        }
     }
 
     #[test]

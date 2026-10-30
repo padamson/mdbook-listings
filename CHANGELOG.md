@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Wide listings.** `width="wide"` on a `{{#include listings/…}}` or a
+  `{{#diff}}` lets the listing grow out of the text column in HTML, and
+  `listing-width = "wide"` under `[preprocessor.listings]` makes that the
+  book's default, which `width="normal"` turns off for one listing. A wide
+  listing grows evenly on both sides, only as far as its longest line needs
+  and the page has room for, so one that fits stays as it was and one that
+  still doesn't fit scrolls. It stops short of mdbook's prev/next chapter
+  arrows, and a listing inside a blockquote, list or admonition stays in
+  its box. Callout badges move with its right edge. The widening is done by
+  `mdbook-listings.js`, so without JavaScript, and in the PDF, a wide
+  listing renders as any other. `verify` warns about a `width=` on a
+  `snippets/` include, which has no effect.
 - **A line-width budget for listings.** `max-line-width = N` under
   `[preprocessor.listings]` sets the widest line a listing may render.
   `freeze` refuses a source with a line over it, naming each line and its
@@ -57,6 +69,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   added-lines-only rule, which it never mentioned.
 
 ### Fixed
+- **`verify` checks a `{{#diff}}` whatever arguments follow its operands.**
+  A `show-provenance=` on a diff made `verify` miscount its operands and
+  skip it, so a diff naming a tag the manifest lacks passed `verify` and
+  failed the build. It now reads diffs with the build's own parser. An
+  include whose `lang=` value holds a `/` no longer reads as a missing
+  listing either.
 - **A sliced include badges only the sidecar callouts inside its slice.** An
   `{{#include listings/<tag>.<ext>:A:B}}` used to render every entry in
   `<tag>.callouts.toml`. An entry for a line before `A` landed on line `A`,

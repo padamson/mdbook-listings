@@ -20,8 +20,17 @@
  * pre-script behaviour for any environment where JS doesn't run.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes are
- * the expected build-time asset: mdbook-listings-css-v12
+ * the expected build-time asset: mdbook-listings-css-v13
  */
+
+/* A wide listing's negative margins are set inline by mdbook-listings.js,
+ * measured against the screen; print lays the page out at its own width. */
+@media print {
+  .listing-widened {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+}
 
 /* Listing caption line, emitted by the numbering pass immediately before a
  * listing's code block when numbering is on and/or the directive carries a

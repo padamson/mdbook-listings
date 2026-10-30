@@ -6,6 +6,7 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
+use crate::anchor::ListingWidth;
 use crate::diff::{LineRange, parse_line_range};
 use crate::directive::{FencePolicy, line_number, scan_directives};
 use crate::source_path::SourcePaths;
@@ -29,6 +30,9 @@ pub struct IncludeDirective {
     /// `show-provenance="true|false"`, overriding the book-level flag for
     /// this one listing. `None` when unset.
     pub show_provenance: Option<bool>,
+    /// `width="normal|wide"`, overriding the book-level `listing-width` for
+    /// this one listing. `None` when unset.
+    pub width: Option<ListingWidth>,
     pub span: Range<usize>,
     pub fence_close_end: Option<usize>,
 }
@@ -77,6 +81,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
         let (args, label) = crate::directive::split_label(&args);
         let (args, lang) = crate::directive::split_lang(&args);
         let (args, show_provenance) = crate::directive::split_show_provenance(&args);
+        let (args, width) = crate::directive::split_width(&args);
         let raw = args.trim();
         // CALLOUT: snippets-intercept Two prefixes are intercepted: `listings/` (frozen tags — emit anchor) and `snippets/` (no anchor; we expand to give the callout splicer a shot at any CALLOUT markers in the snippet source). Other forms fall through to mdbook's built-in `links` preprocessor.
         if !is_intercepted_path(raw) {
@@ -115,6 +120,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
             label,
             lang,
             show_provenance,
+            width,
             span: occ.span,
             fence_close_end: occ.fence_close_end,
         });
@@ -399,6 +405,7 @@ pub fn splice_chapter(
                     caption: d.caption.as_deref(),
                     label: d.label.as_deref(),
                     show_provenance: d.show_provenance,
+                    width: d.width,
                 },
             ));
         }
@@ -585,6 +592,33 @@ mod tests {
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].show_provenance, Some(false));
         assert_eq!(got[0].rel_path, "listings/foo.rs");
+    }
+
+    #[test]
+    fn splice_chapter_puts_the_directive_width_on_the_anchor() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path();
+        std::fs::create_dir_all(src.join("listings")).unwrap();
+        std::fs::write(src.join("listings/foo.rs"), "fn body() {}\n").unwrap();
+        let manifest = manifest_with("foo", "../src/foo.rs");
+        let out = splice_chapter(
+            "{{#include listings/foo.rs:1:1 width=\"wide\"}}\n",
+            src,
+            None,
+            &manifest,
+            &SourcePaths::Verbatim,
+        )
+        .expect("splice");
+        assert_eq!(
+            crate::anchor::attr_value(&out, "data-listing-width").as_deref(),
+            Some("wide"),
+            "got:\n{out}"
+        );
+        assert_eq!(
+            crate::anchor::attr_value(&out, "data-listing-tag-range").as_deref(),
+            Some("1:1"),
+            "the width token comes off before the range is parsed; got:\n{out}"
+        );
     }
 
     #[test]

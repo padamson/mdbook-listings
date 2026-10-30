@@ -11,7 +11,7 @@ description: >-
   with its sources.
 license: MIT OR Apache-2.0
 metadata:
-  version: "0.1.23"
+  version: "0.1.24"
 ---
 
 # Authoring with mdbook-listings
@@ -129,6 +129,7 @@ list-of-listings = true           # enables the {{#list-of-listings}} marker
 list-of-listings-sidebar = "nested"  # "off" (default) | "append" | "nested"
 show-listing-provenance = true    # muted "<source> (<tag>)" line under the caption
 max-line-width = 72               # freeze refuses, verify fails, wider lines
+listing-width = "wide"            # "normal" (default) | "wide": grow past the column
 ```
 
 - **`number-listings`** — every listing gets a `Listing N.M` label (`N` =
@@ -157,6 +158,12 @@ max-line-width = 72               # freeze refuses, verify fails, wider lines
   `allow-long-lines = true` in `listings.toml`; add that line by hand for a
   listing already frozen. Details in
   [references/cli.md](references/cli.md#line-width-budget).
+- **`listing-width`** — `"wide"` lets a listing whose lines overflow the
+  text column grow past it in HTML, evenly on both sides and only as far as
+  it needs and the page has room for. `width="wide"` / `width="normal"` on
+  an individual `{{#include}}` or `{{#diff}}` overrides it either way. For
+  code the book can't reflow; details in
+  [references/directives.md](references/directives.md#wide-listings-width-and-listing-width).
 - **`list-of-listings`** — the `{{#list-of-listings}}` marker renders the
   index; link the hosting page from `SUMMARY.md`.
 - **`list-of-listings-sidebar`** — a browser-built sidebar view (HTML only).

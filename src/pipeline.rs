@@ -21,6 +21,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use mdbook_preprocessor::book::{Book, BookItem};
 
+use crate::anchor::ListingWidth;
 use crate::callout::{SidecarCallouts, SupportedRenderer, splice_chapter as splice_callouts};
 use crate::diff::splice_chapter as splice_diffs;
 use crate::include::splice_chapter as splice_includes;
@@ -41,6 +42,8 @@ pub struct PipelineOptions {
     /// Render each listing's tag and manifest `source` on a muted line
     /// beneath its caption, so the caption no longer has to carry identity.
     pub show_listing_provenance: bool,
+    /// The width a listing gets when its directive names none.
+    pub listing_width: ListingWidth,
 }
 
 impl PipelineOptions {
@@ -57,6 +60,13 @@ impl PipelineOptions {
                 .as_deref()
                 .map(SidebarMode::parse)
                 .unwrap_or(SidebarMode::Off),
+            listing_width: config
+                .get::<String>("preprocessor.listings.listing-width")
+                .ok()
+                .flatten()
+                .as_deref()
+                .and_then(ListingWidth::parse)
+                .unwrap_or_default(),
         }
     }
 }
@@ -119,6 +129,7 @@ pub fn process_book(
                     opts.number_listings,
                     opts.show_listing_provenance,
                     renderer,
+                    opts.listing_width,
                 );
                 // Record this chapter's listings for the book-wide
                 // passes. The link path is the chapter file relative to
@@ -281,6 +292,7 @@ mod tests {
             &PipelineOptions {
                 number_listings: true,
                 show_listing_provenance: false,
+                listing_width: ListingWidth::Normal,
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
             },
@@ -311,6 +323,7 @@ mod tests {
             list_of_listings: false,
             sidebar_mode: SidebarMode::Off,
             show_listing_provenance: false,
+            listing_width: ListingWidth::Normal,
         };
         let bare = run("{{#include listings/sample.rs caption=\"S\"}}\n", &opts);
         let fenced = run(
@@ -340,6 +353,7 @@ mod tests {
             &PipelineOptions {
                 number_listings: true,
                 show_listing_provenance: false,
+                listing_width: ListingWidth::Normal,
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
             },
@@ -361,6 +375,7 @@ mod tests {
             &PipelineOptions {
                 number_listings: true,
                 show_listing_provenance: false,
+                listing_width: ListingWidth::Normal,
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
             },
@@ -380,6 +395,7 @@ mod tests {
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
                 show_listing_provenance: true,
+                listing_width: ListingWidth::Normal,
             },
         );
         assert!(
@@ -401,6 +417,7 @@ mod tests {
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
                 show_listing_provenance: true,
+                listing_width: ListingWidth::Normal,
             },
         );
         assert!(
@@ -426,6 +443,7 @@ mod tests {
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
                 show_listing_provenance: true,
+                listing_width: ListingWidth::Normal,
             },
         );
         assert!(
@@ -447,6 +465,7 @@ mod tests {
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
                 show_listing_provenance: true,
+                listing_width: ListingWidth::Normal,
             },
         );
         assert!(
@@ -471,6 +490,7 @@ mod tests {
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
                 show_listing_provenance: true,
+                listing_width: ListingWidth::Normal,
             },
         );
         assert!(
@@ -480,6 +500,72 @@ mod tests {
                  <span class=\"listing-tag\">other</span>"
             ),
             "these two fixtures have different sources, so both show; got:\n{out}"
+        );
+    }
+
+    fn config(toml: &str) -> mdbook_preprocessor::config::Config {
+        toml.parse().expect("config parses")
+    }
+
+    #[test]
+    fn the_book_listing_width_is_read_from_the_listings_table() {
+        let wide = config("[preprocessor.listings]\nlisting-width = \"wide\"\n");
+        assert_eq!(
+            PipelineOptions::from_config(&wide).listing_width,
+            ListingWidth::Wide
+        );
+        for (what, toml) in [
+            ("unset", "[preprocessor.listings]\n"),
+            (
+                "unknown",
+                "[preprocessor.listings]\nlisting-width = \"full\"\n",
+            ),
+            (
+                "not a string",
+                "[preprocessor.listings]\nlisting-width = true\n",
+            ),
+        ] {
+            assert_eq!(
+                PipelineOptions::from_config(&config(toml)).listing_width,
+                ListingWidth::Normal,
+                "{what}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_wide_book_default_reaches_the_anchor_unless_the_directive_says_normal() {
+        let opts = PipelineOptions {
+            number_listings: false,
+            list_of_listings: false,
+            sidebar_mode: SidebarMode::Off,
+            show_listing_provenance: false,
+            listing_width: ListingWidth::Wide,
+        };
+        let out = run(
+            "{{#include listings/sample.rs}}\n\n\
+             {{#diff sample other width=\"normal\"}}\n",
+            &opts,
+        );
+        let width = |attr: &str| {
+            let at = out
+                .find(attr)
+                .unwrap_or_else(|| panic!("no {attr}; got:\n{out}"));
+            let open = out[..at]
+                .rfind("<div")
+                .expect("the attribute sits in a <div>");
+            let tag = &out[open..at + out[at..].find('>').expect("the <div> closes")];
+            crate::anchor::attr_value(tag, "data-listing-width")
+        };
+        assert_eq!(
+            width("data-listing-tag=\"sample\"").as_deref(),
+            Some("wide"),
+            "got:\n{out}"
+        );
+        assert_eq!(
+            width("data-listing-diff-left=\"sample\"").as_deref(),
+            Some("normal"),
+            "got:\n{out}"
         );
     }
 
@@ -494,6 +580,7 @@ mod tests {
             &PipelineOptions {
                 number_listings: true,
                 show_listing_provenance: false,
+                listing_width: ListingWidth::Normal,
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
             },

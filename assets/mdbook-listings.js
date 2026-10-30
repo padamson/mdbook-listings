@@ -1,6 +1,6 @@
 /* mdbook-listings — runtime layout helpers for the callout overlay.
  *
- * Two things this script does:
+ * Three things this script does:
  *
  * 1. Calibrate `--callout-line-px` on every overlay so the badge sits
  *    on the line that previously held its `// CALLOUT:` marker.
@@ -55,8 +55,20 @@
  *    every resize event, so dragging the window edge updates the
  *    side/clamp choice live.
  *
+ * 3. Widen each listing whose anchor says `data-listing-width="wide"`
+ *    out of the content column. It grows symmetrically about the column,
+ *    by as much as its longest line overflows and no further than the
+ *    scroll container's content box allows (less mdbook's fixed chapter
+ *    arrows), so a listing that fits stays put and one that can't fit
+ *    still scrolls. Its callout overlay takes the same margins, keeping
+ *    badges on the listing's right edge. A listing nested in a blockquote,
+ *    list or admonition stays in its box. This runs first in each recalc:
+ *    widening reflows the listing (a scrollbar can disappear), and the
+ *    badge calibration measures the result. A ResizeObserver on the scroll
+ *    container re-runs it when the sidebar opens or closes.
+ *
  * Sentinel string used by unit tests to confirm the bundled bytes
- * are the expected build-time asset: mdbook-listings-js-v14
+ * are the expected build-time asset: mdbook-listings-js-v15
  */
 (function () {
   var LEFT_FALLBACK_THRESHOLD_EM = 16;
@@ -188,6 +200,103 @@
     });
   }
 
+  // The listings a `data-listing-width="wide"` anchor asks to widen, each
+  // with its callout overlay when it has one (the anchor then follows the
+  // overlay rather than the <pre>). Only a listing directly in <main>
+  // qualifies: one inside a blockquote, a list or an admonition would be
+  // pulled out through its container's border.
+  function wideListings() {
+    var found = [];
+    document.querySelectorAll('[data-listing-width="wide"]').forEach(function (anchor) {
+      var overlay = null;
+      var pre = anchor.previousElementSibling;
+      if (pre && pre.classList.contains('callout-overlay')) {
+        overlay = pre;
+        pre = pre.previousElementSibling;
+      }
+      if (pre && pre.tagName === 'PRE' && pre.parentElement.tagName === 'MAIN') {
+        found.push({ pre: pre, overlay: overlay });
+      }
+    });
+    return found;
+  }
+
+  // The class lets the print stylesheet drop the margins, which are
+  // measured for the screen.
+  function setWidening(listing, extend) {
+    var margin = extend > 0 ? -extend + 'px' : '';
+    [listing.pre, listing.overlay].forEach(function (el) {
+      if (!el) return;
+      el.style.marginLeft = margin;
+      el.style.marginRight = margin;
+      el.classList.toggle('listing-widened', extend > 0);
+    });
+  }
+
+  // The horizontal room a listing in `container` may grow into: the
+  // container's content box, less the columns mdbook's fixed prev/next
+  // chapter arrows take on a wide screen. Those columns are links the
+  // full height of the page, so code under them couldn't be selected and
+  // a badge under the right one would open the next chapter.
+  function roomIn(container) {
+    var style = getComputedStyle(container);
+    var inner = container.getBoundingClientRect().left + container.clientLeft;
+    var room = {
+      left: inner + parseFloat(style.paddingLeft),
+      right: inner + container.clientWidth - parseFloat(style.paddingRight),
+    };
+    var middle = (room.left + room.right) / 2;
+    document.querySelectorAll('.nav-wide-wrapper .nav-chapters').forEach(function (nav) {
+      var r = nav.getBoundingClientRect();
+      if (r.width === 0) return;
+      if (r.right <= middle) room.left = Math.max(room.left, r.right);
+      else room.right = Math.min(room.right, r.left);
+    });
+    return room;
+  }
+
+  // mdbook's sidebar toggle resizes the content without a window resize,
+  // and the widening has to follow it. The width compared is the one the
+  // last widening measured, so a window resize, which recalcs anyway, and a
+  // height change (widening can remove a scrollbar) queue nothing more.
+  var watchedContainer = null;
+  var widenedAtWidth = -1;
+  function watchContainerWidth(container) {
+    if (watchedContainer === container || typeof ResizeObserver === 'undefined') return;
+    watchedContainer = container;
+    new ResizeObserver(function () {
+      if (container.clientWidth !== widenedAtWidth) scheduleRecalc();
+    }).observe(container);
+  }
+
+  // Reset, measure, then write, in three passes over every wide listing, so
+  // the page lays out once for the measurements rather than once per listing
+  // (see calibrateLineHeights).
+  function widenListings() {
+    var listings = wideListings();
+    if (!listings.length) return;
+    listings.forEach(function (l) { setWidening(l, 0); });
+    // Every listing directly in <main> shares one scroll container.
+    var container = findScrollContainer(listings[0].pre);
+    watchContainerWidth(container);
+    var room = roomIn(container);
+    widenedAtWidth = container.clientWidth;
+    listings.forEach(function (l) {
+      // highlight.js makes the <code> the scroller; without it, the <pre> is.
+      var code = l.pre.querySelector('code') || l.pre;
+      var overflow = Math.max(
+        l.pre.scrollWidth - l.pre.clientWidth,
+        code.scrollWidth - code.clientWidth
+      );
+      var rect = l.pre.getBoundingClientRect();
+      l.extend = Math.max(
+        0,
+        Math.min(Math.ceil(overflow / 2), rect.left - room.left, room.right - rect.right)
+      );
+    });
+    listings.forEach(function (l) { setWidening(l, l.extend); });
+  }
+
   // Walk up to the nearest scrolling ancestor. mdbook's scrollbar
   // is on `.content` (`overflow-y: auto`), not on `<html>`, so
   // `documentElement.clientWidth` would return the full viewport
@@ -299,6 +408,7 @@
     // the script ran (and how many times). Without this marker, a
     // failed recalc looks identical to "the script didn't load."
     window.__mdbookListingsRecalcs = (window.__mdbookListingsRecalcs || 0) + 1;
+    widenListings();
     calibrateLineHeights();
     adjustPopoverPositioning();
   }

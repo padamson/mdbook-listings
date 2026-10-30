@@ -522,6 +522,49 @@ listing — and keeps tracking it as numbers shift. Mirrors what
 - In the typst-pdf renderer the ref renders as plain `Listing N.M` text.
 - Inside a fenced block the directive is left verbatim, so you can quote it.
 
+## Wide listings: `width=` and `listing-width`
+
+Code you can't reflow (a dependency's source, a diff of rustfmt'd code at
+100 columns plus its `+`/`-` gutter) overflows mdbook's 750px text column
+and scrolls sideways. `width="wide"` lets one listing grow out of the column
+in HTML:
+
+````markdown
+{{#include listings/parse-v1.rs width="wide"}}
+{{#diff parse-v1 parse-v2 width="wide" caption="Splitting the parser"}}
+````
+
+To make it the book's default, set it under `[preprocessor.listings]`, and
+turn it off for one listing with `width="normal"`:
+
+```toml
+[preprocessor.listings]
+listing-width = "wide"   # "normal" (default) | "wide"
+```
+
+- The listing grows evenly on both sides, only as far as its longest line
+  needs and the page has room for (the content area, less mdbook's
+  prev/next chapter arrows on a wide screen). A listing that fits the
+  column is left as it is, and one too long for the room it gets still
+  scrolls. A wide default therefore changes nothing for listings that
+  already fit.
+- Only a listing that sits directly in the page widens. One inside a
+  blockquote, a list item or an admonition stays in its box.
+- Callout badges follow the widened listing's right edge. A popover then
+  has less of the gutter to open into, and opens over the listing when too
+  little is left, as it does on a narrow window.
+- `mdbook-listings.js` does the widening when the page loads and on every
+  resize, so without JavaScript a wide listing renders as any other. The PDF
+  ignores it, since a page has no column to grow out of.
+- It works on `listings/` includes and on `{{#diff}}`. A `snippets/` include
+  has no locator anchor to carry it, and `verify` warns about one.
+- A value other than `normal` or `wide`, on a directive or in `book.toml`,
+  is ignored, as with `show-provenance=`.
+
+Widening suits code you can't change. For code you own, the
+[`max-line-width`](cli.md#line-width-budget) budget keeps the lines short
+enough not to need it.
+
 ## Gotcha: don't write a bare two-arg `{{#diff a b}}` in inline prose
 
 The preprocessor skips directives inside fenced code blocks **and** inline code

@@ -1281,3 +1281,214 @@ async fn a_provenance_path_frozen_with_a_url_renders_as_a_muted_link() {
     )
     .await;
 }
+
+/// `wideGeometry(anchor)`: where the listing an anchor belongs to sits on
+/// the page, `null` when no `<pre>` precedes the anchor. Boxes for the
+/// `pre`, its `overlay` (or `null`), the `main` column and mdbook's scroll
+/// container `content`, plus `code` (the scrolling element), `badges` (every
+/// badge in the overlay) and `navs` (the fixed chapter arrows on screen).
+/// `px(n)` rounds a measurement for a report.
+const WIDE_GEOMETRY_JS: &str = r#"
+    function wideGeometry(anchor) {
+      let pre = anchor.previousElementSibling;
+      const overlay = pre && pre.classList.contains('callout-overlay') ? pre : null;
+      if (overlay) pre = overlay.previousElementSibling;
+      if (!pre || pre.tagName !== 'PRE') return null;
+      const content = document.getElementById('mdbook-content');
+      return {
+        pre: pre.getBoundingClientRect(),
+        overlay: overlay && overlay.getBoundingClientRect(),
+        badges: overlay ? [...overlay.querySelectorAll('.callout-badge')]
+          .map(b => b.getBoundingClientRect()) : [],
+        main: document.querySelector('main').getBoundingClientRect(),
+        content: content.getBoundingClientRect(),
+        contentOverflows: content.scrollWidth > content.clientWidth,
+        code: pre.querySelector('code'),
+        navs: [...document.querySelectorAll('.nav-wide-wrapper .nav-chapters')]
+          .map(n => n.getBoundingClientRect()).filter(r => r.width > 0),
+      };
+    }
+    const px = n => Math.round(n);
+    const centre = r => (r.left + r.right) / 2;
+    // What every widened listing must satisfy, as a list of problems.
+    function wideProblems(g) {
+      const bad = [];
+      if (g.pre.width <= g.main.width + 1) {
+        bad.push(`not widened: pre=${px(g.pre.width)} column=${px(g.main.width)}`);
+      }
+      if (Math.abs(centre(g.pre) - centre(g.main)) > 1) {
+        bad.push(`off centre: pre=${px(centre(g.pre))} column=${px(centre(g.main))}`);
+      }
+      if (g.pre.left < g.content.left || g.pre.right > g.content.right || g.contentOverflows) {
+        bad.push(`past the content: pre=[${px(g.pre.left)},${px(g.pre.right)}] ` +
+          `content=[${px(g.content.left)},${px(g.content.right)}] overflows=${g.contentOverflows}`);
+      }
+      for (const n of g.navs) {
+        if (g.pre.left < n.right - 1 && g.pre.right > n.left + 1) {
+          bad.push(`under a chapter arrow at [${px(n.left)},${px(n.right)}]`);
+        }
+      }
+      if (g.overlay && Math.abs(g.overlay.right - g.pre.right) > 1) {
+        bad.push(`overlay right=${px(g.overlay.right)} pre right=${px(g.pre.right)}`);
+      }
+      g.badges.forEach((b, i) => {
+        if (Math.abs(b.right - g.pre.right) > 2) {
+          bad.push(`badge #${i} right=${px(b.right)} pre right=${px(g.pre.right)}`);
+        }
+      });
+      return bad;
+    }
+"#;
+
+/// The wide listing in ch05: a diff with callouts, whose lines run to 164
+/// columns.
+const WIDE_ANCHOR: &str = r#"document.querySelector('[data-listing-label="callout-cross-refs"]')"#;
+
+async fn set_viewport(page: &playwright_rs::protocol::Page, width: u32) {
+    page.set_viewport_size(Viewport { width, height: 900 })
+        .await
+        .expect("set viewport");
+    wait_for_layout_recalc(page).await;
+}
+
+#[tokio::test]
+async fn a_wide_listing_grows_past_the_column_and_its_badges_follow() {
+    with_traced_chapter(
+        "a_wide_listing_grows_past_the_column_and_its_badges_follow",
+        CH05,
+        |page| async move {
+            set_viewport(&page, 1440).await;
+            let script = [
+                "(async () => {",
+                RAF2_JS,
+                WIDE_GEOMETRY_JS,
+                "const anchor = ",
+                WIDE_ANCHOR,
+                r#";
+                const g = wideGeometry(anchor);
+                if (!g) return 'no <pre> before the wide anchor';
+                const bad = wideProblems(g);
+                if (!g.overlay || g.badges.length === 0) bad.push('no callout badges to check');
+                // A recalc measures from scratch, so running it again changes nothing.
+                window.dispatchEvent(new Event('resize'));
+                await raf2();
+                const again = wideGeometry(anchor);
+                if (px(again.pre.left) !== px(g.pre.left) || px(again.pre.right) !== px(g.pre.right)) {
+                  bad.push(`a second recalc moved it: [${px(g.pre.left)},${px(g.pre.right)}] → ` +
+                    `[${px(again.pre.left)},${px(again.pre.right)}]`);
+                }
+                return bad.length ? bad.join('; ') : 'ok';
+            })()"#,
+            ]
+            .concat();
+            let report: String = page.evaluate_value(&script).await.expect("measure");
+            assert_eq!(report, "ok");
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_wide_listing_grows_only_as_far_as_its_lines_need() {
+    with_traced_chapter(
+        "a_wide_listing_grows_only_as_far_as_its_lines_need",
+        CH05,
+        |page| async move {
+            // Room enough beside the column for all 164 columns.
+            set_viewport(&page, 2560).await;
+            let script = [
+                "(() => {",
+                WIDE_GEOMETRY_JS,
+                "const g = wideGeometry(",
+                WIDE_ANCHOR,
+                r#");
+                if (!g) return 'no <pre> before the wide anchor';
+                const bad = wideProblems(g);
+                if (g.code.scrollWidth > g.code.clientWidth) {
+                  bad.push(`still scrolls: ${g.code.scrollWidth} > ${g.code.clientWidth}`);
+                }
+                const spare = g.navs.length
+                  ? Math.min(...g.navs.map(n => n.left > g.pre.right ? n.left - g.pre.right : g.pre.left - n.right))
+                  : Math.min(g.pre.left - g.content.left, g.content.right - g.pre.right);
+                if (spare < 20) bad.push(`took the whole room (${px(spare)}px spare) instead of what it needs`);
+                return bad.length ? bad.join('; ') : 'ok';
+            })()"#,
+            ]
+            .concat();
+            let report: String = page.evaluate_value(&script).await.expect("measure");
+            assert_eq!(report, "ok");
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn narrowing_the_window_takes_a_wide_listings_extra_width_back() {
+    with_traced_chapter(
+        "narrowing_the_window_takes_a_wide_listings_extra_width_back",
+        CH05,
+        |page| async move {
+            let measure = [
+                "(() => {",
+                WIDE_GEOMETRY_JS,
+                "const g = wideGeometry(",
+                WIDE_ANCHOR,
+                r#");
+                if (!g) return 'no <pre> before the wide anchor';
+                return `${px(g.pre.left - g.main.left)} ${px(g.main.right - g.pre.right)}`;
+            })()"#,
+            ]
+            .concat();
+            set_viewport(&page, 1440).await;
+            let wide: String = page.evaluate_value(&measure).await.expect("measure wide");
+            assert_ne!(wide, "0 0", "the listing widens first");
+            // Below mdbook's 1080px sidebar breakpoint the column fills the page.
+            set_viewport(&page, 760).await;
+            let narrow: String = page.evaluate_value(&measure).await.expect("measure narrow");
+            assert_eq!(
+                narrow, "0 0",
+                "with no room beside the column, the listing is the column's width again"
+            );
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn marking_a_listing_wide_grows_it_only_when_its_lines_overflow() {
+    with_traced_chapter(
+        "marking_a_listing_wide_grows_it_only_when_its_lines_overflow",
+        CH05,
+        |page| async move {
+            set_viewport(&page, 1440).await;
+            // Two listings without callouts, marked wide at runtime: a diff of
+            // the e2e tests (156 columns) and a short Cargo.toml diff.
+            let script = [
+                "(async () => {",
+                RAF2_JS,
+                WIDE_GEOMETRY_JS,
+                r#"
+                const long = document.querySelector('[data-listing-diff-left="e2e-callouts-v5"]');
+                const short = document.querySelector('[data-listing-diff-left="cargo-toml-v3"]');
+                if (!long || !short) return 'a listing this test marks is gone';
+                long.setAttribute('data-listing-width', 'wide');
+                short.setAttribute('data-listing-width', 'wide');
+                window.dispatchEvent(new Event('resize'));
+                await raf2();
+                const l = wideGeometry(long);
+                const s = wideGeometry(short);
+                if (!l || !s) return 'no <pre> before a marked anchor';
+                const bad = wideProblems(l);
+                if (s.code.scrollWidth > s.code.clientWidth) bad.push('the short listing overflows; pick a shorter one');
+                const shortMargins = `${px(s.pre.left - s.main.left)} ${px(s.main.right - s.pre.right)}`;
+                if (shortMargins !== '0 0') bad.push(`the short listing moved: ${shortMargins}`);
+                return bad.length ? bad.join('; ') : 'ok';
+            })()"#,
+            ]
+            .concat();
+            let report: String = page.evaluate_value(&script).await.expect("measure");
+            assert_eq!(report, "ok");
+        },
+    )
+    .await;
+}

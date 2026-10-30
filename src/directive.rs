@@ -7,6 +7,8 @@
 
 use std::ops::Range;
 
+use crate::anchor::ListingWidth;
+
 /// One unescaped directive occurrence outside inline code and HTML comments.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct DirectiveOccurrence<'a> {
@@ -213,6 +215,14 @@ pub(crate) fn split_lang(args: &str) -> (String, Option<String>) {
 pub(crate) fn split_show_provenance(args: &str) -> (String, Option<bool>) {
     let (rest, value) = split_quoted_kv(args, "show-provenance=\"");
     (rest, value.and_then(|v| v.parse::<bool>().ok()))
+}
+
+/// Lift a `width="normal|wide"` token off a directive's args — the
+/// per-directive override for the book-level `listing-width`. An unknown
+/// value is dropped with the token, as for `show-provenance`.
+pub(crate) fn split_width(args: &str) -> (String, Option<ListingWidth>) {
+    let (rest, value) = split_quoted_kv(args, "width=\"");
+    (rest, value.as_deref().and_then(ListingWidth::parse))
 }
 
 /// Shared lifter for `key="value"` directive arguments. The first `"` ends
@@ -608,6 +618,33 @@ mod tests {
         let (rest, show) = split_show_provenance("a b show-provenance=\"yes\"");
         assert_eq!(rest, "a b");
         assert_eq!(show, None);
+    }
+
+    #[test]
+    fn split_width_lifts_both_widths() {
+        let (rest, width) = split_width("listings/foo.rs width=\"wide\"");
+        assert_eq!(rest, "listings/foo.rs");
+        assert_eq!(width, Some(ListingWidth::Wide));
+
+        let (rest, width) = split_width("a b width=\"normal\" 1:2 1:3");
+        assert_eq!(rest, "a b 1:2 1:3");
+        assert_eq!(width, Some(ListingWidth::Normal));
+    }
+
+    #[test]
+    fn split_width_none_when_absent() {
+        let (rest, width) = split_width("a b 1:2");
+        assert_eq!(rest, "a b 1:2");
+        assert_eq!(width, None);
+    }
+
+    #[test]
+    fn split_width_drops_an_unknown_value() {
+        // As with show-provenance: the token goes, and the book default
+        // decides.
+        let (rest, width) = split_width("a b width=\"full\"");
+        assert_eq!(rest, "a b");
+        assert_eq!(width, None);
     }
 
     #[test]

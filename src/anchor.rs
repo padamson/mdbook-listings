@@ -61,6 +61,34 @@ pub(crate) struct DiffOperand<'a> {
     pub(crate) range: Option<&'a LineRange>,
 }
 
+/// How wide a listing renders in HTML. `Wide` lets the runtime script widen
+/// it out of the content column, as far as its longest line needs and the
+/// page has room for; the PDF page has no column to leave.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ListingWidth {
+    #[default]
+    Normal,
+    Wide,
+}
+
+impl ListingWidth {
+    /// The spelling a directive, `book.toml`, and the anchor attribute share.
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "normal" => Some(Self::Normal),
+            "wide" => Some(Self::Wide),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Wide => "wide",
+        }
+    }
+}
+
 /// The author-supplied metadata an anchor carries alongside its operands.
 /// Grouped because both emitters take all of it and neither varies it.
 pub(crate) struct AnchorMeta<'a> {
@@ -69,6 +97,9 @@ pub(crate) struct AnchorMeta<'a> {
     /// `show-provenance="true|false"` on the directive, overriding the
     /// book-level flag in either direction. `None` when unset.
     pub(crate) show_provenance: Option<bool>,
+    /// `width="normal|wide"` on the directive, overriding the book-level
+    /// `listing-width`. `None` when unset.
+    pub(crate) width: Option<ListingWidth>,
 }
 
 /// The locator anchor for a frozen-listing include, a line of its own after
@@ -156,6 +187,15 @@ fn push_meta(anchor: &mut String, meta: &AnchorMeta) {
     if let Some(show) = meta.show_provenance {
         anchor.push_str(&format!(" data-listing-show-provenance=\"{show}\""));
     }
+    if let Some(width) = meta.width {
+        anchor.push_str(&width_attr(width));
+    }
+}
+
+/// ` data-listing-width="…"`, the one spelling the emitters and the numbering
+/// pass's book default both write and the runtime script reads.
+pub(crate) fn width_attr(width: ListingWidth) -> String {
+    format!(" data-listing-width=\"{}\"", width.as_str())
 }
 
 /// Read a `name="value"` attribute's value out of an anchor element's
@@ -191,6 +231,7 @@ mod tests {
             caption,
             label,
             show_provenance,
+            width: None,
         }
     }
 
@@ -326,6 +367,40 @@ mod tests {
         );
         let unset = include_anchor("foo-v1", None, None, &meta(None, None, None));
         assert_eq!(attr_value(&unset, "data-listing-show-provenance"), None);
+    }
+
+    #[test]
+    fn anchors_carry_the_per_directive_width() {
+        let wide = AnchorMeta {
+            width: Some(ListingWidth::Wide),
+            ..meta(None, None, None)
+        };
+        let include = include_anchor("foo-v1", None, None, &wide);
+        assert_eq!(
+            attr_value(&include, "data-listing-width").as_deref(),
+            Some("wide")
+        );
+        let normal = AnchorMeta {
+            width: Some(ListingWidth::Normal),
+            ..meta(None, None, None)
+        };
+        let diff = diff_anchor(&operand("a-v1", None), &operand("a-v2", None), &normal);
+        assert_eq!(
+            attr_value(&diff, "data-listing-width").as_deref(),
+            Some("normal"),
+            "an explicit normal is recorded, so a book-wide default can't override it"
+        );
+        let unset = include_anchor("foo-v1", None, None, &meta(None, None, None));
+        assert_eq!(attr_value(&unset, "data-listing-width"), None);
+    }
+
+    #[test]
+    fn a_listing_width_parses_from_its_attribute_spelling() {
+        for width in [ListingWidth::Normal, ListingWidth::Wide] {
+            assert_eq!(ListingWidth::parse(width.as_str()), Some(width));
+        }
+        assert_eq!(ListingWidth::parse("Wide"), None);
+        assert_eq!(ListingWidth::parse("full"), None);
     }
 
     #[test]

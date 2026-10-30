@@ -332,7 +332,7 @@ functions (`replace_callout_refs` and `render_callout_ref`), so
 the dl that the splicer renders below the diff has fresh anchors
 that this slice's prose then points back at:
 
-{{#diff callout-v2 callout-v3 caption="Resolving prose references to their listing-side badge anchors"}}
+{{#diff callout-v2 callout-v3 caption="Resolving prose references to their listing-side badge anchors" label="callout-cross-refs" width="wide"}}
 
 Snapshot (slice 5) of the dl rendered below the diff above. The
 v2→v3 diff's context window picks up `splice-entry` (carried over

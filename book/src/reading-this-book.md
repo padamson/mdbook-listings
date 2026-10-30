@@ -36,6 +36,14 @@ screenshots predate all of it.
   path to the file at the commit it came from: the path on
   {{#listing-ref freeze-acceptance-tests}} opens `tests/freeze.rs` as it
   stood at `0eb3f48`.
+- **Wide listings.** A listing can ask to be wider than the text column
+  with `width="wide"`, and a book can make that its default with
+  `listing-width = "wide"` under `[preprocessor.listings]`. Only
+  {{#listing-ref callout-cross-refs}} asks for it here. Its lines run to
+  164 columns, so on a wide window it grows past the prose on both sides
+  until it fits or the page runs out of room, and its callout badges move
+  with its right edge. On a narrow window it scrolls, as every other
+  listing in the book does.
 
 ## Pointers the chapters make that have moved
 
