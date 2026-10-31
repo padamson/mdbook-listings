@@ -255,10 +255,10 @@ fn splice_callout_lists(
     }
 }
 
-/// Replace `{{#callout <label>}}` directives that sit outside fenced code
-/// blocks. Directives inside fenced blocks, inline code spans, or behind a
-/// backslash escape (e.g. literal documentation examples) pass through
-/// untouched so authors can show the syntax.
+/// Replace `{{#callout <label>}}` directives that sit outside code blocks.
+/// Directives inside code blocks, inline code spans, or behind a backslash
+/// escape (e.g. literal documentation examples) pass through untouched so
+/// authors can show the syntax.
 // CALLOUT: cross-ref-replace Cross-ref entry: the shared scanner skips directives inside fenced blocks; this pass errors on labels not in the chapter's collected map.
 fn replace_callout_refs(
     content: &str,

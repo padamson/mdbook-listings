@@ -172,8 +172,8 @@ pub fn render_index(chapters: &[ChapterListings]) -> String {
 
 /// Replace every `{{#list-of-listings}}` marker in `content` with
 /// `replacement` (the rendered index, or `""` when the feature is off so the
-/// raw directive never leaks). Markers inside fenced code blocks are left
-/// alone so a chapter can show the directive verbatim.
+/// raw directive never leaks). Markers inside code blocks are left alone
+/// so a chapter can show the directive verbatim.
 pub fn replace_markers(content: &str, replacement: &str) -> String {
     let occs: Vec<_> = scan_directives(content, MARKER_PREFIX, FencePolicy::SkipInside)
         .into_iter()

@@ -132,9 +132,9 @@ pub fn parse_line_range(tok: &str) -> Option<LineRange> {
 
 /// Returns every well-formed `{{#diff a b}}` directive in `content`.
 /// Backslash-escaped directives, wrong-arity matches, and any directive
-/// whose start byte falls inside a fenced code block are skipped — the
-/// fence rule lets a chapter quote literal directive examples (e.g. a
-/// frozen test fixture) without the preprocessor consuming them.
+/// whose start byte falls inside a code block are skipped — the code rule
+/// lets a chapter quote literal directive examples (e.g. a frozen test
+/// fixture) without the preprocessor consuming them.
 pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
     let mut out = Vec::new();
     for occ in scan_directives(content, "{{#diff", FencePolicy::SkipInside) {

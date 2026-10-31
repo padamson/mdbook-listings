@@ -646,8 +646,11 @@ listing-wrap = true
 
 ## Gotcha: don't write a bare two-arg `{{#diff a b}}` in inline prose
 
-The preprocessor skips directives inside fenced code blocks **and** inline code
-spans (`` `…` ``). But a `{{#diff old new}}` written as *plain prose* (not in
+The preprocessor skips directives inside code blocks (fenced or indented,
+including a fence in a blockquote or list item) **and** inline code spans
+(`` `…` ``); an `{{#include}}` it skips there fails the build instead (see
+"Quoting the include syntax"). But a `{{#diff old new}}` written as *plain
+prose* (not in
 backticks, not in a fence) is treated as a live directive and will try to
 resolve its operands. When you want to *mention* the directive rather than
 invoke it, wrap it in inline backticks or a fenced block, or use a placeholder

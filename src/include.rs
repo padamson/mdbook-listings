@@ -162,8 +162,8 @@ impl std::fmt::Display for RejectedInclude {
             Rejection::Unintercepted => write!(
                 f,
                 "mdbook-listings does not expand {{{{#include {}}}}} here, but mdbook's \
-                 `links` preprocessor will expand it anyway, even in inline code or an \
-                 HTML comment; to show the directive literally, escape it as \
+                 `links` preprocessor will expand it anyway, even in a code block, inline \
+                 code or an HTML comment; to show the directive literally, escape it as \
                  \\{{{{#include …}}}} on a single line",
                 self.path,
             ),
@@ -893,6 +893,38 @@ mod tests {
         assert_eq!(got, vec![(1, Rejection::Unintercepted)]);
     }
 
+    #[test]
+    fn rejected_includes_reports_an_include_in_a_code_block_the_splicer_cant_edit() {
+        for (what, content, line) in [
+            (
+                "blockquoted fence",
+                "> ```rust\n> {{#include listings/a.rs}}\n> ```\n",
+                2,
+            ),
+            (
+                "fence in a list item",
+                "10. Step\n\n    ```rust\n    {{#include listings/a.rs}}\n    ```\n",
+                4,
+            ),
+            ("unclosed fence", "```rust\n{{#include listings/a.rs}}\n", 2),
+            (
+                "indented code",
+                "Example:\n\n    {{#include listings/a.rs}}\n",
+                3,
+            ),
+        ] {
+            let got: Vec<_> = rejected_includes(content)
+                .into_iter()
+                .map(|r| (r.path, r.line, r.why))
+                .collect();
+            assert_eq!(
+                got,
+                vec![("listings/a.rs".to_string(), line, Rejection::Unintercepted)],
+                "{what}"
+            );
+        }
+    }
+
     /// A listing on disk plus the chapter text that includes it, spliced.
     fn splice_one(file: &str, bytes: &str, chapter: &str) -> String {
         let tmp = TempDir::new().unwrap();
@@ -1054,8 +1086,9 @@ mod tests {
 
     #[test]
     fn splice_chapter_rejects_a_bare_include_indented_past_a_fence_opener() {
-        // Four spaces would make the emitted fence an indented code block
-        // rather than a fence, so this is not a rendering we can produce.
+        // Four spaces make the line an indented code block, which the
+        // splicer can't write a fence into; mdBook's `links` pass would
+        // still expand the include there.
         let tmp = TempDir::new().unwrap();
         let err = splice_chapter(
             "    {{#include listings/foo.rs}}\n",
@@ -1070,7 +1103,7 @@ mod tests {
                 err,
                 SpliceError::RejectedInclude {
                     include: RejectedInclude {
-                        why: Rejection::MidLine,
+                        why: Rejection::Unintercepted,
                         ..
                     },
                     ..

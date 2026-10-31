@@ -9,7 +9,8 @@ use std::ops::Range;
 
 use crate::anchor::ListingWidth;
 
-/// One unescaped directive occurrence outside inline code and HTML comments.
+/// One unescaped directive occurrence outside inline code, HTML comments,
+/// and code blocks the passes don't walk.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct DirectiveOccurrence<'a> {
     /// Raw text between the prefix and the closing `}}`, untrimmed —
@@ -18,13 +19,14 @@ pub(crate) struct DirectiveOccurrence<'a> {
     pub(crate) args: &'a str,
     /// Byte range of the full `{{#… }}` text.
     pub(crate) span: Range<usize>,
-    /// `Some(close_end)` when the occurrence starts inside a fenced code
-    /// block (only produced under [`FencePolicy::Annotate`]); the value is
-    /// the fence's close_end so callers can place trailing anchors.
+    /// `Some(close_end)` when the occurrence starts in the body of a fence
+    /// the passes walk (only produced under [`FencePolicy::Annotate`]); the
+    /// value is the fence's close_end so callers can place trailing anchors.
     pub(crate) fence_close_end: Option<usize>,
 }
 
-/// What to do with an occurrence that starts inside a fenced code block.
+/// What to do with an occurrence that starts in the body of a fence the
+/// passes walk. One in any other code block is never yielded.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum FencePolicy {
     /// Yield it, tagged with its fence's `close_end`, consuming through its
@@ -42,10 +44,12 @@ pub(crate) enum FencePolicy {
 /// Backslash-escaped occurrences and ones sitting inside an inline code
 /// span are skipped so chapters can quote directive syntax verbatim, and so
 /// are ones inside an HTML comment, which the page never shows: a listing
-/// commented out there must not be numbered. mdbook's `links` pass expands
-/// `{{#include}}` in inline code and comments all the same, so for includes
-/// only the backslash form is a safe quote; the include pass reports the
-/// rest (`include::rejected_includes`).
+/// commented out there must not be numbered. So is any occurrence in a code
+/// block the passes can't edit (indented, unclosed, or behind a container
+/// prefix), quoted or not. mdbook's `links` pass expands `{{#include}}` in
+/// all of these all the same, so for includes only the backslash form is a
+/// safe quote; the include pass reports the rest
+/// (`include::rejected_includes`).
 pub(crate) fn scan_directives<'a>(
     content: &'a str,
     prefix: &str,
@@ -65,17 +69,13 @@ pub(crate) fn scan_directives<'a>(
             cursor = after_prefix;
             continue;
         }
-        if regions().skips(at) {
-            cursor = after_prefix;
-            continue;
-        }
-        let fence_close_end = match (regions().fence_close_end(at), policy) {
-            (Some(close_end), FencePolicy::Annotate) => Some(close_end),
-            (Some(_), FencePolicy::SkipInside) => {
+        let fence_close_end = match (regions().place(at), policy) {
+            (Place::Prose, _) => None,
+            (Place::Fence(close_end), FencePolicy::Annotate) => Some(close_end),
+            (Place::Fence(_), FencePolicy::SkipInside) | (Place::Skipped, _) => {
                 cursor = after_prefix;
                 continue;
             }
-            (None, _) => None,
         };
         let Some(close_rel) = content[after_prefix..].find("}}") else {
             // No closing braces anywhere ahead — no later occurrence can
@@ -93,18 +93,29 @@ pub(crate) fn scan_directives<'a>(
     out
 }
 
+/// Where a directive sits on the page CommonMark renders.
+enum Place {
+    /// Rendered markdown, or an HTML block, where a directive whose output
+    /// is inline HTML still renders.
+    Prose,
+    /// The body of a fence the passes walk, with that fence's `close_end`.
+    Fence(usize),
+    /// Hidden or quoted, or in a code block the passes can't edit.
+    Skipped,
+}
+
 /// Where CommonMark leaves a directive unrendered, and which fenced block
 /// holds it, from one parse of the chapter.
 struct Regions<'a> {
     content: &'a str,
-    /// Inline code spans, HTML comments, and fence opener lines: a directive
-    /// there is a quoted example, hidden, or part of an info string. A code
-    /// span counts however many backticks open it and whatever line it ends
-    /// on.
+    /// Inline code spans, HTML comments, fence opener lines, and code blocks
+    /// the passes can't edit: a directive there is a quoted example, hidden,
+    /// part of an info string, or shown as written. A code span counts
+    /// however many backticks open it and whatever line it ends on.
     hidden: Vec<Range<usize>>,
-    /// Code blocks and HTML blocks, where CommonMark reads no inline
-    /// markdown at all.
-    literal: Vec<Range<usize>>,
+    /// HTML blocks, where CommonMark reads no markdown but the browser
+    /// renders HTML.
+    html: Vec<Range<usize>>,
     /// The `[body_start, close_end)` of each block `fence::fenced_block`
     /// accepts, the same blocks `FencedBlocks` yields.
     fences: Vec<Range<usize>>,
@@ -112,31 +123,30 @@ struct Regions<'a> {
 
 impl<'a> Regions<'a> {
     fn of(content: &'a str) -> Self {
-        use pulldown_cmark::{CodeBlockKind, Event, Tag};
+        use pulldown_cmark::{Event, Tag};
 
         let mut hidden = Vec::new();
-        let mut literal = Vec::new();
+        let mut html = Vec::new();
         let mut fences = Vec::new();
         for (event, span) in crate::fence::cmark_parser(content).into_offset_iter() {
-            if let Some(b) = crate::fence::fenced_block(content, &event, span.clone()) {
-                fences.push(b.body_start..b.close_end);
-            }
-            match event {
+            match &event {
                 Event::Code(_) => hidden.push(span),
-                Event::Start(Tag::CodeBlock(kind)) => {
-                    // Every fence the page renders, walked by the passes or
-                    // not: the opener's info string is never prose.
-                    if matches!(kind, CodeBlockKind::Fenced(_)) {
-                        let opener_end = content[span.start..]
-                            .find('\n')
-                            .map_or(content.len(), |i| span.start + i);
-                        hidden.push(span.start..opener_end);
+                Event::Start(Tag::CodeBlock(_)) => {
+                    match crate::fence::fenced_block(content, &event, span.clone()) {
+                        // The opener's info string is never prose.
+                        Some(b) => {
+                            hidden.push(span.start..b.body_start);
+                            fences.push(b.body_start..b.close_end);
+                        }
+                        // Indented, unclosed, or behind a container prefix:
+                        // the passes edit bytes and can't splice into it
+                        // without breaking the page.
+                        None => hidden.push(span),
                     }
-                    literal.push(span);
                 }
                 Event::Start(Tag::HtmlBlock) => {
                     push_comments(content, span.clone(), &mut hidden);
-                    literal.push(span);
+                    html.push(span);
                 }
                 Event::InlineHtml(_) => push_comments(content, span, &mut hidden),
                 _ => {}
@@ -145,30 +155,41 @@ impl<'a> Regions<'a> {
         Regions {
             content,
             hidden,
-            literal,
+            html,
             fences,
         }
     }
 
-    /// Whether a directive at `pos` is hidden or quoted. Inside a literal
-    /// block the backticks are the sample's own quoting (a markdown example
-    /// showing `` `{{#diff a b}}` ``), so an odd count before the directive
-    /// on its line marks it as quoted.
-    fn skips(&self, pos: usize) -> bool {
-        if self.hidden.iter().any(|r| r.contains(&pos)) {
-            return true;
+    /// Where a directive at `pos` sits. In a fence body or an HTML block the
+    /// backticks are the sample's own quoting (a markdown example showing
+    /// `` `{{#diff a b}}` ``), so an odd count before the directive on its
+    /// line marks it as quoted.
+    fn place(&self, pos: usize) -> Place {
+        if within(&self.hidden, pos).is_some() {
+            return Place::Skipped;
         }
-        if !self.literal.iter().any(|r| r.contains(&pos)) {
-            return false;
+        if let Some(fence) = within(&self.fences, pos) {
+            return if self.quoted_on_its_line(pos) {
+                Place::Skipped
+            } else {
+                Place::Fence(fence.end)
+            };
         }
+        if within(&self.html, pos).is_some() && self.quoted_on_its_line(pos) {
+            return Place::Skipped;
+        }
+        Place::Prose
+    }
+
+    fn quoted_on_its_line(&self, pos: usize) -> bool {
         let before = &self.content[..pos];
         let line = before.rsplit_once('\n').map_or(before, |(_, t)| t);
         line.bytes().filter(|&b| b == b'`').count() % 2 == 1
     }
+}
 
-    fn fence_close_end(&self, pos: usize) -> Option<usize> {
-        self.fences.iter().find(|r| r.contains(&pos)).map(|r| r.end)
-    }
+fn within(ranges: &[Range<usize>], pos: usize) -> Option<&Range<usize>> {
+    ranges.iter().find(|r| r.contains(&pos))
 }
 
 /// Push the HTML comments in an HTML block or inline span onto `out`. A comment ends at its
@@ -392,28 +413,40 @@ mod tests {
     }
 
     #[test]
-    fn scan_skips_a_backtick_quoted_occurrence_in_every_literal_block() {
-        // Code blocks and HTML blocks have no inline code to parse, so the
-        // sample's own backticks mark the directive as quoted wherever
-        // CommonMark leaves the text literal.
+    fn scan_skips_a_backtick_quoted_occurrence_in_an_html_block() {
+        // An HTML block has no inline code to parse, so the sample's own
+        // backticks mark the directive as quoted.
+        let got = scan("<div>\nUse `{{#demo a b}}`\n</div>\n", "{{#demo ");
+        assert!(got.is_empty(), "got {got:?}");
+    }
+
+    #[test]
+    fn scan_skips_an_unquoted_occurrence_in_a_code_block_the_passes_dont_walk() {
+        // The passes edit bytes and can't carry a `> ` or an indent through,
+        // so a splice into one of these blocks breaks the page.
         for (what, s) in [
             (
-                "indented code",
-                "Example:\n\n    Write `{{#demo a b}}` to compare.\n",
-            ),
-            ("html block", "<div>\nUse `{{#demo a b}}`\n</div>\n"),
-            (
                 "blockquoted fence",
-                "> ```markdown\n> Use `{{#demo a b}}`\n> ```\n",
+                "> ```markdown\n> {{#demo a b}}\n> ```\n\n{{#demo c d}}\n",
             ),
             (
-                "deep list fence",
-                "- item\n  - sub\n\n        ```markdown\n        Use `{{#demo a b}}`\n        ```\n",
+                "fence in a list item",
+                "10. Step\n\n    ```markdown\n    {{#demo a b}}\n    ```\n\n{{#demo c d}}\n",
             ),
-            ("unclosed fence", "```markdown\nUse `{{#demo a b}}`\n"),
+            (
+                "indented code",
+                "Example:\n\n    {{#demo a b}}\n\n{{#demo c d}}\n",
+            ),
+            (
+                "unclosed fence",
+                "{{#demo c d}}\n\n```markdown\n{{#demo a b}}\n",
+            ),
         ] {
-            let got = scan(s, "{{#demo ");
-            assert!(got.is_empty(), "{what}: got {got:?}");
+            for policy in [FencePolicy::SkipInside, FencePolicy::Annotate] {
+                let got = scan_directives(s, "{{#demo ", policy);
+                let args: Vec<_> = got.iter().map(|o| o.args).collect();
+                assert_eq!(args, ["c d"], "{what}, {policy:?}");
+            }
         }
     }
 

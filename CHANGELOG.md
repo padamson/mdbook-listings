@@ -107,6 +107,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   character, closed or not, and behind a blockquote or list indent. An
   `{{#include}}` there fails the build and `verify` as one that mdBook will
   expand, instead of as one sharing its line with other text.
+- **A directive in a code block the preprocessor can't edit is left
+  alone.** An indented code block, an unclosed fence, and a fence behind a
+  blockquote marker or indented four or more spaces in a list item all show
+  their text as written, but a `{{#diff}}`, `{{#callout}}` or
+  `{{#listing-ref}}` in one was expanded unless backticks quoted it. The
+  diff pass spliced a code block into it with no `> ` prefix or indent,
+  which broke the page. A directive anywhere in such a block is now
+  skipped, quoted or not, as one in any other fenced block already was. An
+  `{{#include}}` there fails the build and `verify` as one that mdBook will
+  expand; before, one in a blockquoted fence or indented four spaces failed
+  as sharing its line with other text, and one in an unclosed fence was
+  spliced into it.
 - **Callout badges on a runnable Rust listing sit on their own lines.**
   mdbook wraps a Rust listing that has no `fn main` in two hidden lines of
   its own, and the badge placement counted them, so in HTML every badge in
@@ -181,9 +193,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   double-backtick span holding a literal backtick was left as text, and so
   was one after a backslash-escaped backtick. Prose is now read with the
   same CommonMark parse that finds HTML comments and fenced blocks, so all
-  four follow the code spans the page shows. Inside a code block or raw HTML
-  block, where CommonMark reads no inline code, a directive after an odd
-  number of backticks on its line is still treated as a quoted example.
+  four follow the code spans the page shows. Inside a fenced block or raw
+  HTML block, where CommonMark reads no inline code, a directive after an
+  odd number of backticks on its line is still treated as a quoted example.
 
 ### Security
 - **pulldown-cmark 0.13.5** in `Cargo.lock`, for RUSTSEC-2026-0414
