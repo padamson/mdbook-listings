@@ -14,7 +14,7 @@ use crate::callout::{callouts_for_block, comment_prefix_for_extension, parse_cal
 use crate::diff::{parse_directives, splice_chapter as splice_diffs};
 use crate::directive::{
     FencePolicy, line_number, scan_directives, split_caption, split_label, split_lang,
-    split_show_provenance, split_width,
+    split_show_provenance, split_width, split_wrap,
 };
 use crate::fence::FencedBlocks;
 use crate::freeze::hex_sha256;
@@ -141,6 +141,7 @@ fn check_references(book_root: &Path, manifest: &Manifest, report: &mut VerifyRe
             let (args, _lang) = split_lang(&args);
             let (args, _show) = split_show_provenance(&args);
             let (args, _width) = split_width(&args);
+            let (args, _wrap) = split_wrap(&args);
             let path = args.trim();
             // Only listings/ includes resolve to a frozen tag; snippets/
             // and other paths are not manifest records.
@@ -296,10 +297,10 @@ fn check_live_operands(book_root: &Path, report: &mut VerifyReport) {
 
 /// A `snippets/` include emits no locator anchor, and everything that rides
 /// on one — the caption, the label it registers, the provenance line, the
-/// width the runtime script reads — is driven off that anchor. All four are
-/// therefore parsed, accepted, and silently dropped on a snippet, which on
-/// the page is indistinguishable from an argument the author forgot to
-/// write. `lang=` is not affected: it sets the emitted fence's info string,
+/// width and wrap the stylesheet and runtime script read — is driven off that
+/// anchor. All of them are therefore parsed, accepted, and silently dropped
+/// on a snippet, which on the page is indistinguishable from an argument the
+/// author forgot to write. `lang=` is not affected: it sets the emitted fence's info string,
 /// which snippets do get. A warning, not an error: the include itself
 /// renders correctly, and the fix is to delete the argument or freeze the
 /// file as a listing.
@@ -339,6 +340,13 @@ fn check_snippet_arguments(book_root: &Path, report: &mut VerifyReport) {
                 report.warning(format!(
                     "{rel}:{line}: width on `{}` has no effect — a listing is \
                      widened through the anchor a snippets/ include never emits",
+                    d.rel_path,
+                ));
+            }
+            if d.wrap.is_some() {
+                report.warning(format!(
+                    "{rel}:{line}: wrap on `{}` has no effect — a listing is \
+                     wrapped through the anchor a snippets/ include never emits",
                     d.rel_path,
                 ));
             }
@@ -785,7 +793,7 @@ mod tests {
         let (_t, root, manifest) = book_with_demo();
         fs::write(
             root.join("src/ch.md"),
-            "{{#include listings/demo-v1.rs lang=\"c/c++\" show-provenance=\"false\" width=\"wide\"}}\n",
+            "{{#include listings/demo-v1.rs lang=\"c/c++\" show-provenance=\"false\" width=\"wide\" wrap=\"true\"}}\n",
         )
         .unwrap();
 
@@ -901,6 +909,24 @@ mod tests {
     }
 
     #[test]
+    fn check_snippet_arguments_warns_on_wrap() {
+        let (_t, root, _m) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "{{#include snippets/demo.rs wrap=\"true\"}}\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_snippet_arguments(&root, &mut report);
+        let msg = single_warning(&report);
+        assert!(
+            msg.starts_with("src/ch.md:1:") && msg.contains("wrap"),
+            "warning names the line and the argument; got: {msg}"
+        );
+    }
+
+    #[test]
     fn check_snippet_arguments_warns_on_width() {
         let (_t, root, _m) = book_with_demo();
         fs::write(
@@ -982,7 +1008,11 @@ mod tests {
     fn diff_checks_read_the_operands_whatever_display_arguments_follow() {
         // The diff splicer lifts these before counting operands, so verify
         // must too, or a diff carrying one goes unchecked.
-        for arg in ["width=\"wide\"", "show-provenance=\"true\""] {
+        for arg in [
+            "width=\"wide\"",
+            "wrap=\"true\"",
+            "show-provenance=\"true\"",
+        ] {
             let (_t, root, manifest) = book_with_demo();
             fs::write(
                 root.join("src/ch.md"),

@@ -594,7 +594,7 @@ include-splice-entry}}; the line that drops the locator anchor is
 at callout {{#callout include-anchor-emit}}:
 
 ```rust
-{{#include listings/include-v1.rs caption="Intercepting the include directive before mdbook's `links` preprocessor expands it"}}
+{{#include listings/include-v1.rs caption="Intercepting the include directive before mdbook's `links` preprocessor expands it" label="include-intercept" wrap="true"}}
 ```
 
 `\{{#include snippets/...}}` paths are also intercepted (callout

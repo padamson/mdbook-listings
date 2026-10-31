@@ -65,7 +65,9 @@
  *    list or admonition stays in its box. This runs first in each recalc:
  *    widening reflows the listing (a scrollbar can disappear), and the
  *    badge calibration measures the result. A ResizeObserver on the scroll
- *    container re-runs it when the sidebar opens or closes.
+ *    container re-runs it when the sidebar opens or closes. A wide listing
+ *    that also wraps is measured unwrapped, so it widens as far as it can
+ *    and the stylesheet wraps only what still doesn't fit.
  *
  * 4. Pin a callout body open on a click on its badge, until the badge is
  *    clicked again, Escape is pressed, or the reader clicks outside the
@@ -74,7 +76,7 @@
  *    keyboard focus are all the stylesheet sees.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes
- * are the expected build-time asset: mdbook-listings-js-v16
+ * are the expected build-time asset: mdbook-listings-js-v17
  */
 (function () {
   var LEFT_FALLBACK_THRESHOLD_EM = 16;
@@ -221,7 +223,13 @@
         pre = pre.previousElementSibling;
       }
       if (pre && pre.tagName === 'PRE' && pre.parentElement.tagName === 'MAIN') {
-        found.push({ pre: pre, overlay: overlay });
+        found.push({
+          pre: pre,
+          // highlight.js makes the <code> the scroller; without it, the <pre> is.
+          code: pre.querySelector('code') || pre,
+          overlay: overlay,
+          wraps: anchor.dataset.listingWrap === 'true',
+        });
       }
     });
     return found;
@@ -282,24 +290,30 @@
     var listings = wideListings();
     if (!listings.length) return;
     listings.forEach(function (l) { setWidening(l, 0); });
-    // Every listing directly in <main> shares one scroll container.
-    var container = findScrollContainer(listings[0].pre);
-    watchContainerWidth(container);
-    var room = roomIn(container);
-    widenedAtWidth = container.clientWidth;
-    listings.forEach(function (l) {
-      // highlight.js makes the <code> the scroller; without it, the <pre> is.
-      var code = l.pre.querySelector('code') || l.pre;
-      var overflow = Math.max(
-        l.pre.scrollWidth - l.pre.clientWidth,
-        code.scrollWidth - code.clientWidth
-      );
-      var rect = l.pre.getBoundingClientRect();
-      l.extend = Math.max(
-        0,
-        Math.min(Math.ceil(overflow / 2), rect.left - room.left, room.right - rect.right)
-      );
-    });
+    // Measure a wrapping listing's lines at full length; its own stylesheet
+    // rule comes back once the widths are read, whatever the measuring does.
+    var unwrapped = listings.filter(function (l) { return l.wraps; });
+    unwrapped.forEach(function (l) { l.code.style.whiteSpace = 'pre'; });
+    try {
+      // Every listing directly in <main> shares one scroll container.
+      var container = findScrollContainer(listings[0].pre);
+      watchContainerWidth(container);
+      var room = roomIn(container);
+      widenedAtWidth = container.clientWidth;
+      listings.forEach(function (l) {
+        var overflow = Math.max(
+          l.pre.scrollWidth - l.pre.clientWidth,
+          l.code.scrollWidth - l.code.clientWidth
+        );
+        var rect = l.pre.getBoundingClientRect();
+        l.extend = Math.max(
+          0,
+          Math.min(Math.ceil(overflow / 2), rect.left - room.left, room.right - rect.right)
+        );
+      });
+    } finally {
+      unwrapped.forEach(function (l) { l.code.style.whiteSpace = ''; });
+    }
     listings.forEach(function (l) { setWidening(l, l.extend); });
   }
 

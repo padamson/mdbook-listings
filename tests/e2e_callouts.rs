@@ -1558,11 +1558,28 @@ const WIDE_GEOMETRY_JS: &str = r#"
 /// columns.
 const WIDE_ANCHOR: &str = r#"document.querySelector('[data-listing-label="callout-cross-refs"]')"#;
 
+/// Below mdbook's sidebar breakpoint the page wrapper slides over with a
+/// CSS transition, and the listings' column keeps narrowing after the
+/// resize recalc. Wait the transition out, then for the recalc its last
+/// resize queues.
 async fn set_viewport(page: &playwright_rs::protocol::Page, width: u32) {
     page.set_viewport_size(Viewport { width, height: 900 })
         .await
         .expect("set viewport");
     wait_for_layout_recalc(page).await;
+    let script = [
+        "(async () => {",
+        RAF2_JS,
+        r#"await Promise.all(document.getAnimations().map(a => a.finished.catch(() => {})));
+           await raf2();
+           return 'done';
+        })()"#,
+    ]
+    .concat();
+    let _: String = page
+        .evaluate_value(&script)
+        .await
+        .expect("wait for the page's transitions to finish");
 }
 
 #[tokio::test]
@@ -1701,6 +1718,226 @@ async fn marking_a_listing_wide_grows_it_only_when_its_lines_overflow() {
             ]
             .concat();
             let report: String = page.evaluate_value(&script).await.expect("measure");
+            assert_eq!(report, "ok");
+        },
+    )
+    .await;
+}
+
+/// `wrapRows(anchor, line)`: the listing before a locator anchor, and the
+/// left edge of each visual row of logical line `line` (1-based; the
+/// longest line when omitted), top to bottom, plus the width of one of its
+/// characters. Rect fragments within 2px of each other vertically are one
+/// row (highlight.js spans split a row into several rects). `null` when the
+/// anchor or its listing is missing.
+const WRAP_ROWS_JS: &str = r#"
+    function wrapRows(anchor, line) {
+      if (!anchor) return null;
+      let pre = anchor.previousElementSibling;
+      if (pre && pre.classList.contains('callout-overlay')) pre = pre.previousElementSibling;
+      if (!pre || pre.tagName !== 'PRE') return null;
+      const code = pre.querySelector('code') || pre;
+      const lines = code.textContent.split('\n');
+      let at = line ? line - 1 : 0;
+      if (!line) lines.forEach((l, i) => { if (l.length > lines[at].length) at = i; });
+      let start = 0;
+      for (let i = 0; i < at; i++) start += lines[i].length + 1;
+      const end = start + lines[at].length;
+      const range = document.createRange();
+      const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
+      let pos = 0, node, started = false;
+      while ((node = walker.nextNode())) {
+        const len = node.nodeValue.length;
+        if (!started && start < pos + len) { range.setStart(node, start - pos); started = true; }
+        if (started && end <= pos + len) { range.setEnd(node, end - pos); break; }
+        pos += len;
+      }
+      const rects = [...range.getClientRects()].filter(r => r.width > 0)
+        .sort((a, b) => a.top - b.top);
+      const rows = [];
+      for (const r of rects) {
+        const last = rows[rows.length - 1];
+        if (last && r.top < last.top + 2) last.left = Math.min(last.left, r.left);
+        else rows.push({ top: r.top, left: r.left });
+      }
+      const one = document.createRange();
+      if (started) {
+        one.setStart(range.startContainer, range.startOffset);
+        one.setEnd(range.startContainer, range.startOffset + 1);
+      }
+      return {
+        pre,
+        code,
+        lines: lines.length,
+        lefts: rows.map(r => r.left),
+        ch: one.getBoundingClientRect().width,
+      };
+    }
+"#;
+
+const WRAP_ANCHOR: &str = r#"document.querySelector('[data-listing-label="include-intercept"]')"#;
+
+/// A diff with no callouts, so no overlay sits between it and its anchor.
+const PLAIN_DIFF_ANCHOR: &str =
+    r#"document.querySelector('[data-listing-diff-left="e2e-callouts-v5"]')"#;
+
+#[tokio::test]
+async fn a_wrapped_listing_fits_its_column_and_hangs_each_continuation_row() {
+    // One listing with callouts, wrapped by its directive, and one without,
+    // marked here: the stylesheet finds the anchor past an overlay or not.
+    with_traced_chapter(
+        "a_wrapped_listing_fits_its_column_and_hangs_each_continuation_row",
+        CH05,
+        |page| async move {
+            set_viewport(&page, 1280).await;
+            let script = [
+                "(() => {",
+                WRAP_ROWS_JS,
+                "const plain = ",
+                PLAIN_DIFF_ANCHOR,
+                r#";
+                if (!plain) return 'no plain diff anchor';
+                plain.dataset.listingWrap = 'true';
+                const problems = [];
+                [['include-v1', "#,
+                WRAP_ANCHOR,
+                r#"], ['plain diff', plain]].forEach(([name, anchor]) => {
+                  const w = wrapRows(anchor);
+                  if (!w) { problems.push(name + ': no listing'); return; }
+                  if (w.code.scrollWidth > w.code.clientWidth + 1) {
+                    problems.push(name + ' scrolls: ' + w.code.scrollWidth + ' > ' + w.code.clientWidth);
+                  }
+                  if (w.lefts.length < 2) problems.push(name + ': longest line takes one row');
+                  w.lefts.slice(1).forEach((left, i) => {
+                    const hang = left - w.lefts[0];
+                    if (Math.abs(hang - 2 * w.ch) > 1.5) {
+                      problems.push(name + ' row ' + (i + 2) + ' hangs ' + hang.toFixed(1) +
+                        'px, want ' + (2 * w.ch).toFixed(1));
+                    }
+                  });
+                });
+                return problems.length ? problems.join('; ') : 'ok';
+            })()"#,
+            ]
+            .concat();
+            let report: String = page.evaluate_value(&script).await.expect("measure wrap");
+            assert_eq!(report, "ok");
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_wrapped_listings_badges_stay_on_their_lines_in_a_narrow_window() {
+    with_traced_chapter(
+        "a_wrapped_listings_badges_stay_on_their_lines_in_a_narrow_window",
+        CH05,
+        |page| async move {
+            set_viewport(&page, 600).await;
+            // The survey passes trivially when nothing wraps, so first require
+            // a wrapped line above the listing's last badge.
+            let precondition = [
+                "(() => {",
+                WRAP_ROWS_JS,
+                "const anchor = ",
+                WRAP_ANCHOR,
+                r#";
+                const w = wrapRows(anchor);
+                if (!w) return 'no listing';
+                if (w.code.scrollWidth > w.code.clientWidth + 1) return 'it scrolls';
+                const badged = [...w.pre.nextElementSibling.querySelectorAll('.callout-entry')]
+                  .map(e => parseInt(e.dataset.calloutLine, 10));
+                const last = Math.max(...badged);
+                for (let line = 1; line < last; line++) {
+                  if (wrapRows(anchor, line).lefts.length > 1) return 'wraps above a badge';
+                }
+                return 'no line above the last badge wraps';
+            })()"#,
+            ]
+            .concat();
+            let state: String = page
+                .evaluate_value(&precondition)
+                .await
+                .expect("check the listing wraps");
+            assert_eq!(state, "wraps above a badge");
+
+            let script = [
+                "(() => {",
+                LINE_RECT_JS,
+                SURVEY_JS,
+                r#"
+                    const s = survey(lineRect);
+                    if (s.checked === 0) return 'no-entries-checked';
+                    return s.bad.length
+                      ? 'MISALIGNED(' + s.bad.length + '/' + s.checked + ') ' + s.bad.slice(0, 4).join('; ')
+                      : 'aligned';
+                })()"#,
+            ]
+            .concat();
+            let report: String = page
+                .evaluate_value(&script)
+                .await
+                .expect("measure badge-vs-line alignment");
+            assert_eq!(report, "aligned");
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_wide_listing_marked_to_wrap_widens_first_and_wraps_the_rest() {
+    // At 1440 the listing already grows to the room limit and still
+    // overflows, so marking it to wrap must leave its box as it was.
+    with_traced_chapter(
+        "a_wide_listing_marked_to_wrap_widens_first_and_wraps_the_rest",
+        CH05,
+        |page| async move {
+            set_viewport(&page, 1440).await;
+            let mark = [
+                "(() => {",
+                WRAP_ROWS_JS,
+                "const a = ",
+                WIDE_ANCHOR,
+                r#";
+                const w = wrapRows(a);
+                if (!w) return 'no listing';
+                const r = w.pre.getBoundingClientRect();
+                window.__wideBox = [r.left, r.right];
+                a.dataset.listingWrap = 'true';
+                window.dispatchEvent(new Event('resize'));
+                return 'marked';
+            })()"#,
+            ]
+            .concat();
+            let marked: String = page.evaluate_value(&mark).await.expect("mark wrap");
+            assert_eq!(marked, "marked");
+            wait_for_layout_recalc(&page).await;
+            let script = [
+                "(() => {",
+                WRAP_ROWS_JS,
+                "const w = wrapRows(",
+                WIDE_ANCHOR,
+                r#");
+                if (!w) return 'no listing';
+                const r = w.pre.getBoundingClientRect();
+                const [left, right] = window.__wideBox;
+                const problems = [];
+                if (Math.abs(r.left - left) > 1 || Math.abs(r.right - right) > 1) {
+                  problems.push('box moved: [' + left.toFixed(0) + ',' + right.toFixed(0) +
+                    '] -> [' + r.left.toFixed(0) + ',' + r.right.toFixed(0) + ']');
+                }
+                if (w.code.scrollWidth > w.code.clientWidth + 1) {
+                  problems.push('scrolls: ' + w.code.scrollWidth + ' > ' + w.code.clientWidth);
+                }
+                if (w.lefts.length < 2) problems.push('nothing left to wrap at this width');
+                return problems.length ? problems.join('; ') : 'ok';
+            })()"#,
+            ]
+            .concat();
+            let report: String = page
+                .evaluate_value(&script)
+                .await
+                .expect("measure wide wrap");
             assert_eq!(report, "ok");
         },
     )

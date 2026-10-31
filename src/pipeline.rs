@@ -21,7 +21,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use mdbook_preprocessor::book::{Book, BookItem};
 
-use crate::anchor::ListingWidth;
+use crate::anchor::{ListingDisplay, ListingWidth};
 use crate::callout::{
     DiffSidecarPlacements, SidecarCallouts, SupportedRenderer, splice_chapter as splice_callouts,
 };
@@ -44,8 +44,8 @@ pub struct PipelineOptions {
     /// Render each listing's tag and manifest `source` on a muted line
     /// beneath its caption, so the caption no longer has to carry identity.
     pub show_listing_provenance: bool,
-    /// The width a listing gets when its directive names none.
-    pub listing_width: ListingWidth,
+    /// The width and wrap a listing gets when its directive names none.
+    pub display: ListingDisplay,
 }
 
 impl PipelineOptions {
@@ -62,13 +62,16 @@ impl PipelineOptions {
                 .as_deref()
                 .map(SidebarMode::parse)
                 .unwrap_or(SidebarMode::Off),
-            listing_width: config
-                .get::<String>("preprocessor.listings.listing-width")
-                .ok()
-                .flatten()
-                .as_deref()
-                .and_then(ListingWidth::parse)
-                .unwrap_or_default(),
+            display: ListingDisplay {
+                width: config
+                    .get::<String>("preprocessor.listings.listing-width")
+                    .ok()
+                    .flatten()
+                    .as_deref()
+                    .and_then(ListingWidth::parse)
+                    .unwrap_or_default(),
+                wrap: flag("preprocessor.listings.listing-wrap"),
+            },
         }
     }
 }
@@ -132,7 +135,7 @@ pub fn process_book(
                     opts.number_listings,
                     opts.show_listing_provenance,
                     renderer,
-                    opts.listing_width,
+                    opts.display,
                 );
                 // Record this chapter's listings for the book-wide
                 // passes. The link path is the chapter file relative to
@@ -300,7 +303,7 @@ mod tests {
             &PipelineOptions {
                 number_listings: true,
                 show_listing_provenance: false,
-                listing_width: ListingWidth::Normal,
+                display: ListingDisplay::default(),
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
             },
@@ -331,7 +334,7 @@ mod tests {
             list_of_listings: false,
             sidebar_mode: SidebarMode::Off,
             show_listing_provenance: false,
-            listing_width: ListingWidth::Normal,
+            display: ListingDisplay::default(),
         };
         let bare = run("{{#include listings/sample.rs caption=\"S\"}}\n", &opts);
         let fenced = run(
@@ -361,7 +364,7 @@ mod tests {
             &PipelineOptions {
                 number_listings: true,
                 show_listing_provenance: false,
-                listing_width: ListingWidth::Normal,
+                display: ListingDisplay::default(),
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
             },
@@ -383,7 +386,7 @@ mod tests {
             &PipelineOptions {
                 number_listings: true,
                 show_listing_provenance: false,
-                listing_width: ListingWidth::Normal,
+                display: ListingDisplay::default(),
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
             },
@@ -403,7 +406,7 @@ mod tests {
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
                 show_listing_provenance: true,
-                listing_width: ListingWidth::Normal,
+                display: ListingDisplay::default(),
             },
         );
         assert!(
@@ -425,7 +428,7 @@ mod tests {
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
                 show_listing_provenance: true,
-                listing_width: ListingWidth::Normal,
+                display: ListingDisplay::default(),
             },
         );
         assert!(
@@ -451,7 +454,7 @@ mod tests {
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
                 show_listing_provenance: true,
-                listing_width: ListingWidth::Normal,
+                display: ListingDisplay::default(),
             },
         );
         assert!(
@@ -473,7 +476,7 @@ mod tests {
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
                 show_listing_provenance: true,
-                listing_width: ListingWidth::Normal,
+                display: ListingDisplay::default(),
             },
         );
         assert!(
@@ -498,7 +501,7 @@ mod tests {
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
                 show_listing_provenance: true,
-                listing_width: ListingWidth::Normal,
+                display: ListingDisplay::default(),
             },
         );
         assert!(
@@ -542,7 +545,7 @@ mod tests {
             &PipelineOptions {
                 number_listings: false,
                 show_listing_provenance: false,
-                listing_width: ListingWidth::Normal,
+                display: ListingDisplay::default(),
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
             },
@@ -559,7 +562,7 @@ mod tests {
     fn the_book_listing_width_is_read_from_the_listings_table() {
         let wide = config("[preprocessor.listings]\nlisting-width = \"wide\"\n");
         assert_eq!(
-            PipelineOptions::from_config(&wide).listing_width,
+            PipelineOptions::from_config(&wide).display.width,
             ListingWidth::Wide
         );
         for (what, toml) in [
@@ -574,11 +577,35 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                PipelineOptions::from_config(&config(toml)).listing_width,
+                PipelineOptions::from_config(&config(toml)).display.width,
                 ListingWidth::Normal,
                 "{what}"
             );
         }
+    }
+
+    #[test]
+    fn the_book_listing_wrap_is_read_from_the_listings_table() {
+        let on = config("[preprocessor.listings]\nlisting-wrap = true\n");
+        assert!(PipelineOptions::from_config(&on).display.wrap);
+        let unset = config("[preprocessor.listings]\n");
+        assert!(!PipelineOptions::from_config(&unset).display.wrap);
+    }
+
+    #[test]
+    fn a_wrap_book_default_reaches_the_anchor() {
+        let opts = PipelineOptions {
+            number_listings: false,
+            list_of_listings: false,
+            sidebar_mode: SidebarMode::Off,
+            show_listing_provenance: false,
+            display: ListingDisplay {
+                width: ListingWidth::Normal,
+                wrap: true,
+            },
+        };
+        let out = run("{{#include listings/sample.rs}}\n", &opts);
+        assert!(out.contains(r#"data-listing-wrap="true""#), "got:\n{out}");
     }
 
     #[test]
@@ -588,7 +615,10 @@ mod tests {
             list_of_listings: false,
             sidebar_mode: SidebarMode::Off,
             show_listing_provenance: false,
-            listing_width: ListingWidth::Wide,
+            display: ListingDisplay {
+                width: ListingWidth::Wide,
+                wrap: false,
+            },
         };
         let out = run(
             "{{#include listings/sample.rs}}\n\n\
@@ -628,7 +658,7 @@ mod tests {
             &PipelineOptions {
                 number_listings: true,
                 show_listing_provenance: false,
-                listing_width: ListingWidth::Normal,
+                display: ListingDisplay::default(),
                 list_of_listings: false,
                 sidebar_mode: SidebarMode::Off,
             },

@@ -609,6 +609,41 @@ Widening suits code you can't change. For code you own, the
 [`max-line-width`](cli.md#line-width-budget) budget keeps the lines short
 enough not to need it.
 
+## Wrapped listings: `wrap=` and `listing-wrap`
+
+`wrap="true"` wraps a listing's lines that are too long for it instead of
+scrolling, in HTML:
+
+````markdown
+{{#diff parse-v1 parse-v2 wrap="true"}}
+{{#diff parse-v1 parse-v2 width="wide" wrap="true"}}
+````
+
+The second widens the diff as far as the page allows, then wraps what still
+doesn't fit.
+
+To make it the book's default, set it under `[preprocessor.listings]`, and
+turn it off for one listing with `wrap="false"`:
+
+```toml
+[preprocessor.listings]
+listing-wrap = true
+```
+
+- Each continuation row of a wrapped line hangs 2 columns in from the
+  listing's left edge, so it reads as part of the line above. In a diff it
+  clears the `+`/`-` column, and it keeps an added or removed line's colour.
+  The indent is fixed: a continuation of a deeply indented line starts left
+  of that line's own indentation.
+- Callout badges stay on the logical line they annotate, on its first row.
+- The wrap is a stylesheet rule, so it works without JavaScript; the hanging
+  indent needs a browser that supports `text-indent: hanging each-line`, and
+  lines still wrap in one that doesn't. The PDF ignores it.
+- It works on `listings/` includes and on `{{#diff}}`. A `snippets/` include
+  has no locator anchor to carry it, and `verify` warns about one.
+- A value other than `true` or `false` on a directive is ignored, as with
+  `show-provenance=`.
+
 ## Gotcha: don't write a bare two-arg `{{#diff a b}}` in inline prose
 
 The preprocessor skips directives inside fenced code blocks **and** inline code

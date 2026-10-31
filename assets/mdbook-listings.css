@@ -20,8 +20,23 @@
  * pre-script behaviour for any environment where JS doesn't run.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes are
- * the expected build-time asset: mdbook-listings-css-v14
+ * the expected build-time asset: mdbook-listings-css-v15
  */
+
+/* A listing whose anchor says `data-listing-wrap="true"` wraps a line too
+ * long for it rather than scrolling. Each continuation row of a wrapped line
+ * hangs 2ch in from column 0, so it reads as part of the line above, and a
+ * diff's continuation clears the +/- column; it also stays inside the line's
+ * highlight.js span, keeping an added or removed line's colour. The anchor
+ * follows the listing, after its callout overlay when it has one. */
+pre:has(+ [data-listing-wrap="true"]) > code,
+pre:has(+ .callout-overlay + [data-listing-wrap="true"]) > code {
+  /* highlight.js makes the code a block; without it, text-indent needs one. */
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-indent: 2ch hanging each-line;
+}
 
 /* A wide listing's negative margins are set inline by mdbook-listings.js,
  * measured against the screen; print lays the page out at its own width. */

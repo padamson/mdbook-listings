@@ -89,6 +89,14 @@ impl ListingWidth {
     }
 }
 
+/// The book-level display defaults a listing takes when its directive sets
+/// none: `listing-width` and `listing-wrap`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ListingDisplay {
+    pub width: ListingWidth,
+    pub wrap: bool,
+}
+
 /// The author-supplied metadata an anchor carries alongside its operands.
 /// Grouped because both emitters take all of it and neither varies it.
 pub(crate) struct AnchorMeta<'a> {
@@ -100,6 +108,9 @@ pub(crate) struct AnchorMeta<'a> {
     /// `width="normal|wide"` on the directive, overriding the book-level
     /// `listing-width`. `None` when unset.
     pub(crate) width: Option<ListingWidth>,
+    /// `wrap="true|false"` on the directive, overriding the book-level
+    /// `listing-wrap`. `None` when unset.
+    pub(crate) wrap: Option<bool>,
 }
 
 /// The locator anchor for a frozen-listing include, a line of its own after
@@ -190,6 +201,15 @@ fn push_meta(anchor: &mut String, meta: &AnchorMeta) {
     if let Some(width) = meta.width {
         anchor.push_str(&width_attr(width));
     }
+    if let Some(wrap) = meta.wrap {
+        anchor.push_str(&wrap_attr(wrap));
+    }
+}
+
+/// ` data-listing-wrap="…"`, which the emitters and the numbering pass's book
+/// default write and the stylesheet and runtime script read.
+pub(crate) fn wrap_attr(wrap: bool) -> String {
+    format!(" data-listing-wrap=\"{wrap}\"")
 }
 
 /// ` data-listing-width="…"`, the one spelling the emitters and the numbering
@@ -247,6 +267,7 @@ mod tests {
             label,
             show_provenance,
             width: None,
+            wrap: None,
         }
     }
 
@@ -407,6 +428,31 @@ mod tests {
         );
         let unset = include_anchor("foo-v1", None, None, &meta(None, None, None));
         assert_eq!(attr_value(&unset, "data-listing-width"), None);
+    }
+
+    #[test]
+    fn anchors_carry_the_per_directive_wrap() {
+        let on = AnchorMeta {
+            wrap: Some(true),
+            ..meta(None, None, None)
+        };
+        let include = include_anchor("foo-v1", None, None, &on);
+        assert_eq!(
+            attr_value(&include, "data-listing-wrap").as_deref(),
+            Some("true")
+        );
+        let off = AnchorMeta {
+            wrap: Some(false),
+            ..meta(None, None, None)
+        };
+        let diff = diff_anchor(&operand("a-v1", None), &operand("a-v2", None), &off);
+        assert_eq!(
+            attr_value(&diff, "data-listing-wrap").as_deref(),
+            Some("false"),
+            "an explicit false is recorded, so a book-wide default can't override it"
+        );
+        let unset = include_anchor("foo-v1", None, None, &meta(None, None, None));
+        assert_eq!(attr_value(&unset, "data-listing-wrap"), None);
     }
 
     #[test]

@@ -33,6 +33,9 @@ pub struct IncludeDirective {
     /// `width="normal|wide"`, overriding the book-level `listing-width` for
     /// this one listing. `None` when unset.
     pub width: Option<ListingWidth>,
+    /// `wrap="true|false"`, overriding the book-level `listing-wrap` for
+    /// this one listing. `None` when unset.
+    pub wrap: Option<bool>,
     pub span: Range<usize>,
     pub fence_close_end: Option<usize>,
 }
@@ -82,6 +85,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
         let (args, lang) = crate::directive::split_lang(&args);
         let (args, show_provenance) = crate::directive::split_show_provenance(&args);
         let (args, width) = crate::directive::split_width(&args);
+        let (args, wrap) = crate::directive::split_wrap(&args);
         let raw = args.trim();
         // CALLOUT: snippets-intercept Two prefixes are intercepted: `listings/` (frozen tags — emit anchor) and `snippets/` (no anchor; we expand to give the callout splicer a shot at any CALLOUT markers in the snippet source). Other forms fall through to mdbook's built-in `links` preprocessor.
         if !is_intercepted_path(raw) {
@@ -121,6 +125,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
             lang,
             show_provenance,
             width,
+            wrap,
             span: occ.span,
             fence_close_end: occ.fence_close_end,
         });
@@ -406,6 +411,7 @@ pub fn splice_chapter(
                     label: d.label.as_deref(),
                     show_provenance: d.show_provenance,
                     width: d.width,
+                    wrap: d.wrap,
                 },
             ));
         }
@@ -618,6 +624,33 @@ mod tests {
             crate::anchor::attr_value(&out, "data-listing-tag-range").as_deref(),
             Some("1:1"),
             "the width token comes off before the range is parsed; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn splice_chapter_puts_the_directive_wrap_on_the_anchor() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path();
+        std::fs::create_dir_all(src.join("listings")).unwrap();
+        std::fs::write(src.join("listings/foo.rs"), "fn body() {}\n").unwrap();
+        let manifest = manifest_with("foo", "../src/foo.rs");
+        let out = splice_chapter(
+            "{{#include listings/foo.rs:1:1 wrap=\"true\"}}\n",
+            src,
+            None,
+            &manifest,
+            &SourcePaths::Verbatim,
+        )
+        .expect("splice");
+        assert_eq!(
+            crate::anchor::attr_value(&out, "data-listing-wrap").as_deref(),
+            Some("true"),
+            "got:\n{out}"
+        );
+        assert_eq!(
+            crate::anchor::attr_value(&out, "data-listing-tag-range").as_deref(),
+            Some("1:1"),
+            "the wrap token comes off before the range is parsed; got:\n{out}"
         );
     }
 

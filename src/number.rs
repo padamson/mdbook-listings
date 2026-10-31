@@ -9,7 +9,7 @@
 //! where include and diff listings are interleaved in one stream. N is the
 //! chapter's dotted section number.
 
-use crate::anchor::{ListingWidth, width_attr};
+use crate::anchor::{ListingDisplay, ListingWidth, width_attr, wrap_attr};
 use crate::callout::SupportedRenderer;
 use crate::fence::FencedBlocks;
 use crate::source_path::ShownSource;
@@ -32,9 +32,10 @@ struct Anchor {
     sources: Vec<ShownSource>,
     /// `show-provenance="..."` on the directive, overriding the book flag.
     show_provenance: Option<bool>,
-    /// Whether the directive set `width="..."`, which the book default
-    /// must not override.
+    /// Whether the directive set `width="..."` or `wrap="..."`, which the
+    /// book defaults must not override.
     has_width: bool,
+    has_wrap: bool,
 }
 
 /// A numbered listing, surfaced for the book-wide List-of-Listings index.
@@ -66,17 +67,17 @@ pub struct ListingRef {
 /// `[preprocessor.listings] number-listings` opt-in. A listing's number
 /// renders only when the flag is on and the chapter has a prefix; its caption
 /// renders whenever one is present. A numbered listing's caption div also
-/// gains an `id` so the index can link to it. `listing_width` is the book's
-/// `listing-width`, stamped onto each anchor whose directive set no width of
-/// its own. When none of this applies to any listing, `content` is returned
-/// unchanged with no refs.
+/// gains an `id` so the index can link to it. `display` holds the book's
+/// `listing-width` and `listing-wrap`, each stamped onto every anchor whose
+/// directive set no value of its own. When none of this applies to any
+/// listing, `content` is returned unchanged with no refs.
 pub fn splice_chapter(
     content: &str,
     prefix: Option<&str>,
     number_listings: bool,
     show_listing_provenance: bool,
     renderer: SupportedRenderer,
-    listing_width: ListingWidth,
+    display: ListingDisplay,
 ) -> (String, Vec<ListingRef>) {
     // (opener_start, anchor) for each block immediately followed by a locator
     // anchor, in document order. Plain code blocks and snippets have no anchor
@@ -93,11 +94,12 @@ pub fn splice_chapter(
 
     let prefix = prefix.filter(|p| !p.is_empty()).map(str::to_string);
 
-    // Each listing contributes up to three edits: a caption element inserted
-    // before its opening fence, and a `data-listing-number` and a book-default
-    // `data-listing-width` attribute spliced into its anchor. All are pure
-    // insertions; collect them and apply in ascending position order. A
-    // numbered listing also yields one `ListingRef` for the index.
+    // Each listing contributes up to four edits: a caption element inserted
+    // before its opening fence, and a `data-listing-number` and the book's
+    // default `data-listing-width` and `data-listing-wrap` attributes spliced
+    // into its anchor. All are pure insertions; collect them and apply in
+    // ascending position order. A numbered listing also yields one
+    // `ListingRef` for the index.
     let mut edits: Vec<(usize, String)> = Vec::new();
     let mut refs: Vec<ListingRef> = Vec::new();
     for (i, (opener_start, anchor)) in listings.iter().enumerate() {
@@ -123,8 +125,11 @@ pub fn splice_chapter(
         if !chrome.is_empty() {
             edits.push((*opener_start, chrome));
         }
-        if !anchor.has_width && listing_width == ListingWidth::Wide {
-            edits.push((anchor.div_start + "<div".len(), width_attr(listing_width)));
+        if !anchor.has_width && display.width == ListingWidth::Wide {
+            edits.push((anchor.div_start + "<div".len(), width_attr(display.width)));
+        }
+        if !anchor.has_wrap && display.wrap {
+            edits.push((anchor.div_start + "<div".len(), wrap_attr(true)));
         }
         if let Some(n) = number {
             edits.push((
@@ -384,6 +389,7 @@ fn anchor_after_fence(content: &str, close_end: usize) -> Option<Anchor> {
         sources,
         show_provenance: attr("data-listing-show-provenance").and_then(|v| v.parse::<bool>().ok()),
         has_width: attr("data-listing-width").is_some(),
+        has_wrap: attr("data-listing-wrap").is_some(),
     })
 }
 
@@ -489,7 +495,7 @@ mod tests {
             include_block("a", None),
             include_block("b", None)
         );
-        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, NORMAL);
         for (id, text) in [
             ("listing-5-1", "Listing 5.1"),
             ("listing-5-2", "Listing 5.2"),
@@ -516,7 +522,7 @@ mod tests {
     #[test]
     fn interleaves_include_and_diff_anchors_in_one_sequence() {
         let content = format!("{}\n\n{}\n", include_block("a", None), diff_block("a", "b"));
-        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, NORMAL);
         assert!(out.contains("Listing 5.1"), "include is 5.1; got:\n{out}");
         assert!(out.contains("Listing 5.2"), "diff is 5.2; got:\n{out}");
         // Both anchors carry the machine-readable number for the callout pass,
@@ -568,7 +574,7 @@ mod tests {
     #[test]
     fn a_wide_book_default_marks_every_listing_without_its_own_width() {
         let content = format!("{}\n{}", include_block("a", None), diff_block("b", "c"));
-        let (out, _) = splice_chapter(&content, None, false, false, Html, ListingWidth::Wide);
+        let (out, _) = splice_chapter(&content, None, false, false, Html, WIDE);
         assert_eq!(
             width_on(&out, r#"data-listing-tag="a""#).as_deref(),
             Some("wide"),
@@ -585,7 +591,7 @@ mod tests {
     fn a_listing_that_asks_for_normal_width_keeps_it_under_a_wide_default() {
         let content = include_block("a", None)
             .replace(" aria-hidden", " data-listing-width=\"normal\" aria-hidden");
-        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, ListingWidth::Wide);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, WIDE);
         let anchor = open_tag(div_with(&out, r#"data-listing-tag="a""#));
         assert_eq!(
             anchor.matches("data-listing-width=").count(),
@@ -598,17 +604,64 @@ mod tests {
         );
     }
 
+    const NORMAL: ListingDisplay = ListingDisplay {
+        width: ListingWidth::Normal,
+        wrap: false,
+    };
+    const WIDE: ListingDisplay = ListingDisplay {
+        width: ListingWidth::Wide,
+        wrap: false,
+    };
+    const WRAP: ListingDisplay = ListingDisplay {
+        width: ListingWidth::Normal,
+        wrap: true,
+    };
+
+    fn wrap_on(out: &str, attr: &str) -> Option<String> {
+        crate::anchor::attr_value(open_tag(div_with(out, attr)), "data-listing-wrap")
+    }
+
+    #[test]
+    fn a_wrap_book_default_marks_every_listing_without_its_own_wrap() {
+        let content = format!("{}\n{}", include_block("a", None), diff_block("b", "c"));
+        let (out, _) = splice_chapter(&content, None, false, false, Html, WRAP);
+        for attr in [r#"data-listing-tag="a""#, r#"data-listing-diff-left="b""#] {
+            assert_eq!(
+                wrap_on(&out, attr).as_deref(),
+                Some("true"),
+                "{attr}; got:\n{out}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_listing_that_asks_not_to_wrap_keeps_it_under_a_wrap_default() {
+        let content = include_block("a", None)
+            .replace(" aria-hidden", " data-listing-wrap=\"false\" aria-hidden");
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, WRAP);
+        let anchor = open_tag(div_with(&out, r#"data-listing-tag="a""#));
+        assert_eq!(
+            anchor.matches("data-listing-wrap=").count(),
+            1,
+            "the default must not add a second wrap; got:\n{out}"
+        );
+        assert_eq!(
+            wrap_on(&out, r#"data-listing-tag="a""#).as_deref(),
+            Some("false")
+        );
+    }
+
     #[test]
     fn a_normal_book_default_leaves_the_anchor_alone() {
         let content = include_block("a", None);
-        let (out, _) = splice_chapter(&content, None, false, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, None, false, false, Html, NORMAL);
         assert_eq!(out, content);
     }
 
     #[test]
     fn provenance_line_is_off_unless_the_book_asks_for_it() {
         let content = sourced_include_block("bench-v1", "../data/bench.yaml", Some("Cap"));
-        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, NORMAL);
         assert!(out.contains("Listing 5.1 — Cap"), "got:\n{out}");
         assert!(
             !out.contains("listing-provenance"),
@@ -619,7 +672,7 @@ mod tests {
     #[test]
     fn provenance_line_names_the_source_then_the_tag() {
         let content = sourced_include_block("bench-v1", "../data/bench.yaml", Some("Cap"));
-        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, NORMAL);
         assert!(
             out.contains(
                 "<div class=\"listing-provenance\"><code>../data/bench.yaml</code> \
@@ -639,7 +692,7 @@ mod tests {
     #[test]
     fn provenance_line_renders_without_a_caption_or_number() {
         let content = sourced_include_block("bench-v1", "../data/bench.yaml", None);
-        let (out, _) = splice_chapter(&content, None, false, true, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, None, false, true, Html, NORMAL);
         assert!(
             out.contains("listing-provenance"),
             "provenance is chrome in its own right, not a caption decoration; got:\n{out}"
@@ -653,7 +706,7 @@ mod tests {
     #[test]
     fn provenance_falls_back_to_the_tag_when_the_manifest_has_no_source() {
         let content = include_block("bench-v1", None);
-        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, NORMAL);
         assert!(
             out.contains(
                 "<div class=\"listing-provenance\"><span class=\"listing-tag\">\
@@ -666,7 +719,7 @@ mod tests {
     #[test]
     fn a_diff_shows_one_source_when_both_operands_share_it() {
         let content = sourced_diff_block("b-v1", "b-v2", "../data/b.yaml", "../data/b.yaml");
-        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, NORMAL);
         assert!(
             out.contains(
                 "<code>../data/b.yaml</code> <span class=\"listing-tag\">b-v1</span> → \
@@ -682,7 +735,7 @@ mod tests {
         // notice, and its two operands are one listing, so the line must not
         // claim a transition from a thing to itself.
         let content = sourced_diff_block("b-v1", "b-v1", "../data/b.yaml", "../data/b.yaml");
-        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, NORMAL);
         assert!(
             out.contains(
                 "<div class=\"listing-provenance\"><code>../data/b.yaml</code> \
@@ -696,7 +749,7 @@ mod tests {
     #[test]
     fn a_diff_shows_both_sources_when_the_operands_disagree() {
         let content = sourced_diff_block("a-v1", "b-v1", "../data/a.yaml", "../data/b.yaml");
-        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, NORMAL);
         assert!(
             out.contains(
                 "<code>../data/a.yaml</code> → <code>../data/b.yaml</code> \
@@ -713,7 +766,7 @@ mod tests {
             "aria-hidden",
             "data-listing-source-url=\"https://example.com/b.yaml\" aria-hidden",
         );
-        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, NORMAL);
         assert!(
             out.contains(
                 "<a href=\"https://example.com/b.yaml\"><code>data/bench.yaml</code></a> \
@@ -732,7 +785,7 @@ mod tests {
             "data-listing-diff-left-source-url=\"https://x/aaa/b.yaml\" \
              data-listing-diff-right-source-url=\"https://x/bbb/b.yaml\" aria-hidden",
         );
-        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, NORMAL);
         assert!(
             out.contains(
                 "<a href=\"https://x/aaa/b.yaml\"><code>b.yaml</code></a> → \
@@ -750,7 +803,7 @@ mod tests {
             "aria-hidden",
             "data-listing-diff-left-source-url=\"https://x/aaa/b.yaml\" aria-hidden",
         );
-        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, Html, NORMAL);
         assert!(
             out.contains(
                 "<div class=\"listing-provenance\">\
@@ -767,14 +820,7 @@ mod tests {
             "aria-hidden",
             "data-listing-source-url=\"https://example.com/b.yaml?a=1&amp;b=2\" aria-hidden",
         );
-        let (out, _) = splice_chapter(
-            &content,
-            Some("5"),
-            true,
-            true,
-            TypstPdf,
-            ListingWidth::Normal,
-        );
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, TypstPdf, NORMAL);
         assert!(
             out.contains("[`data/bench.yaml`](<https://example.com/b.yaml?a=1&b=2>) (`bench-v1`)"),
             "the URL is unescaped from its attribute form; got:\n{out}"
@@ -787,7 +833,7 @@ mod tests {
             "aria-hidden",
             "data-listing-show-provenance=\"false\" aria-hidden",
         );
-        let (out, _) = splice_chapter(&off, Some("5"), true, true, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&off, Some("5"), true, true, Html, NORMAL);
         assert!(
             !out.contains("listing-provenance"),
             "the directive suppressed it despite the book flag; got:\n{out}"
@@ -797,7 +843,7 @@ mod tests {
             "aria-hidden",
             "data-listing-show-provenance=\"true\" aria-hidden",
         );
-        let (out, _) = splice_chapter(&on, Some("5"), true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&on, Some("5"), true, false, Html, NORMAL);
         assert!(
             out.contains("listing-provenance"),
             "the directive asked for it despite the book flag; got:\n{out}"
@@ -807,14 +853,7 @@ mod tests {
     #[test]
     fn typst_renders_provenance_as_inline_code_not_a_div() {
         let content = sourced_include_block("bench-v1", "../data/bench.yaml", Some("Cap"));
-        let (out, _) = splice_chapter(
-            &content,
-            Some("5"),
-            true,
-            true,
-            TypstPdf,
-            ListingWidth::Normal,
-        );
+        let (out, _) = splice_chapter(&content, Some("5"), true, true, TypstPdf, NORMAL);
         assert!(
             out.contains("`../data/bench.yaml` (`bench-v1`)"),
             "the PDF backend has no pill, so a parenthesis carries the same \
@@ -831,7 +870,7 @@ mod tests {
     #[test]
     fn provenance_is_absent_from_the_index_entries() {
         let content = sourced_include_block("bench-v1", "../data/bench.yaml", Some("Cap"));
-        let (_, refs) = splice_chapter(&content, Some("5"), true, true, Html, ListingWidth::Normal);
+        let (_, refs) = splice_chapter(&content, Some("5"), true, true, Html, NORMAL);
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0].caption.as_deref(), Some("Cap"));
         // The List of Listings is the one place a caption stands alone, so
@@ -846,7 +885,7 @@ mod tests {
         // guidance in the plugin skill tells authors to name identifiers in
         // code font, so the tool has to honour it.
         let content = include_block("a", Some("Adding `toml_edit` as a dependency"));
-        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, NORMAL);
         assert!(
             out.contains("Listing 5.1 — Adding <code>toml_edit</code> as a dependency"),
             "backticks must become code, not survive literally; got:\n{out}"
@@ -859,7 +898,7 @@ mod tests {
         // rendering markdown over the escaped form would turn `&lt;` into
         // `&amp;lt;` and show the entity to the reader.
         let content = include_block("a", Some("Handling &lt;T&gt; bounds"));
-        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, NORMAL);
         assert!(
             out.contains("Handling &lt;T&gt; bounds"),
             "entity must survive one round of escaping, not two; got:\n{out}"
@@ -873,7 +912,7 @@ mod tests {
         // test exercises the real unescape-then-render round trip.
         let escaped = crate::callout::html_escape("A <script>alert(1)</script> caption");
         let content = include_block("a", Some(&escaped));
-        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, NORMAL);
         let div = inner(div_with(&out, r#"class="listing-caption""#));
         assert!(
             !div.contains("<script>"),
@@ -901,8 +940,7 @@ mod tests {
             // only survives the round trip because it arrives escaped.
             let escaped = crate::callout::html_escape(caption);
             let content = include_block("a", Some(&escaped));
-            let (out, _) =
-                splice_chapter(&content, Some("5"), true, false, Html, ListingWidth::Normal);
+            let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, NORMAL);
             let div = inner(div_with(&out, r#"class="listing-caption""#));
             assert!(
                 !div.contains(forbidden),
@@ -920,7 +958,7 @@ mod tests {
         // The guard must not be so eager that ordinary inline markup stops
         // working -- emphasis and links are inline content.
         let content = include_block("a", Some("Using *emphasis* and `code`"));
-        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, NORMAL);
         assert!(
             out.contains("Using <em>emphasis</em> and <code>code</code>"),
             "got:\n{out}"
@@ -930,21 +968,14 @@ mod tests {
     #[test]
     fn subsection_number_prefixes_listing() {
         let content = include_block("a", None);
-        let (out, _) = splice_chapter(
-            &content,
-            Some("5.2"),
-            true,
-            false,
-            Html,
-            ListingWidth::Normal,
-        );
+        let (out, _) = splice_chapter(&content, Some("5.2"), true, false, Html, NORMAL);
         assert!(out.contains("Listing 5.2.1"), "got:\n{out}");
     }
 
     #[test]
     fn number_and_caption_join_with_em_dash() {
         let content = include_block("a", Some("The claim layer"));
-        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, NORMAL);
         assert_eq!(
             inner(div_with(&out, r#"id="listing-5-1""#)),
             "Listing 5.1 — The claim layer",
@@ -955,14 +986,7 @@ mod tests {
     #[test]
     fn flag_off_renders_caption_only_without_number_or_attribute() {
         let content = include_block("a", Some("Just a caption"));
-        let (out, _) = splice_chapter(
-            &content,
-            Some("5"),
-            false,
-            false,
-            Html,
-            ListingWidth::Normal,
-        );
+        let (out, _) = splice_chapter(&content, Some("5"), false, false, Html, NORMAL);
         let caption = div_with(&out, r#"class="listing-caption""#);
         assert_eq!(
             inner(caption),
@@ -986,14 +1010,7 @@ mod tests {
     #[test]
     fn flag_off_without_caption_is_byte_identical() {
         let content = include_block("a", None);
-        let (out, _) = splice_chapter(
-            &content,
-            Some("5"),
-            false,
-            false,
-            Html,
-            ListingWidth::Normal,
-        );
+        let (out, _) = splice_chapter(&content, Some("5"), false, false, Html, NORMAL);
         assert_eq!(
             out, content,
             "flag off + no caption must pass through unchanged"
@@ -1016,19 +1033,11 @@ mod tests {
             "Tail.\n",
         );
         assert_eq!(
-            splice_chapter(content, Some("5"), false, false, Html, ListingWidth::Normal).0,
+            splice_chapter(content, Some("5"), false, false, Html, NORMAL).0,
             content
         );
         assert_eq!(
-            splice_chapter(
-                content,
-                Some("5"),
-                false,
-                false,
-                TypstPdf,
-                ListingWidth::Normal
-            )
-            .0,
+            splice_chapter(content, Some("5"), false, false, TypstPdf, NORMAL).0,
             content
         );
     }
@@ -1036,7 +1045,7 @@ mod tests {
     #[test]
     fn unnumbered_chapter_renders_caption_only() {
         let content = include_block("a", Some("Caption"));
-        let (out, _) = splice_chapter(&content, None, true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, None, true, false, Html, NORMAL);
         let caption = div_with(&out, r#"class="listing-caption""#);
         assert_eq!(inner(caption), "Caption", "got:\n{out}");
         assert!(
@@ -1053,14 +1062,14 @@ mod tests {
     #[test]
     fn unnumbered_chapter_without_caption_is_byte_identical() {
         let content = include_block("a", None);
-        let (out, _) = splice_chapter(&content, None, true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, None, true, false, Html, NORMAL);
         assert_eq!(out, content);
     }
 
     #[test]
     fn plain_code_block_without_anchor_is_byte_identical() {
         let content = "```rust\nlet x = 1;\n```\n".to_string();
-        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, NORMAL);
         assert_eq!(
             out, content,
             "a block with no locator anchor is not a listing"
@@ -1073,7 +1082,7 @@ mod tests {
         // preceding prose (not jump to the start of the chapter) and sit
         // immediately before the opening fence (not a line early).
         let content = format!("intro\n\n{}", include_block("a", None));
-        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, NORMAL);
         let caption = div_span(&out, r#"id="listing-5-1""#);
         assert!(
             out[..caption.start].ends_with("intro\n\n"),
@@ -1091,7 +1100,7 @@ mod tests {
         // and the anchor; a numbered listing must still be recognized.
         let content =
             "```rust\nfn a() {}\n```\n\n<div data-listing-tag=\"a\" aria-hidden=\"true\"></div>\n";
-        let (out, _) = splice_chapter(content, Some("5"), true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(content, Some("5"), true, false, Html, NORMAL);
         assert!(out.contains("Listing 5.1"), "got:\n{out}");
         assert!(
             open_tag(div_with(&out, r#"data-listing-tag="a""#))
@@ -1106,7 +1115,7 @@ mod tests {
         // the markdown pass re-escapes it, so entities must come out the
         // far side unchanged rather than doubled.
         let content = include_block("a", Some("A &amp; B &lt;t&gt;"));
-        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, ListingWidth::Normal);
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, Html, NORMAL);
         assert!(
             out.contains("Listing 5.1 — A &amp; B &lt;t&gt;"),
             "got:\n{out}"
@@ -1116,14 +1125,7 @@ mod tests {
     #[test]
     fn pdf_renders_bold_markdown_and_unescapes_caption() {
         let content = include_block("a", Some("A &amp; B &lt;t&gt;"));
-        let (out, _) = splice_chapter(
-            &content,
-            Some("5"),
-            true,
-            false,
-            TypstPdf,
-            ListingWidth::Normal,
-        );
+        let (out, _) = splice_chapter(&content, Some("5"), true, false, TypstPdf, NORMAL);
         assert!(out.contains("**Listing 5.1 — A & B <t>**"), "got:\n{out}");
         assert!(
             !out.contains(r#"class="listing-caption""#),

@@ -44,6 +44,12 @@ screenshots predate all of it.
   until it fits or the page runs out of room, and its callout badges move
   with its right edge. On a narrow window it scrolls, as every other
   listing in the book does.
+- **Wrapped listings.** A listing can wrap its long lines instead of
+  scrolling with `wrap="true"`, or a book can make that its default with
+  `listing-wrap = true`. Only {{#listing-ref include-intercept}} asks for it
+  here: its longest lines run to 108 columns, so a line that doesn't fit
+  continues on the next row, indented two columns, and its callout badges
+  stay on the lines they annotate.
 - **Callouts on a diff.** {{#listing-ref callout-cross-refs}} carries two
   badges no source file holds: one on the removed `splice_chapter` signature
   and one on its replacement. They come from a sidecar for the diff itself,

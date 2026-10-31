@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Wrapped listings.** `wrap="true"` on a `{{#include listings/…}}` or a
+  `{{#diff}}` wraps its long lines in HTML instead of scrolling, and
+  `listing-wrap = true` under `[preprocessor.listings]` makes that the
+  book's default, which `wrap="false"` turns off for one listing. Each
+  continuation row hangs 2 columns in, so a wrapped diff line stays
+  attached to its `+`/`-` marker, and callout badges stay on the line they
+  annotate. With `width="wide"` too, the listing widens first and wraps
+  only what still doesn't fit. `verify` warns about a `wrap=` on a
+  `snippets/` include, which has no effect.
 - **Callouts on a diff without editing either file.** A
   `{{#diff <old> <new>}}` reads `listings/<old>..<new>.callouts.toml`, a
   sidecar of `[[callout]]` entries like a listing's, so a review of

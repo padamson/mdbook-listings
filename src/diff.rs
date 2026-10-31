@@ -38,6 +38,9 @@ pub struct DiffDirective {
     /// `width="normal|wide"`, overriding the book-level `listing-width` for
     /// this one diff. `None` when unset.
     pub width: Option<ListingWidth>,
+    /// `wrap="true|false"`, overriding the book-level `listing-wrap` for
+    /// this one diff. `None` when unset.
+    pub wrap: Option<bool>,
     pub span: Range<usize>,
 }
 
@@ -139,6 +142,7 @@ pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
         let (args, label) = crate::directive::split_label(&args);
         let (args, show_provenance) = crate::directive::split_show_provenance(&args);
         let (args, width) = crate::directive::split_width(&args);
+        let (args, wrap) = crate::directive::split_wrap(&args);
         // Lift an optional `context=N` token out of the operands. A malformed
         // value (`context=x`) is ignored — it falls back to the default
         // context window rather than skipping the directive, since the window
@@ -175,6 +179,7 @@ pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
                 context,
                 show_provenance,
                 width,
+                wrap,
                 span: occ.span,
             });
         }
@@ -551,6 +556,7 @@ pub fn splice_chapter(
                 label: d.label.as_deref(),
                 show_provenance: d.show_provenance,
                 width: d.width,
+                wrap: d.wrap,
             },
         ));
         cursor = d.span.end;
@@ -716,6 +722,25 @@ mod tests {
         assert_eq!(
             crate::anchor::attr_value(&out, "data-listing-width").as_deref(),
             Some("wide"),
+            "got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn splice_chapter_puts_the_directive_wrap_on_the_anchor() {
+        let (tmp, manifest, _) = fixture(b"a\n", b"b\n");
+        let out = splice_chapter(
+            "{{#diff left-tag right-tag wrap=\"true\"}}\n",
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .expect("splice");
+        assert_eq!(
+            crate::anchor::attr_value(&out, "data-listing-wrap").as_deref(),
+            Some("true"),
             "got:\n{out}"
         );
     }
@@ -1131,6 +1156,7 @@ mod tests {
             context: None,
             show_provenance: None,
             width: None,
+            wrap: None,
             span: 0..0,
         };
 

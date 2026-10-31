@@ -225,13 +225,27 @@ pub(crate) fn split_width(args: &str) -> (String, Option<ListingWidth>) {
     (rest, value.as_deref().and_then(ListingWidth::parse))
 }
 
+/// Lift a `wrap="true|false"` token off a directive's args — the
+/// per-directive override for the book-level `listing-wrap`. An unknown
+/// value is dropped with the token, as for `show-provenance`.
+pub(crate) fn split_wrap(args: &str) -> (String, Option<bool>) {
+    let (rest, value) = split_quoted_kv(args, "wrap=\"");
+    (rest, value.and_then(|v| v.parse::<bool>().ok()))
+}
+
 /// Shared lifter for `key="value"` directive arguments. The first `"` ends
 /// the value; an unterminated value leaves the args untouched rather than
 /// guess. The key may sit anywhere among the args; the surrounding tokens
 /// are re-joined so several quoted keys (`label="x" caption="y"`) can be
 /// lifted in sequence, in either order.
 fn split_quoted_kv(args: &str, key: &str) -> (String, Option<String>) {
-    let Some(start) = args.find(key) else {
+    // Only a whole token: `nowrap="…"` holds `wrap="` but is not that key.
+    let Some(start) = args.match_indices(key).map(|(i, _)| i).find(|&i| {
+        args[..i]
+            .chars()
+            .next_back()
+            .is_none_or(char::is_whitespace)
+    }) else {
         return (args.to_string(), None);
     };
     let value_start = start + key.len();
@@ -629,6 +643,34 @@ mod tests {
         let (rest, width) = split_width("a b width=\"normal\" 1:2 1:3");
         assert_eq!(rest, "a b 1:2 1:3");
         assert_eq!(width, Some(ListingWidth::Normal));
+    }
+
+    #[test]
+    fn split_wrap_lifts_either_value_and_drops_an_unknown_one() {
+        for (args, want) in [
+            ("listings/foo.rs wrap=\"true\"", Some(true)),
+            ("listings/foo.rs wrap=\"false\"", Some(false)),
+            ("listings/foo.rs wrap=\"yes\"", None),
+            ("listings/foo.rs", None),
+        ] {
+            assert_eq!(
+                split_wrap(args),
+                ("listings/foo.rs".to_string(), want),
+                "{args}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_key_is_lifted_only_as_a_whole_token() {
+        // `nowrap="true"` is not `wrap="true"` with a stray `no` left behind.
+        let args = "listings/foo.rs nowrap=\"true\"";
+        assert_eq!(split_wrap(args), (args.to_string(), None));
+        assert_eq!(
+            split_wrap("nowrap=\"x\" wrap=\"true\""),
+            ("nowrap=\"x\"".to_string(), Some(true)),
+            "the whole-token occurrence after it is still found"
+        );
     }
 
     #[test]

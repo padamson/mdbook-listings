@@ -11,7 +11,7 @@ description: >-
   with its sources.
 license: MIT OR Apache-2.0
 metadata:
-  version: "0.1.26"
+  version: "0.1.27"
 ---
 
 # Authoring with mdbook-listings
@@ -131,6 +131,7 @@ list-of-listings-sidebar = "nested"  # "off" (default) | "append" | "nested"
 show-listing-provenance = true    # muted "<source> (<tag>)" line under the caption
 max-line-width = 72               # freeze refuses, verify fails, wider lines
 listing-width = "wide"            # "normal" (default) | "wide": grow past the column
+listing-wrap = true               # wrap long lines instead of scrolling (HTML)
 ```
 
 - **`number-listings`** — every listing gets a `Listing N.M` label (`N` =
@@ -165,6 +166,11 @@ listing-width = "wide"            # "normal" (default) | "wide": grow past the c
   an individual `{{#include}}` or `{{#diff}}` overrides it either way. For
   code the book can't reflow; details in
   [references/directives.md](references/directives.md#wide-listings-width-and-listing-width).
+- **`listing-wrap`** — `true` wraps a listing's long lines in HTML instead of
+  scrolling, each continuation row hanging 2 columns in; `wrap="true"` /
+  `wrap="false"` on one directive overrides it. With `width="wide"` too, the
+  listing widens first and wraps only what still doesn't fit. Details in
+  [references/directives.md](references/directives.md#wrapped-listings-wrap-and-listing-wrap).
 - **`list-of-listings`** — the `{{#list-of-listings}}` marker renders the
   index; link the hosting page from `SUMMARY.md`.
 - **`list-of-listings-sidebar`** — a browser-built sidebar view (HTML only).
