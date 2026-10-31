@@ -324,8 +324,16 @@ pub fn frozen_relative_path(tag: &str, source: &Path) -> Result<PathBuf> {
     if tag.is_empty() {
         bail!("tag must be non-empty");
     }
-    if tag.contains(['/', '\\', '.']) {
-        bail!("tag `{tag}` contains disallowed character (/, \\, or .)");
+    if tag.contains(['/', '\\']) {
+        bail!("tag `{tag}` contains disallowed character (/ or \\)");
+    }
+    // A leading dot hides the file, and `..` separates the operands in a
+    // diff sidecar's name (`<old>..<new>.callouts.toml`).
+    if tag.starts_with('.') || tag.ends_with('.') || tag.contains("..") {
+        bail!("tag `{tag}` has a `.` at its start or end, or two in a row");
+    }
+    if tag.ends_with(".callouts") {
+        bail!("tag `{tag}` ends in `.callouts`, which is reserved for sidecar file names");
     }
     let ext = source
         .extension()
@@ -841,6 +849,28 @@ mod tests {
     #[test]
     fn frozen_path_rejects_tag_with_slash() {
         assert!(frozen_relative_path("foo/bar", Path::new("x.yaml")).is_err());
+    }
+
+    #[test]
+    fn frozen_path_accepts_a_dotted_tag() {
+        let p = frozen_relative_path("parse-0.13.4", Path::new("parse.rs")).unwrap();
+        assert_eq!(p, Path::new("src/listings/parse-0.13.4.rs"));
+    }
+
+    #[test]
+    fn frozen_path_rejects_a_dot_at_either_end_or_two_in_a_row() {
+        for tag in [".v1", "v1.", "a..b"] {
+            assert!(
+                frozen_relative_path(tag, Path::new("x.rs")).is_err(),
+                "`{tag}` must be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn frozen_path_rejects_a_tag_whose_file_would_read_as_a_sidecar() {
+        let err = frozen_relative_path("notes.callouts", Path::new("notes.toml")).unwrap_err();
+        assert!(format!("{err}").contains("reserved"), "got: {err}");
     }
 
     #[test]

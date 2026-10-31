@@ -3,11 +3,10 @@ use std::collections::HashSet;
 use crate::fence::FencedBlocks;
 
 use super::strip::{
-    listing_anchor_after_fence, source_line_to_block_line, strip_marker_lines,
-    strip_marker_lines_diff, translate_sidecar_line_to_post_strip,
+    strip_marker_lines, strip_marker_lines_diff, translate_sidecar_line_to_post_strip,
 };
 use super::{
-    Callout, SidecarCallouts, SpliceError, listing_number_after_fence, scoped_badge,
+    BlockCallouts, Callout, SidecarCallouts, SpliceError, listing_number_after_fence, scoped_badge,
     split_callouts_for_block,
 };
 
@@ -26,8 +25,12 @@ pub(super) fn splice_callout_lists_html(
     let mut cursor = 0;
     let mut emitted_anchor: HashSet<String> = HashSet::new();
     for block in FencedBlocks::new(content) {
-        let (inline, sidecar) =
-            split_callouts_for_block(block.info, block.body, content, block.close_end, sidecars)?;
+        let BlockCallouts {
+            inline,
+            sidecar,
+            sidecar_path,
+            ..
+        } = split_callouts_for_block(block.info, block.body, content, block.close_end, sidecars)?;
         let is_diff = block.info == "diff";
         // Diff blocks always go through the strip pass even when no `+`/` `
         // callouts exist — `-`-side markers still need to be dropped from
@@ -45,33 +48,23 @@ pub(super) fn splice_callout_lists_html(
             continue;
         }
         // Pair each inline callout with its already-computed post-strip
-        // line, then add each sidecar callout. Sidecar lines are
-        // SOURCE-file lines; translate via the anchor's range info
-        // (if any) into block-body lines, then strip-aware translate
-        // into post-strip lines. Sort by post-strip position so badges
-        // emit in visual reading order.
+        // line, then add each sidecar callout, whose block line the strip
+        // pass shifts up past every marker line removed above it. Sort by
+        // post-strip position so badges emit in visual reading order.
         let mut positioned: Vec<(Callout, usize)> = inline
             .into_iter()
             .zip(strip.post_strip_lines.iter().copied())
             .collect();
-        let anchor = listing_anchor_after_fence(content, block.close_end);
-        let sidecar_path = anchor.as_ref().and_then(|a| sidecars.path_for_tag(a.tag));
-        for entry in sidecar {
-            let source_line = entry.line;
-            let label = entry.label.clone();
-            let block_line = match anchor.as_ref() {
-                Some(a) => source_line_to_block_line(source_line, a),
-                None => source_line,
-            };
+        for placed in sidecar {
             let p = translate_sidecar_line_to_post_strip(
-                block_line,
+                placed.callout.line,
                 &strip.stripped_source_lines,
-                anchor.as_ref().map(|a| a.tag).unwrap_or(""),
+                &placed.listing,
                 sidecar_path,
-                &label,
-                source_line,
+                &placed.callout.label,
+                placed.written_line,
             )?;
-            positioned.push((entry, p));
+            positioned.push((placed.callout, p));
         }
         positioned.sort_by_key(|(_, p)| *p);
         let (callouts, post_strip_lines): (Vec<_>, Vec<_>) = positioned.into_iter().unzip();

@@ -1,0 +1,10 @@
+[[callout]]
+side = "old"
+line = 90
+label = "splice-could-not-fail"
+body = "Returned a `String`, so there was no way to report a reference to a label the chapter doesn't define."
+
+[[callout]]
+line = 115
+label = "splice-can-fail"
+body = "Returns a `Result`, so a `{{#callout}}` naming an unknown label fails the build instead of rendering a dead link."

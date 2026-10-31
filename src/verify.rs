@@ -224,7 +224,8 @@ fn check_line_width(book_root: &Path, manifest: &Manifest, report: &mut VerifyRe
 }
 
 /// Each `<tag>.callouts.toml` sidecar must sit next to a real frozen
-/// listing — its `<tag>` must match a manifest record's frozen-file stem.
+/// listing — its `<tag>` must match a manifest record's frozen-file stem,
+/// and each operand of an `<old>..<new>.callouts.toml` diff sidecar must.
 /// A dangling sidecar attaches annotations to nothing and the build never
 /// complains, so verify treats it as a broken reference.
 fn check_sidecars(book_root: &Path, manifest: &Manifest, report: &mut VerifyReport) {
@@ -237,9 +238,13 @@ fn check_sidecars(book_root: &Path, manifest: &Manifest, report: &mut VerifyRepo
         let Some(stem) = name.strip_suffix(".callouts.toml") else {
             continue;
         };
-        if !stems.contains(stem) {
+        let tags = match stem.split_once("..") {
+            Some((old, new)) => vec![old, new],
+            None => vec![stem],
+        };
+        for tag in tags.into_iter().filter(|t| !stems.contains(t)) {
             report.error(format!(
-                "sidecar `{name}` names no frozen listing `{stem}` (its annotations attach to nothing)",
+                "sidecar `{name}` names no frozen listing `{tag}` (its annotations attach to nothing)",
             ));
         }
     }
@@ -470,14 +475,7 @@ fn block_listing<'m>(
     close_end: usize,
     manifest: &'m Manifest,
 ) -> Option<&'m Listing> {
-    let tail = &content[close_end..];
-    let after_newline = tail.strip_prefix('\n').unwrap_or(tail);
-    let div_open = after_newline.find("<div ")?;
-    if div_open > crate::anchor::SCAN_TOLERANCE {
-        return None;
-    }
-    let div_end = after_newline[div_open..].find('>')? + div_open;
-    let div_text = &after_newline[div_open..div_end];
+    let div_text = crate::anchor::anchor_after_fence(content, close_end)?;
     let tag = crate::anchor::attr_value(div_text, "data-listing-tag")
         .or_else(|| crate::anchor::attr_value(div_text, "data-listing-diff-right"))?;
     manifest.find(&tag)
@@ -1260,6 +1258,28 @@ mod tests {
         let m = &report.findings[0].message;
         assert!(m.contains("ghost"), "got: {m}");
         assert!(m.contains("callouts.toml"), "got: {m}");
+    }
+
+    #[test]
+    fn check_sidecars_reads_a_diff_sidecar_name_as_its_two_operands() {
+        let (_t, root, manifest) = book_with_demo();
+        for name in ["demo-v1..demo-v1", "demo-v1..ghost", "phantom..demo-v1"] {
+            fs::write(
+                root.join(format!("src/listings/{name}.callouts.toml")),
+                "[[callout]]\nline=1\nlabel=\"a\"\n",
+            )
+            .unwrap();
+        }
+
+        let mut report = VerifyReport::default();
+        check_sidecars(&root, &manifest, &mut report);
+        let mut named: Vec<&str> = report
+            .findings
+            .iter()
+            .filter_map(|f| f.message.split('`').nth(3))
+            .collect();
+        named.sort();
+        assert_eq!(named, ["ghost", "phantom"], "got {:?}", report.findings);
     }
 
     #[test]

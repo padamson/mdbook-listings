@@ -41,7 +41,9 @@ Copies `<SOURCE>` into the book's `listings/` directory and records it in
 
 - `<SOURCE>` — path to the source file, relative to the book root.
 - `--tag <TAG>` — the frozen filename stem and manifest key; must be unique
-  within the book. When omitted, it is derived from the source basename:
+  within the book. It may contain `.` (`parse-0.13.4`), but not at its start
+  or end, not two in a row, and not ending in `.callouts`; `/` and `\` are
+  refused. When omitted, it is derived from the source basename:
   `<basename>-v1` for the first freeze, and the version suffix is bumped
   (`-v2`, `-ver2`, `-rev2`, `-version2`, matching the existing series style)
   on subsequent freezes of the same basename.
@@ -126,7 +128,8 @@ Errors (any one exits non-zero):
 1. Each frozen listing still matches its recorded SHA-256 in `listings.toml`.
 2. Every `{{#include}}` path and `{{#diff}}` tag operand in the book's
    markdown resolves to a manifest record.
-3. Every `<tag>.callouts.toml` sidecar names a frozen listing.
+3. Every `<tag>.callouts.toml` sidecar names a frozen listing, and each
+   operand of an `<old>..<new>.callouts.toml` diff sidecar does.
 4. No chapter holds an unescaped `{{#include listings/…}}` or
    `{{#include snippets/…}}` that the preprocessor skips (in inline code, say,
    or written as `{{ #include …}}`) but mdBook's `links` preprocessor would

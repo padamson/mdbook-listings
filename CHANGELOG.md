@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Callouts on a diff without editing either file.** A
+  `{{#diff <old> <new>}}` reads `listings/<old>..<new>.callouts.toml`, a
+  sidecar of `[[callout]]` entries like a listing's, so a review of
+  someone else's change can put its reasoning on the lines it is about.
+  An entry lands on an added, removed, or context line: `line` counts in
+  the new file, or in the old one with `side = "old"`. An entry on a line
+  that no diff of the pair in the book shows fails the build, and
+  `verify` checks that both operands name frozen listings. A listing's own
+  sidecar still applies only to its includes.
+- **Tags can contain `.`.** `freeze --tag parse-0.13.4` works, so a
+  dependency's version no longer has to be spelled `0_13_4`. A tag still
+  can't start or end with `.`, hold two in a row (that separates the
+  operands of a diff sidecar's name), or end in `.callouts`.
 - **A click pins a callout body open.** In HTML a callout's body used to
   show only while its badge was hovered or keyboard-focused. A click on the
   badge now keeps it open until the badge is clicked again, Escape is

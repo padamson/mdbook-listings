@@ -11,7 +11,7 @@ description: >-
   with its sources.
 license: MIT OR Apache-2.0
 metadata:
-  version: "0.1.25"
+  version: "0.1.26"
 ---
 
 # Authoring with mdbook-listings
@@ -80,7 +80,8 @@ All CLI commands are run **from the book root** (the directory containing
 4. **(Optional) Annotate** lines by adding `// CALLOUT: <label> <body>` marker
    comments *in the source file* before you freeze it, then reference them from
    prose with `{{#callout <label>}}`. For code you can't edit, put the
-   callouts in a `listings/<tag>.callouts.toml` sidecar instead. Or **show a
+   callouts in a `listings/<tag>.callouts.toml` sidecar instead (or, for a
+   diff, `listings/<old>..<new>.callouts.toml`). Or **show a
    diff** between two frozen slices with `{{#diff <old-tag> <new-tag>}}`.
    Full syntax in
    [references/directives.md](references/directives.md).
@@ -180,8 +181,12 @@ listing-width = "wide"            # "normal" (default) | "wide": grow past the c
   `[[callout]]` table per badge with `line` (a line of the frozen file),
   `label`, and an optional `body`. Use it for code you don't own, generated
   code, and languages with no line comment. It applies to `{{#include}}`
-  only, not to `{{#diff}}`, and a sliced include shows only the entries
-  inside its slice.
+  only, and a sliced include shows only the entries inside its slice. A
+  `{{#diff <old> <new>}}` takes its own sidecar,
+  `listings/<old>..<new>.callouts.toml`, whose entries can land on added,
+  removed, or context lines (`side = "old"` counts `line` in the old file;
+  the default is the new file). An entry on a line no diff of the pair in
+  the book shows fails the build.
   See [references/directives.md](references/directives.md#sidecar-callouts-tagcalloutstoml).
 - `{{#callout <label>}}` — *prose-side* reference to a marker by label, rendered
   as the same numbered badge, hyperlinked to the listing. Unknown label fails

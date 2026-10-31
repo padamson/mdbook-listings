@@ -20,14 +20,13 @@ pub(super) fn splice_callout_lists_pdf(
     let mut cursor = 0;
     let mut emitted_anchor: HashSet<String> = HashSet::new();
     for block in FencedBlocks::new(content) {
-        let (inline, sidecar) =
+        let block_callouts =
             split_callouts_for_block(block.info, block.body, content, block.close_end, sidecars)?;
         // PDF path doesn't strip markers (it keeps them visible in the
-        // listing), so sidecar entries' source lines are also their
-        // post-strip lines — no translation needed. Just merge and
+        // listing), so the block lines need no translation. Just merge and
         // sort by line for the blockquote ordering.
-        let mut callouts = inline;
-        callouts.extend(sidecar);
+        let mut callouts = block_callouts.inline;
+        callouts.extend(block_callouts.sidecar.into_iter().map(|p| p.callout));
         callouts.sort_by_key(|c| c.line);
         if !callouts.is_empty() {
             let listing_number = listing_number_after_fence(content, block.close_end);

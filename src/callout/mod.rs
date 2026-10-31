@@ -1,6 +1,6 @@
 //! Parses inline `CALLOUT:` markers out of a frozen listing's source.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::directive::{FencePolicy, scan_directives};
@@ -16,12 +16,16 @@ pub(crate) use parse::{
     Callout, callouts_for_block, comment_prefix_for_extension, lang_for_extension, parse_callouts,
 };
 pub(crate) use render_html::{html_escape, html_unescape, render_caption_markdown};
+use sidecar::DiffSide;
 pub(crate) use sidecar::SidecarCallouts;
 
 use parse::is_valid_label;
 use render_html::splice_callout_lists_html;
 use render_pdf::splice_callout_lists_pdf;
-use strip::{listing_anchor_after_fence, strip_marker_lines};
+use strip::{
+    DiffLineMap, diff_operands_after_fence, listing_anchor_after_fence, source_line_to_block_line,
+    strip_marker_lines,
+};
 
 /// The lines of a listing with extension `ext` that the renderer strips as
 /// callout markers when an include shows it.
@@ -62,6 +66,17 @@ pub enum SpliceError {
         source_line: usize,
         sidecar_path: PathBuf,
     },
+    /// A diff sidecar entry on a line that no `{{#diff}}` of its pair in
+    /// the book shows. The sidecar belongs to that diff, so an entry it
+    /// can't place is a mistake, not a slice leaving it out.
+    DiffSidecarLineNotShown {
+        label: String,
+        side: DiffSide,
+        line: usize,
+        old: String,
+        new: String,
+        sidecar_path: PathBuf,
+    },
 }
 
 impl std::fmt::Display for SpliceError {
@@ -100,6 +115,21 @@ impl std::fmt::Display for SpliceError {
                  stripped from the rendered listing — re-point the sidecar entry at a \
                  non-marker line or remove the inline marker",
                 sidecar_path.display(),
+            ),
+            SpliceError::DiffSidecarLineNotShown {
+                label,
+                side,
+                line,
+                old,
+                new,
+                sidecar_path,
+            } => write!(
+                f,
+                "sidecar entry `{label}` (in {}) points at line {line} of the {} file, which no \
+                 {{{{#diff {old} {new}}}}} in the book shows — point it at a line inside a hunk, \
+                 or widen the diff",
+                sidecar_path.display(),
+                side.as_str(),
             ),
         }
     }
@@ -192,18 +222,14 @@ fn collect_first_occurrence_ordinals(
 ) -> Result<HashMap<String, CalloutRef>, SpliceError> {
     let mut map: HashMap<String, CalloutRef> = HashMap::new();
     for block in FencedBlocks::new(content) {
-        let (inline, sidecar) =
+        let callouts =
             split_callouts_for_block(block.info, block.body, content, block.close_end, sidecars)?;
         let listing_number = listing_number_after_fence(content, block.close_end);
-        // Ordinal pass uses block-encounter order: inline by
-        // source position (already sorted), then sidecar by
-        // source line (sorted). Stable across render + ordinal
-        // because the render path sorts by post-strip line,
-        // which preserves source order when the source-line→
-        // post-strip translation is monotone (which it is —
-        // shift count only ever grows).
-        let mut merged = inline;
-        merged.extend(sidecar);
+        // Inline and sidecar callouts both carry block lines here, so sorting
+        // by line orders them as the render path does by post-strip line:
+        // the translation shifts by a count that only grows down the block.
+        let mut merged = callouts.inline;
+        merged.extend(callouts.sidecar.into_iter().map(|p| p.callout));
         merged.sort_by_key(|c| c.line);
         for (idx, c) in merged.iter().enumerate() {
             map.entry(c.label.clone()).or_insert_with(|| CalloutRef {
@@ -284,23 +310,97 @@ fn render_callout_ref(label: &str, cref: &CalloutRef, renderer: SupportedRendere
 /// (`data-listing-diff-left`) anchors. `None` when numbering is off or the
 /// block has no anchor. Tolerates one newline between fence and anchor.
 fn listing_number_after_fence(content: &str, close_end: usize) -> Option<String> {
-    let tail = &content[close_end..];
-    let after_newline = tail.strip_prefix('\n').unwrap_or(tail);
-    let div_open = after_newline.find("<div ")?;
-    if div_open > crate::anchor::SCAN_TOLERANCE {
-        return None;
-    }
-    let div_end = after_newline[div_open..].find('>')? + div_open;
-    let div_text = &after_newline[div_open..div_end];
-    crate::anchor::attr_value(div_text, "data-listing-number")
+    crate::anchor::attr_value(
+        crate::anchor::anchor_after_fence(content, close_end)?,
+        "data-listing-number",
+    )
 }
 
-/// Split inline-marker callouts from sidecar callouts for a given block.
-/// Returns `(inline, sidecar)` so the render path can keep their
-/// post-strip line bookkeeping separate (inline have their post-strip
-/// line in [`StripResult::post_strip_lines`]; sidecar lines need
-/// translation from source-line to post-strip via
-/// [`StripResult::stripped_source_lines`]).
+/// The labels of each diff sidecar that some `{{#diff}}` of its pair placed,
+/// gathered across the book's chapters. A pair diffed in slices, even in
+/// different chapters, may place each entry in any one of them.
+#[derive(Debug, Default)]
+pub(crate) struct DiffSidecarPlacements(BTreeMap<(String, String), HashSet<String>>);
+
+impl DiffSidecarPlacements {
+    /// Record the entries the chapter's diffs place, through the placement
+    /// the render path uses.
+    pub(crate) fn record(
+        &mut self,
+        content: &str,
+        sidecars: &SidecarCallouts,
+    ) -> Result<(), SpliceError> {
+        for block in FencedBlocks::new(content).filter(|b| b.info == "diff") {
+            let callouts = split_callouts_for_block(
+                block.info,
+                block.body,
+                content,
+                block.close_end,
+                sidecars,
+            )?;
+            if let Some(pair) = callouts.diff_pair {
+                self.0
+                    .entry(pair)
+                    .or_default()
+                    .extend(callouts.sidecar.into_iter().map(|p| p.callout.label));
+            }
+        }
+        Ok(())
+    }
+
+    /// Fail on the first entry of a diffed pair's sidecar that no diff placed:
+    /// the sidecar belongs to that diff, so an entry it can't place is a
+    /// mistake, not a slice leaving it out. A pair the book never diffs is
+    /// not checked, as a listing's sidecar isn't for a book that never
+    /// includes it.
+    pub(crate) fn check(&self, sidecars: &SidecarCallouts) -> Result<(), SpliceError> {
+        for ((old, new), placed) in &self.0 {
+            if let Some(e) = sidecars
+                .for_diff(old, new)
+                .iter()
+                .find(|e| !placed.contains(&e.callout.label))
+            {
+                return Err(SpliceError::DiffSidecarLineNotShown {
+                    label: e.callout.label.clone(),
+                    side: e.side,
+                    line: e.callout.line,
+                    old: old.clone(),
+                    new: new.clone(),
+                    sidecar_path: sidecars
+                        .path_for_diff(old, new)
+                        .map(Path::to_path_buf)
+                        .unwrap_or_default(),
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The callouts one fenced block shows: its inline markers, and the entries
+/// of the sidecar that annotates it (a listing's sidecar for an include, a
+/// diff sidecar for a diff) that land on a line the block shows.
+pub(super) struct BlockCallouts<'s> {
+    pub(super) inline: Vec<Callout>,
+    pub(super) sidecar: Vec<PlacedSidecar>,
+    pub(super) sidecar_path: Option<&'s Path>,
+    /// The (old, new) operands of a diff whose pair has a sidecar.
+    pub(super) diff_pair: Option<(String, String)>,
+}
+
+/// A sidecar entry placed on its block. `callout.line` is the block line it
+/// lands on, before marker lines are stripped; `listing` and `written_line`
+/// are the frozen file and line the author wrote, for diagnostics.
+pub(super) struct PlacedSidecar {
+    pub(super) callout: Callout,
+    pub(super) listing: String,
+    pub(super) written_line: usize,
+}
+
+/// Split a block's inline-marker callouts from its sidecar callouts, so the
+/// render path can keep their post-strip bookkeeping separate (inline have
+/// their post-strip line in [`StripResult::post_strip_lines`]; sidecar block
+/// lines need translating via [`StripResult::stripped_source_lines`]).
 ///
 /// The sidecar half holds only entries for lines the block shows, so a
 /// ranged include leaves out the rest and a `{{#callout}}` naming one finds
@@ -310,42 +410,99 @@ fn listing_number_after_fence(content: &str, close_end: usize) -> Option<String>
 /// sidecar) — silently shadowing one would hide a rendered badge. The check
 /// covers the whole sidecar, not just the shown entries, since a label names
 /// one line of the listing however much of it a block shows.
-fn split_callouts_for_block(
+fn split_callouts_for_block<'s>(
     info: &str,
     block_text: &str,
     content: &str,
     close_end: usize,
-    sidecars: &SidecarCallouts,
-) -> Result<(Vec<Callout>, Vec<Callout>), SpliceError> {
+    sidecars: &'s SidecarCallouts,
+) -> Result<BlockCallouts<'s>, SpliceError> {
     let inline = callouts_for_block(info, block_text);
-    let Some(anchor) = listing_anchor_after_fence(content, close_end) else {
-        return Ok((inline, Vec::new()));
+    let mut out = BlockCallouts {
+        inline,
+        sidecar: Vec::new(),
+        sidecar_path: None,
+        diff_pair: None,
     };
-    let tag = anchor.tag;
-    let sidecar = sidecars.for_tag(tag);
-    if sidecar.is_empty() {
-        return Ok((inline, Vec::new()));
-    }
-    let inline_labels: HashSet<&str> = inline.iter().map(|c| c.label.as_str()).collect();
-    for entry in sidecar {
-        if inline_labels.contains(entry.label.as_str()) {
-            return Err(SpliceError::LabelCollision {
-                label: entry.label.clone(),
-                listing_tag: tag.to_string(),
-                sidecar_path: sidecars
-                    .path_for_tag(tag)
-                    .map(Path::to_path_buf)
-                    .unwrap_or_default(),
-            });
+    if info == "diff" {
+        let Some((old, new)) = diff_operands_after_fence(content, close_end) else {
+            return Ok(out);
+        };
+        let entries = sidecars.for_diff(&old, &new);
+        if entries.is_empty() {
+            return Ok(out);
         }
+        out.sidecar_path = sidecars.path_for_diff(&old, &new);
+        // A diff badges inline markers on added lines only, so a colliding
+        // marker is in the new file.
+        check_collisions(
+            &out.inline,
+            entries.iter().map(|e| &e.callout),
+            &new,
+            out.sidecar_path,
+        )?;
+        let rows = DiffLineMap::new(block_text);
+        out.sidecar = entries
+            .iter()
+            .filter_map(|e| {
+                let row = rows.block_line(e.side, e.callout.line)?;
+                let listing = match e.side {
+                    DiffSide::Old => &old,
+                    DiffSide::New => &new,
+                };
+                Some(PlacedSidecar {
+                    callout: Callout {
+                        line: row,
+                        ..e.callout.clone()
+                    },
+                    listing: listing.clone(),
+                    written_line: e.callout.line,
+                })
+            })
+            .collect();
+        out.diff_pair = Some((old, new));
+        return Ok(out);
     }
+    let Some(anchor) = listing_anchor_after_fence(content, close_end) else {
+        return Ok(out);
+    };
+    let entries = sidecars.for_tag(anchor.tag);
+    if entries.is_empty() {
+        return Ok(out);
+    }
+    out.sidecar_path = sidecars.path_for_tag(anchor.tag);
+    check_collisions(&out.inline, entries.iter(), anchor.tag, out.sidecar_path)?;
     let shown = anchor.shown_source_lines(block_text);
-    let sidecar = sidecar
+    out.sidecar = entries
         .iter()
         .filter(|c| shown.contains(&c.line))
-        .cloned()
+        .map(|c| PlacedSidecar {
+            callout: Callout {
+                line: source_line_to_block_line(c.line, &anchor),
+                ..c.clone()
+            },
+            listing: anchor.tag.to_string(),
+            written_line: c.line,
+        })
         .collect();
-    Ok((inline, sidecar))
+    Ok(out)
+}
+
+fn check_collisions<'a>(
+    inline: &[Callout],
+    mut sidecar: impl Iterator<Item = &'a Callout>,
+    listing: &str,
+    sidecar_path: Option<&Path>,
+) -> Result<(), SpliceError> {
+    let inline_labels: HashSet<&str> = inline.iter().map(|c| c.label.as_str()).collect();
+    match sidecar.find(|c| inline_labels.contains(c.label.as_str())) {
+        Some(c) => Err(SpliceError::LabelCollision {
+            label: c.label.clone(),
+            listing_tag: listing.to_string(),
+            sidecar_path: sidecar_path.map(Path::to_path_buf).unwrap_or_default(),
+        }),
+        None => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -1081,6 +1238,28 @@ body = "Attached via sidecar."
     }
 
     #[test]
+    fn a_slice_numbers_inline_and_sidecar_callouts_together_in_row_order() {
+        // Sidecar source line 5 is block row 3, above the inline marker on
+        // row 4, though 5 is the larger number.
+        let (_tmp, sidecars) = sidecars_with(&[(5, "first-line")]);
+        let content = format!(
+            "{}\nSee {{{{#callout first-line}}}} and {{{{#callout inline}}}}.\n",
+            RANGED_DEMO.replace("let l6 = 6;\n", "// CALLOUT: inline X.\n")
+        );
+        let html = splice_chapter(&content, SupportedRenderer::Html, &sidecars).unwrap();
+        for (label, ordinal) in [("first-line", 1), ("inline", 2)] {
+            assert!(
+                html.contains(&format!(
+                    r#"data-callout-ref="{label}" data-callout-ordinal="{ordinal}""#
+                )),
+                "{label} must be {ordinal}; got:\n{html}"
+            );
+        }
+        let pdf = splice_chapter(&content, SupportedRenderer::TypstPdf, &sidecars).unwrap();
+        assert!(pdf.contains("See **[1]** and **[2]**."), "got:\n{pdf}");
+    }
+
+    #[test]
     fn an_inline_marker_collides_with_a_sidecar_label_the_slice_leaves_out() {
         let (_tmp, sidecars) = sidecars_with(AROUND_SLICE);
         let content = RANGED_DEMO.replace("let l6 = 6;\n", "// CALLOUT: before-slice Inline.\n");
@@ -1088,5 +1267,220 @@ body = "Attached via sidecar."
             Err(SpliceError::LabelCollision { label, .. }) => assert_eq!(label, "before-slice"),
             other => panic!("expected LabelCollision, got {other:?}"),
         }
+    }
+
+    fn diff_sidecar(toml: &str) -> (tempfile::TempDir, SidecarCallouts) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        write_sidecar(tmp.path(), "a-v1..a-v2", toml);
+        let sidecars = SidecarCallouts::load(tmp.path()).unwrap();
+        (tmp, sidecars)
+    }
+
+    const DIFF_ANCHOR: &str = "<div data-listing-diff-left=\"a-v1\" data-listing-diff-right=\"a-v2\" aria-hidden=\"true\"></div>\n";
+
+    /// A diff of `a-v1` against `a-v2` as the diff splicer emits it. Block
+    /// rows: 4 is context (old 1, new 1), 5 removed (old 2), 6 added
+    /// (new 2), 7 context (old 3, new 3).
+    fn small_diff() -> String {
+        format!(
+            "```diff\n--- a-v1\n+++ a-v2\n@@ -1,3 +1,3 @@\n fn f() {{\n-    old();\n+    new();\n }}\n```\n{DIFF_ANCHOR}"
+        )
+    }
+
+    #[test]
+    fn a_diff_sidecar_badges_an_added_a_removed_and_a_context_line() {
+        let (_tmp, sidecars) = diff_sidecar(concat!(
+            "[[callout]]\nline = 2\nlabel = \"added\"\n\n",
+            "[[callout]]\nside = \"old\"\nline = 2\nlabel = \"removed\"\n\n",
+            "[[callout]]\nside = \"old\"\nline = 3\nlabel = \"context\"\n",
+        ));
+        let out = splice_chapter(&small_diff(), SupportedRenderer::Html, &sidecars).unwrap();
+        for (label, row) in [("added", "6"), ("removed", "5"), ("context", "7")] {
+            assert_eq!(badge_line(&out, label), Some(row), "{label}; got:\n{out}");
+        }
+    }
+
+    #[test]
+    fn diff_sidecar_and_inline_callouts_number_in_row_order() {
+        // The sidecar entry is old line 1 but sits on row 5, below the
+        // inline marker on row 4.
+        let (_tmp, sidecars) =
+            diff_sidecar("[[callout]]\nside = \"old\"\nline = 1\nlabel = \"ctx\"\n");
+        let content = format!(
+            "```diff\n--- a-v1\n+++ a-v2\n@@ -1,1 +1,2 @@\n+// CALLOUT: inline X.\n fn f() {{\n```\n{DIFF_ANCHOR}\n\
+             See {{{{#callout inline}}}} and {{{{#callout ctx}}}}.\n"
+        );
+        let out = splice_chapter(&content, SupportedRenderer::Html, &sidecars).unwrap();
+        for (label, ordinal) in [("inline", 1), ("ctx", 2)] {
+            for attr in ["data-callout-badge", "data-callout-ref"] {
+                assert!(
+                    out.contains(&format!(
+                        r#"{attr}="{label}" data-callout-ordinal="{ordinal}""#
+                    )),
+                    "{attr} {label} must be {ordinal}; got:\n{out}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_diff_sidecar_line_shifts_past_a_stripped_context_marker() {
+        let (_tmp, sidecars) = diff_sidecar("[[callout]]\nline = 2\nlabel = \"added\"\n");
+        let content = format!(
+            "```diff\n--- a-v1\n+++ a-v2\n@@ -1,3 +1,3 @@\n // CALLOUT: ctx-note Unchanged.\n-    old();\n+    new();\n }}\n```\n{DIFF_ANCHOR}"
+        );
+        let out = splice_chapter(&content, SupportedRenderer::Html, &sidecars).unwrap();
+        assert_eq!(badge_line(&out, "added"), Some("5"), "got:\n{out}");
+    }
+
+    #[test]
+    fn a_diff_sidecar_entry_on_a_stripped_marker_line_fails() {
+        let (_tmp, sidecars) = diff_sidecar("[[callout]]\nline = 1\nlabel = \"on-marker\"\n");
+        let content = format!(
+            "```diff\n--- a-v1\n+++ a-v2\n@@ -1,2 +1,2 @@\n // CALLOUT: ctx-note Unchanged.\n-    old();\n+    new();\n```\n{DIFF_ANCHOR}"
+        );
+        match splice_chapter(&content, SupportedRenderer::Html, &sidecars) {
+            Err(SpliceError::SidecarLineOnStrippedMarker {
+                label,
+                listing_tag,
+                source_line,
+                ..
+            }) => assert_eq!(
+                (label.as_str(), listing_tag.as_str(), source_line),
+                ("on-marker", "a-v2", 1),
+                "the error names the line the author wrote, not its row"
+            ),
+            other => panic!("expected SidecarLineOnStrippedMarker, got {other:?}"),
+        }
+    }
+
+    fn check_placements(chapters: &[&str], sidecars: &SidecarCallouts) -> Result<(), SpliceError> {
+        let mut placements = DiffSidecarPlacements::default();
+        for chapter in chapters {
+            placements.record(chapter, sidecars)?;
+        }
+        placements.check(sidecars)
+    }
+
+    #[test]
+    fn a_diff_sidecar_entry_that_no_diff_of_its_pair_shows_fails() {
+        let (_tmp, sidecars) =
+            diff_sidecar("[[callout]]\nside = \"old\"\nline = 40\nlabel = \"far\"\n");
+        match check_placements(&[&small_diff()], &sidecars) {
+            Err(SpliceError::DiffSidecarLineNotShown {
+                label, side, line, ..
+            }) => assert_eq!((label.as_str(), side, line), ("far", DiffSide::Old, 40)),
+            other => panic!("expected DiffSidecarLineNotShown, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_not_shown_error_names_the_line_its_side_and_the_sidecar() {
+        let (_tmp, sidecars) =
+            diff_sidecar("[[callout]]\nside = \"old\"\nline = 40\nlabel = \"far\"\n");
+        let msg = check_placements(&[&small_diff()], &sidecars)
+            .unwrap_err()
+            .to_string();
+        for token in ["`far`", "40", "old", "a-v1..a-v2.callouts.toml"] {
+            assert!(msg.contains(token), "missing {token}; got: {msg}");
+        }
+    }
+
+    const FIRST_SLICE: &str = "```diff\n--- a-v1\n+++ a-v2\n@@ -2 +2 @@\n-x\n+y\n```\n";
+    const SECOND_SLICE: &str = "```diff\n--- a-v1\n+++ a-v2\n@@ -20 +20 @@\n-p\n+q\n```\n";
+    const TWO_ENTRIES: &str = concat!(
+        "[[callout]]\nline = 2\nlabel = \"first\"\n\n",
+        "[[callout]]\nline = 20\nlabel = \"second\"\n",
+    );
+
+    #[test]
+    fn a_diff_sidecar_entry_shown_by_one_of_two_slices_of_its_pair_renders_there() {
+        let (_tmp, sidecars) = diff_sidecar(TWO_ENTRIES);
+        let content = format!("{FIRST_SLICE}{DIFF_ANCHOR}\n{SECOND_SLICE}{DIFF_ANCHOR}");
+        let out = splice_chapter(&content, SupportedRenderer::Html, &sidecars).unwrap();
+        for label in ["first", "second"] {
+            assert_eq!(
+                out.matches(&format!(r#"data-callout-badge="{label}""#))
+                    .count(),
+                1,
+                "{label} must badge only the slice that shows it; got:\n{out}"
+            );
+        }
+    }
+
+    #[test]
+    fn slices_of_a_pair_in_different_chapters_place_its_entries_between_them() {
+        let (_tmp, sidecars) = diff_sidecar(TWO_ENTRIES);
+        let first = format!("{FIRST_SLICE}{DIFF_ANCHOR}");
+        let second = format!("{SECOND_SLICE}{DIFF_ANCHOR}");
+        check_placements(&[&first, &second], &sidecars)
+            .expect("each entry is placed by one chapter's slice");
+    }
+
+    #[test]
+    fn a_book_that_never_diffs_the_pair_leaves_its_sidecar_unchecked() {
+        let (_tmp, sidecars) = diff_sidecar("[[callout]]\nline = 40\nlabel = \"far\"\n");
+        check_placements(&["```rust\nfn f() {}\n```\n"], &sidecars)
+            .expect("no diff of the pair, so nothing to place");
+    }
+
+    #[test]
+    fn a_diff_with_a_live_operand_takes_no_sidecar() {
+        // The anchor names every `live:` operand `live`, whatever its path.
+        let tmp = tempfile::TempDir::new().unwrap();
+        write_sidecar(
+            tmp.path(),
+            "live..a-v2",
+            "[[callout]]\nline = 2\nlabel = \"stray\"\n",
+        );
+        let sidecars = SidecarCallouts::load(tmp.path()).unwrap();
+        let content = small_diff().replace(
+            "data-listing-diff-left=\"a-v1\"",
+            "data-listing-diff-left=\"live\"",
+        );
+        let out = splice_chapter(&content, SupportedRenderer::Html, &sidecars).unwrap();
+        assert!(!out.contains("stray"), "got:\n{out}");
+        check_placements(&[&content], &sidecars).expect("a live diff places nothing to check");
+    }
+
+    #[test]
+    fn a_diff_sidecar_label_that_an_inline_marker_in_the_diff_uses_fails() {
+        let (_tmp, sidecars) =
+            diff_sidecar("[[callout]]\nside = \"old\"\nline = 2\nlabel = \"twice\"\n");
+        let content = format!(
+            "```diff\n--- a-v1\n+++ a-v2\n@@ -1,2 +1,3 @@\n fn f() {{\n-    old();\n+    // CALLOUT: twice New call.\n+    new();\n```\n{DIFF_ANCHOR}"
+        );
+        match splice_chapter(&content, SupportedRenderer::Html, &sidecars) {
+            Err(SpliceError::LabelCollision { label, .. }) => assert_eq!(label, "twice"),
+            other => panic!("expected LabelCollision, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_diff_sidecar_does_not_attach_to_an_include_of_either_side() {
+        let (_tmp, sidecars) = diff_sidecar("[[callout]]\nline = 1\nlabel = \"diff-only\"\n");
+        let content = concat!(
+            "```rust\nfn f() {\n```\n",
+            "<div data-listing-tag=\"a-v2\" aria-hidden=\"true\"></div>\n",
+        );
+        let out = splice_chapter(content, SupportedRenderer::Html, &sidecars).unwrap();
+        assert!(!out.contains("diff-only"), "got:\n{out}");
+    }
+
+    #[test]
+    fn a_diff_sidecar_entry_renders_as_a_pdf_note_and_a_prose_cross_ref_finds_it() {
+        let (_tmp, sidecars) = diff_sidecar(
+            "[[callout]]\nside = \"old\"\nline = 2\nlabel = \"removed\"\nbody = \"Gone now.\"\n",
+        );
+        let content = format!("{}\nSee {{{{#callout removed}}}}.\n", small_diff());
+        let out = splice_chapter(&content, SupportedRenderer::TypstPdf, &sidecars).unwrap();
+        assert!(
+            out.contains("Gone now."),
+            "PDF note must carry the body; got:\n{out}"
+        );
+        assert!(
+            out.contains("See **[1]**."),
+            "cross-ref must resolve; got:\n{out}"
+        );
     }
 }

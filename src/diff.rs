@@ -400,6 +400,28 @@ pub fn shift_hunk_headers(diff_text: &str, left_offset: usize, right_offset: usi
 /// shifted by the offsets. Returns `None` otherwise so the caller passes
 /// the line through verbatim.
 fn shift_one_hunk_header(body: &str, left_offset: usize, right_offset: usize) -> Option<String> {
+    let h = parse_hunk_header(body)?;
+    Some(format!(
+        "@@ -{},{} +{},{} @@{}",
+        h.old_start + left_offset,
+        h.old_count,
+        h.new_start + right_offset,
+        h.new_count,
+        h.suffix,
+    ))
+}
+
+/// A unified-diff `@@ -A[,B] +C[,D] @@[ context]` hunk header: the first
+/// line and line count of each side, and whatever follows the closing `@@`.
+pub(crate) struct HunkHeader<'a> {
+    pub(crate) old_start: usize,
+    pub(crate) old_count: usize,
+    pub(crate) new_start: usize,
+    pub(crate) new_count: usize,
+    pub(crate) suffix: &'a str,
+}
+
+pub(crate) fn parse_hunk_header(body: &str) -> Option<HunkHeader<'_>> {
     let rest = body.strip_prefix("@@ ")?;
     // `rest` looks like "-A[,B] +C[,D] @@[ context]" — split off the
     // closing "@@" and the optional context that follows it.
@@ -408,18 +430,15 @@ fn shift_one_hunk_header(body: &str, left_offset: usize, right_offset: usize) ->
     if parts.len() != 2 {
         return None;
     }
-    let left = parts[0].strip_prefix('-')?;
-    let right = parts[1].strip_prefix('+')?;
-    let (l_start, l_count) = parse_hunk_range(left)?;
-    let (r_start, r_count) = parse_hunk_range(right)?;
-    Some(format!(
-        "@@ -{},{} +{},{} @@{}",
-        l_start + left_offset,
-        l_count,
-        r_start + right_offset,
-        r_count,
+    let (old_start, old_count) = parse_hunk_range(parts[0].strip_prefix('-')?)?;
+    let (new_start, new_count) = parse_hunk_range(parts[1].strip_prefix('+')?)?;
+    Some(HunkHeader {
+        old_start,
+        old_count,
+        new_start,
+        new_count,
         suffix,
-    ))
+    })
 }
 
 fn parse_hunk_range(s: &str) -> Option<(usize, usize)> {

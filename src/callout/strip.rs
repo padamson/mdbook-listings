@@ -1,10 +1,15 @@
+use std::collections::HashMap;
 use std::ops::Range;
 use std::path::Path;
+
+use crate::anchor::anchor_after_fence;
+use crate::diff::parse_hunk_header;
 
 use super::SpliceError;
 use super::parse::{
     ALL_COMMENT_PREFIXES, comment_prefix_for_language, is_diff_metadata, parse_line,
 };
+use super::sidecar::DiffSide;
 
 /// Result of one `strip_marker_lines*` pass.
 #[derive(Debug)]
@@ -14,9 +19,10 @@ pub(super) struct StripResult {
     /// Post-strip 1-based line where each inline marker's badge now lands
     /// (one entry per inline marker, in source-encounter order).
     pub(super) post_strip_lines: Vec<usize>,
-    /// 1-based source line of each stripped marker (one entry per inline
-    /// marker, in source order). Used by the sidecar-merge step to
-    /// translate sidecar source lines into post-strip positions.
+    /// 1-based block line of each stripped marker line, in block order,
+    /// including a diff's context and removed markers, which earn no badge.
+    /// Used by the sidecar-merge step to translate sidecar block lines into
+    /// post-strip positions.
     pub(super) stripped_source_lines: Vec<usize>,
     /// Total visible lines in `body` (used for overlay sizing).
     pub(super) total_lines: usize,
@@ -90,10 +96,9 @@ pub(super) fn strip_marker_lines_diff(block_text: &str) -> StripResult {
         if is_marker {
             // CALLOUT: strip-diff An added (`+`) marker is a new or edited callout, so it earns a badge; the recorded post-strip line lands it on the row the comment used to occupy.
             if matches!(prefix_char, Some('+')) {
-                let target = (emitted_count + 1).max(1);
-                post_strip_lines.push(target);
-                stripped_source_lines.push(idx + 1);
+                post_strip_lines.push((emitted_count + 1).max(1));
             }
+            stripped_source_lines.push(idx + 1);
             // CALLOUT: strip-diff-skip Context (` `) and removed (`-`) markers fall through with no badge: the unchanged one is already badged on its full `{{#include}}`, the removed one is gone in the new state.
         } else {
             out.push_str(raw_line);
@@ -147,23 +152,11 @@ pub(super) fn listing_anchor_after_fence<'c>(
     content: &'c str,
     close_end: usize,
 ) -> Option<ListingAnchor<'c>> {
-    let tail = &content[close_end..];
-    let after_newline = tail.strip_prefix('\n').unwrap_or(tail);
-    // Find the anchor element, then its `data-listing-tag` attribute anywhere
-    // inside it — the numbering pass may have stamped `data-listing-number`
-    // ahead of the tag, so the tag is not necessarily the first attribute.
-    let anchor_open = after_newline.find("<div ")?;
-    if anchor_open > crate::anchor::SCAN_TOLERANCE {
-        return None;
-    }
-    // The full element fits on one line, so cap the search at the closing `>`.
-    let div_end = after_newline[anchor_open..]
-        .find('>')
-        .map(|i| anchor_open + i)
-        .unwrap_or(after_newline.len());
-    let div_text = &after_newline[anchor_open..div_end];
+    // The numbering pass may have stamped `data-listing-number` ahead of the
+    // tag, so the tag is not necessarily the first attribute.
+    let div_text = anchor_after_fence(content, close_end)?;
     // Only include anchors carry `data-listing-tag`; a diff anchor has none
-    // and correctly yields `None` (it bears no sidecar callouts).
+    // and correctly yields `None` (its sidecar is found by its operands).
     const TAG_KEY: &str = "data-listing-tag=\"";
     let tag_start = div_text.find(TAG_KEY)? + TAG_KEY.len();
     let tag_end = div_text[tag_start..].find('"')?;
@@ -189,7 +182,77 @@ pub(super) fn listing_anchor_after_fence<'c>(
     })
 }
 
+/// The (old, new) operand tags of the diff anchor after the fence that ends
+/// at `close_end`, or `None` when the block is not a rendered diff of two
+/// frozen listings. The anchor names every `live:` operand plain `live`,
+/// so a sidecar keyed on it would attach to diffs of unrelated files.
+pub(super) fn diff_operands_after_fence(
+    content: &str,
+    close_end: usize,
+) -> Option<(String, String)> {
+    let div_text = anchor_after_fence(content, close_end)?;
+    let old = crate::anchor::attr_value(div_text, "data-listing-diff-left")?;
+    let new = crate::anchor::attr_value(div_text, "data-listing-diff-right")?;
+    (old != "live" && new != "live").then_some((old, new))
+}
+
 use crate::anchor::RANGED_INCLUDE_HEADER_LINES;
+
+/// The block line (1-based) that shows each line of a rendered diff's old
+/// and new file, read off its hunk headers; a line outside every hunk has
+/// none. Inside a hunk the header's counts say where it ends, not each
+/// line's first characters, so a removed line that reads `--- …` is content
+/// rather than a file header.
+pub(super) struct DiffLineMap {
+    old: HashMap<usize, usize>,
+    new: HashMap<usize, usize>,
+}
+
+impl DiffLineMap {
+    pub(super) fn new(block_text: &str) -> Self {
+        let mut map = Self {
+            old: HashMap::new(),
+            new: HashMap::new(),
+        };
+        let (mut old, mut new, mut old_left, mut new_left) = (0, 0, 0, 0);
+        for (idx, line) in block_text.lines().enumerate() {
+            let row = idx + 1;
+            if old_left == 0 && new_left == 0 {
+                if let Some(h) = parse_hunk_header(line) {
+                    (old, new, old_left, new_left) =
+                        (h.old_start, h.new_start, h.old_count, h.new_count);
+                }
+                continue;
+            }
+            match line.chars().next() {
+                Some('\\') => {}
+                Some('-') => {
+                    map.old.insert(old, row);
+                    (old, old_left) = (old + 1, old_left.saturating_sub(1));
+                }
+                Some('+') => {
+                    map.new.insert(new, row);
+                    (new, new_left) = (new + 1, new_left.saturating_sub(1));
+                }
+                _ => {
+                    map.old.insert(old, row);
+                    map.new.insert(new, row);
+                    (old, old_left) = (old + 1, old_left.saturating_sub(1));
+                    (new, new_left) = (new + 1, new_left.saturating_sub(1));
+                }
+            }
+        }
+        map
+    }
+
+    pub(super) fn block_line(&self, side: DiffSide, line: usize) -> Option<usize> {
+        match side {
+            DiffSide::Old => self.old.get(&line),
+            DiffSide::New => self.new.get(&line),
+        }
+        .copied()
+    }
+}
 
 /// Translate a sidecar entry's source-file line into the corresponding
 /// 1-based line within the rendered fenced block (`block_text`). For a
@@ -372,27 +435,94 @@ mod tests {
         assert_eq!(anchor.range_start_source_line, Some(28));
     }
 
-    /// Pinned even though the HTML diff path doesn't consume
-    /// `stripped_source_lines` today — a future "sidecar on diffs"
-    /// extension would, and a wrong recording shape would silently
-    /// misplace badges. Only badge-bearing (`+`) markers are recorded;
-    /// context (` `) and removed (`-`) marker lines are stripped from the
-    /// body but earn no badge, so they don't appear here.
+    /// A diff sidecar entry's row shifts up by every marker line stripped
+    /// above it, whatever its side, so all of them are recorded; only the
+    /// added one earns a badge.
     #[test]
-    fn strip_marker_lines_diff_records_source_line_numbers_of_added_markers() {
+    fn strip_marker_lines_diff_records_every_stripped_marker_line() {
         let block_text = concat!(
             "+// CALLOUT: first body.\n",
             "+let x = 1;\n",
             " // CALLOUT: second body.\n",
             " let y = 2;\n",
+            "-// CALLOUT: third body.\n",
         );
         let result = strip_marker_lines_diff(block_text);
+        assert_eq!(result.stripped_source_lines, vec![1, 3, 5]);
         assert_eq!(
-            result.stripped_source_lines,
+            result.post_strip_lines,
             vec![1],
-            "only the added (`+`) marker at line 1 should be recorded; the \
-             context marker at line 3 is stripped but earns no badge",
+            "only the `+` marker is badged"
         );
+    }
+
+    const TWO_HUNKS: &str = concat!(
+        "--- a\n",
+        "+++ b\n",
+        "@@ -3,3 +3,3 @@\n",
+        " ctx3\n",
+        "-old4\n",
+        "+new4\n",
+        " ctx5\n",
+        "@@ -10,2 +10,2 @@ fn f()\n",
+        "-old10\n",
+        "+new10\n",
+        " ctx11\n",
+    );
+
+    #[test]
+    fn a_diff_line_map_puts_each_side_on_the_row_that_shows_it() {
+        let map = DiffLineMap::new(TWO_HUNKS);
+        for (side, line, row) in [
+            (DiffSide::Old, 3, 4),
+            (DiffSide::New, 3, 4),
+            (DiffSide::Old, 4, 5),
+            (DiffSide::New, 4, 6),
+            (DiffSide::New, 5, 7),
+            (DiffSide::Old, 10, 9),
+            (DiffSide::New, 10, 10),
+            (DiffSide::Old, 11, 11),
+        ] {
+            assert_eq!(
+                map.block_line(side, line),
+                Some(row),
+                "{} line {line}",
+                side.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn a_diff_line_map_has_no_row_for_a_line_outside_every_hunk() {
+        let map = DiffLineMap::new(TWO_HUNKS);
+        for (side, line) in [
+            (DiffSide::New, 2),
+            (DiffSide::New, 6),
+            (DiffSide::Old, 9),
+            (DiffSide::New, 12),
+        ] {
+            assert_eq!(
+                map.block_line(side, line),
+                None,
+                "{} line {line}",
+                side.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn a_diff_line_map_counts_a_removed_line_that_reads_like_a_file_header() {
+        // A removed `-- comment` line renders as `--- comment`.
+        let map = DiffLineMap::new("@@ -1,2 +1,1 @@\n--- comment\n ctx\n");
+        assert_eq!(map.block_line(DiffSide::Old, 1), Some(2));
+        assert_eq!(map.block_line(DiffSide::Old, 2), Some(3));
+        assert_eq!(map.block_line(DiffSide::New, 1), Some(3));
+    }
+
+    #[test]
+    fn a_diff_line_map_skips_the_no_newline_marker() {
+        let map = DiffLineMap::new("@@ -1 +1 @@\n-a\n\\ No newline at end of file\n+b\n");
+        assert_eq!(map.block_line(DiffSide::New, 1), Some(4));
     }
 
     #[test]

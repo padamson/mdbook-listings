@@ -254,7 +254,8 @@ line, gets no badge (HTML also strips the comment; PDF leaves the diff text
 as is): the diff shows what changed, and an unchanged callout already has its
 badge wherever the listing is `{{#include}}`d. So cite an unchanged callout
 from a chapter that includes the listing (or a slice holding the marker), not
-from one that only diffs it.
+from one that only diffs it. To annotate a removed or unchanged line of a
+diff, use a [diff sidecar](#diff-sidecars-oldnewcalloutstoml).
 
 Example source file, frozen and then included:
 
@@ -302,8 +303,9 @@ label = "label-check"    # no body: a bare cross-reference target
 
 Where a sidecar applies:
 
-- Only to `{{#include listings/<tag>…}}`. A `snippets/` include and either
-  side of a `{{#diff}}` show no sidecar badges.
+- Only to `{{#include listings/<tag>…}}`. A `snippets/` include shows no
+  sidecar badges, and neither does a `{{#diff}}`, which takes a
+  [diff sidecar](#diff-sidecars-oldnewcalloutstoml) of its own.
 - A sliced include (`:A:B`) shows only the entries for lines inside its
   slice, and a whole-file include leaves out an entry past the last line. A
   `{{#callout}}` naming an entry that no include in the chapter shows fails
@@ -321,6 +323,47 @@ The build fails on:
 `verify` fails on a sidecar whose `<tag>` names no frozen listing. Its
 unreferenced-callout warning covers inline markers only: a sidecar entry no
 `{{#callout}}` cites draws no warning.
+
+### Diff sidecars: `<old>..<new>.callouts.toml`
+
+A `{{#diff <old> <new>}}` reads its callouts from
+`listings/<old>..<new>.callouts.toml`, so notes about a change stay off the
+includes of either file. This is the shape for reviewing someone else's
+change, an upgrade of a dependency say, where the reasoning belongs on the
+lines it is about and neither frozen file can be edited.
+
+```toml
+# listings/parse-0.13.4..parse-0.13.5.callouts.toml
+[[callout]]
+line = 212                 # line 212 of the new file (an added line)
+label = "bounds"
+body = "Adds the length check the old code lacked."
+
+[[callout]]
+side = "old"
+line = 198                 # line 198 of the old file (a removed line)
+label = "unchecked-gone"
+body = "The unchecked index is removed."
+```
+
+- `line` counts in the frozen file `side` names: `"new"` (the default) or
+  `"old"`. A new-file line lands on an added or a context row, an old-file
+  line on a removed or a context row, so an unchanged line can be named
+  from either side.
+- Labels, bodies, numbering, and `{{#callout <label>}}` work as for a
+  listing's sidecar, and the entries number in row order alongside the
+  diff's inline `+` markers.
+- A diff sliced into several `{{#diff}}` blocks, in one chapter or across
+  several, places each entry in whichever block shows it. An entry that no
+  diff of the pair in the book shows fails the build, as does a label that
+  an inline marker in the diff also uses, or an entry on a `CALLOUT:` marker
+  line (stripped from the rendered diff). A book that never diffs the pair
+  ignores the sidecar.
+- A diff with a `live:` operand takes no sidecar: it has no frozen file for
+  the lines to count in.
+- `side` on an entry of a listing's sidecar is an error: that sidecar has
+  one file.
+- `verify` fails when either operand names no frozen listing.
 
 ### Prose cross-reference: `{{#callout <label>}}`
 

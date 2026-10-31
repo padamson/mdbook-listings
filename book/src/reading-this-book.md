@@ -44,6 +44,12 @@ screenshots predate all of it.
   until it fits or the page runs out of room, and its callout badges move
   with its right edge. On a narrow window it scrolls, as every other
   listing in the book does.
+- **Callouts on a diff.** {{#listing-ref callout-cross-refs}} carries two
+  badges no source file holds: one on the removed `splice_chapter` signature
+  and one on its replacement. They come from a sidecar for the diff itself,
+  `callout-v2..callout-v3.callouts.toml`, which can annotate removed and
+  unchanged lines as well as added ones, and leaves both frozen files as
+  they were.
 - **Pinned callouts.** Chapter 5 says a callout's body shows while you hover
   or keyboard-focus its badge. A click on the badge now keeps it open until
   you click the badge again, press Escape, or click outside the body, so

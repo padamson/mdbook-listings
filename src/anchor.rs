@@ -198,6 +198,21 @@ pub(crate) fn width_attr(width: ListingWidth) -> String {
     format!(" data-listing-width=\"{}\"", width.as_str())
 }
 
+/// The opening tag of the locator anchor right after the fence that ends at
+/// `close_end`, up to (not including) its `>`, or `None` when no complete
+/// anchor follows within [`SCAN_TOLERANCE`]. Tolerates one newline between
+/// the fence and the anchor.
+pub(crate) fn anchor_after_fence(content: &str, close_end: usize) -> Option<&str> {
+    let tail = &content[close_end..];
+    let after_newline = tail.strip_prefix('\n').unwrap_or(tail);
+    let open = after_newline.find("<div ")?;
+    if open > SCAN_TOLERANCE {
+        return None;
+    }
+    let end = after_newline[open..].find('>')? + open;
+    Some(&after_newline[open..end])
+}
+
 /// Read a `name="value"` attribute's value out of an anchor element's
 /// opening-tag text. The one attribute grammar every parser shares.
 pub(crate) fn attr_value(div_text: &str, name: &str) -> Option<String> {

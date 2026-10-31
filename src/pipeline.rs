@@ -22,7 +22,9 @@ use anyhow::{Context, Result};
 use mdbook_preprocessor::book::{Book, BookItem};
 
 use crate::anchor::ListingWidth;
-use crate::callout::{SidecarCallouts, SupportedRenderer, splice_chapter as splice_callouts};
+use crate::callout::{
+    DiffSidecarPlacements, SidecarCallouts, SupportedRenderer, splice_chapter as splice_callouts,
+};
 use crate::diff::splice_chapter as splice_diffs;
 use crate::include::splice_chapter as splice_includes;
 use crate::list_of_listings::{
@@ -88,6 +90,7 @@ pub fn process_book(
     // label index must exist regardless of the index/sidebar settings.
     let mut collected: Vec<ChapterListings> = Vec::new();
     let mut splice_err: Option<anyhow::Error> = None;
+    let mut placements = DiffSidecarPlacements::default();
     let source_paths = SourcePaths::for_book(book_root);
     book.for_each_mut(|item| {
         if splice_err.is_some() {
@@ -148,7 +151,9 @@ pub fn process_book(
                 numbered
             })
             .and_then(|new_content| {
-                splice_callouts(&new_content, renderer, sidecars)
+                placements
+                    .record(&new_content, sidecars)
+                    .and_then(|()| splice_callouts(&new_content, renderer, sidecars))
                     .map_err(|e| anyhow::Error::new(e).context("rendering callouts failed"))
             }) {
                 Ok(new_content) => chapter.content = new_content,
@@ -159,6 +164,9 @@ pub fn process_book(
     if let Some(e) = splice_err {
         return Err(e);
     }
+    placements
+        .check(sidecars)
+        .map_err(|e| anyhow::Error::new(e).context("rendering callouts failed"))?;
 
     // Final book-wide pass: replace every {{#list-of-listings}} marker with
     // the index built from the collected listings, and append the sidebar
@@ -501,6 +509,46 @@ mod tests {
             ),
             "these two fixtures have different sources, so both show; got:\n{out}"
         );
+    }
+
+    #[test]
+    fn a_diff_sidecar_entry_no_chapter_places_fails_the_book() {
+        let repo = repo_with_book();
+        let root = repo.path().join("book");
+        let src_dir = root.join("src");
+        fs::write(
+            src_dir.join("listings").join("other..linked.callouts.toml"),
+            "[[callout]]\nline = 1\nlabel = \"shown\"\n\n[[callout]]\nline = 9\nlabel = \"nowhere\"\n",
+        )
+        .unwrap();
+        let manifest = Manifest::load(&root).expect("manifest");
+        let sidecars = SidecarCallouts::load(&src_dir.join("listings")).expect("sidecars");
+        let chapter = |name: &str| {
+            BookItem::Chapter(Chapter::new(
+                name,
+                "{{#diff other linked}}\n".to_string(),
+                format!("{name}.md"),
+                vec![],
+            ))
+        };
+        let mut book = Book::new_with_items(vec![chapter("a"), chapter("b")]);
+        let err = process_book(
+            &mut book,
+            &manifest,
+            &sidecars,
+            &root,
+            &src_dir,
+            SupportedRenderer::Html,
+            &PipelineOptions {
+                number_listings: false,
+                show_listing_provenance: false,
+                listing_width: ListingWidth::Normal,
+                list_of_listings: false,
+                sidebar_mode: SidebarMode::Off,
+            },
+        )
+        .expect_err("line 9 of a one-line file is in no diff");
+        assert!(format!("{err:#}").contains("`nowhere`"), "got: {err:#}");
     }
 
     fn config(toml: &str) -> mdbook_preprocessor::config::Config {
