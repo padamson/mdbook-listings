@@ -17,7 +17,7 @@ pub const JS_ASSET: &[u8] = include_bytes!("../assets/mdbook-listings.js");
 #[cfg(test)]
 const CSS_ASSET_SENTINEL: &str = "mdbook-listings-css-v15";
 #[cfg(test)]
-const JS_ASSET_SENTINEL: &str = "mdbook-listings-js-v17";
+const JS_ASSET_SENTINEL: &str = "mdbook-listings-js-v18";
 
 /// Shared between the writer and the registrar so the two can't drift.
 pub const CSS_ASSET_FILENAME: &str = "mdbook-listings.css";

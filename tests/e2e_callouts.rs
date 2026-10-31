@@ -41,12 +41,18 @@ const RAF2_JS: &str = r#"
 "#;
 
 /// `lineRect(pre, line)`: the box of a listing line's first character,
-/// found by walking the pre's text nodes and counting newlines. The ground
-/// truth for where a line sits, wrapped or not, shared by the alignment
-/// sweeps that inject it.
+/// found by walking the pre's text nodes and counting newlines, past
+/// mdbook's hidden `.boring` lines. The ground truth for where a line sits,
+/// wrapped or not, shared by the alignment sweeps that inject it. It counts
+/// the way the placement code does, so a miscount in both goes unseen here;
+/// `a_badge_sits_on_its_line_when_mdbook_hides_playground_lines` finds its
+/// targets by text instead.
 const LINE_RECT_JS: &str = r#"
     function lineRect(pre, line) {
-      const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+      const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT, {
+        acceptNode: n => n.parentElement.closest('.boring')
+          ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+      });
       let remaining = line - 1;
       let pending = false; // line starts at next non-empty node
       let node;
@@ -1357,7 +1363,10 @@ async fn callout_badges_place_correctly_under_safari_boundary_rect_semantics() {
                         // glyph with the UNPATCHED rect, so the survey's ground
                         // truth is not itself subject to the emulated bug.
                         function lineRectTrue(pre, line) {
-                          const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+                          const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT, {
+                            acceptNode: n => n.parentElement.closest('.boring')
+                              ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+                          });
                           let remaining = line - 1, pending = false, node;
                           while ((node = walker.nextNode())) {
                             let text = node.nodeValue, idx = 0;
@@ -1878,6 +1887,70 @@ async fn a_wrapped_listings_badges_stay_on_their_lines_in_a_narrow_window() {
                 .evaluate_value(&script)
                 .await
                 .expect("measure badge-vs-line alignment");
+            assert_eq!(report, "aligned");
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_badge_sits_on_its_line_when_mdbook_hides_playground_lines() {
+    // mdbook wraps a Rust listing that has no `fn main` in hidden lines of
+    // its own. Each target is found by its text rather than by counting
+    // newlines, so the check can't share a miscount with the placement.
+    with_traced_chapter(
+        "a_badge_sits_on_its_line_when_mdbook_hides_playground_lines",
+        CH05,
+        |page| async move {
+            let script = [
+                "(() => {",
+                "const anchor = ",
+                WRAP_ANCHOR,
+                r#";
+                const ov = anchor.previousElementSibling;
+                const code = ov.previousElementSibling.querySelector('code');
+                if (!code.querySelector('.boring')) return 'no hidden lines';
+                function textRect(needle) {
+                  let at = code.textContent.indexOf(needle);
+                  if (at < 0) return null;
+                  const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
+                  let node;
+                  while ((node = walker.nextNode())) {
+                    if (at < node.nodeValue.length) {
+                      const r = document.createRange();
+                      r.setStart(node, at);
+                      r.setEnd(node, at + 1);
+                      return r.getBoundingClientRect();
+                    }
+                    at -= node.nodeValue.length;
+                  }
+                  return null;
+                }
+                const targets = {
+                  'parse-entry': 'pub fn parse_listing_includes',
+                  'snippets-intercept': 'let intercepted =',
+                  'tag-from-stem': 'let tag = if',
+                };
+                const bad = [];
+                for (const [label, needle] of Object.entries(targets)) {
+                  const line = textRect(needle);
+                  const badge = ov.querySelector('[data-callout-badge="' + label + '"]');
+                  if (!line || !badge) { bad.push(label + ': not found'); continue; }
+                  const b = badge.getBoundingClientRect();
+                  const c = (b.top + b.bottom) / 2;
+                  if (c < line.top - 2 || c > line.bottom + 2) {
+                    bad.push(label + ': center=' + Math.round(c) +
+                      ' line=[' + Math.round(line.top) + ',' + Math.round(line.bottom) + ']');
+                  }
+                }
+                return bad.length ? bad.join('; ') : 'aligned';
+            })()"#,
+            ]
+            .concat();
+            let report: String = page
+                .evaluate_value(&script)
+                .await
+                .expect("measure badges against their target text");
             assert_eq!(report, "aligned");
         },
     )

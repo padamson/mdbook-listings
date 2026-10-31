@@ -76,7 +76,7 @@
  *    keyboard focus are all the stylesheet sees.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes
- * are the expected build-time asset: mdbook-listings-js-v17
+ * are the expected build-time asset: mdbook-listings-js-v18
  */
 (function () {
   var LEFT_FALLBACK_THRESHOLD_EM = 16;
@@ -104,10 +104,21 @@
   // put every badge one line high in Safari, uniformly. A visible glyph's
   // rect is unambiguous in every engine.
   //
+  // The lines mdbook adds around a Rust listing with no `fn main` (in
+  // `.boring` spans, hidden until the reader shows them) are not lines of
+  // the listing, so they are skipped whether shown or not: a callout's line
+  // number counts only the listing's own.
+  //
   // Returns null when the line can't be found or is blank (nothing but
   // whitespace before the next newline) — callers keep the CSS fallback.
   function lineStartRect(pre, line) {
-    var walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+    var walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        return node.parentElement.closest('.boring')
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT;
+      },
+    });
     var remaining = line - 1;
     var pending = false; // line starts at the next node with characters
     var node;

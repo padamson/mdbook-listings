@@ -98,6 +98,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   added-lines-only rule, which it never mentioned.
 
 ### Fixed
+- **Callout badges on a runnable Rust listing sit on their own lines.**
+  mdbook wraps a Rust listing that has no `fn main` in two hidden lines of
+  its own, and the badge placement counted them, so in HTML every badge in
+  such a listing sat two lines above the line it annotates. The hidden
+  lines are now skipped, whether the reader shows them or not.
 - **`verify` checks a `{{#diff}}` whatever arguments follow its operands.**
   A `show-provenance=` on a diff made `verify` miscount its operands and
   skip it, so a diff naming a tag the manifest lacks passed `verify` and
