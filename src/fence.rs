@@ -16,8 +16,9 @@ pub(crate) struct Fence {
 /// Span semantics: the block's membership range is
 /// `[body_start, close_end)` — the opener line is excluded, the closing
 /// fence line is included. Both the include and callout passes test
-/// position membership against exactly this range, so a directive sitting
-/// in an opener's info string counts as outside the block.
+/// position membership against exactly this range. A directive sitting in
+/// an opener's info string is in neither the block nor the prose: the
+/// directive scanner skips it.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct FencedBlock<'a> {
     /// The opener's info string, trimmed (empty when the fence has none).

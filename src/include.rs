@@ -881,6 +881,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn rejected_includes_reports_an_include_in_a_fence_openers_info_string_as_unintercepted() {
+        // mdBook's `links` pass expands it inside the info string; the
+        // splicer must leave it alone rather than splice into the opener.
+        let content = "````markdown {{#include listings/a.rs}}\nbody\n````\n";
+        let got: Vec<_> = rejected_includes(content)
+            .into_iter()
+            .map(|r| (r.line, r.why))
+            .collect();
+        assert_eq!(got, vec![(1, Rejection::Unintercepted)]);
+    }
+
     /// A listing on disk plus the chapter text that includes it, spliced.
     fn splice_one(file: &str, bytes: &str, chapter: &str) -> String {
         let tmp = TempDir::new().unwrap();

@@ -25,7 +25,7 @@ pub(crate) struct DirectiveOccurrence<'a> {
 }
 
 /// What to do with an occurrence that starts inside a fenced code block.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum FencePolicy {
     /// Yield it, tagged with its fence's `close_end`, consuming through its
     /// `}}` — for the include pass, where fenced directives are the primary
@@ -97,9 +97,10 @@ pub(crate) fn scan_directives<'a>(
 /// holds it, from one parse of the chapter.
 struct Regions<'a> {
     content: &'a str,
-    /// Inline code spans and HTML comments: a directive there is a quoted
-    /// example or hidden, however many backticks open the span and whatever
-    /// line it ends on.
+    /// Inline code spans, HTML comments, and fence opener lines: a directive
+    /// there is a quoted example, hidden, or part of an info string. A code
+    /// span counts however many backticks open it and whatever line it ends
+    /// on.
     hidden: Vec<Range<usize>>,
     /// Code blocks and HTML blocks, where CommonMark reads no inline
     /// markdown at all.
@@ -111,7 +112,7 @@ struct Regions<'a> {
 
 impl<'a> Regions<'a> {
     fn of(content: &'a str) -> Self {
-        use pulldown_cmark::{Event, Tag};
+        use pulldown_cmark::{CodeBlockKind, Event, Tag};
 
         let mut hidden = Vec::new();
         let mut literal = Vec::new();
@@ -122,7 +123,17 @@ impl<'a> Regions<'a> {
             }
             match event {
                 Event::Code(_) => hidden.push(span),
-                Event::Start(Tag::CodeBlock(_)) => literal.push(span),
+                Event::Start(Tag::CodeBlock(kind)) => {
+                    // Every fence the page renders, walked by the passes or
+                    // not: the opener's info string is never prose.
+                    if matches!(kind, CodeBlockKind::Fenced(_)) {
+                        let opener_end = content[span.start..]
+                            .find('\n')
+                            .map_or(content.len(), |i| span.start + i);
+                        hidden.push(span.start..opener_end);
+                    }
+                    literal.push(span);
+                }
                 Event::Start(Tag::HtmlBlock) => {
                     push_comments(content, span.clone(), &mut hidden);
                     literal.push(span);
@@ -450,6 +461,44 @@ mod tests {
         let got = scan(s, "{{#demo ");
         assert_eq!(got.len(), 1, "got {got:?}");
         assert_eq!(got[0].args, "c d");
+    }
+
+    #[test]
+    fn scan_skips_an_occurrence_in_a_fence_openers_info_string() {
+        // An even backtick count (or none, for tildes) on the opener line
+        // used to read as unquoted, and the diff pass spliced into the fence.
+        for (what, s) in [
+            (
+                "four backticks",
+                "````markdown {{#demo a b}}\nbody\n````\n\n{{#demo c d}}\n",
+            ),
+            (
+                "tildes",
+                "~~~markdown {{#demo a b}}\nbody\n~~~\n\n{{#demo c d}}\n",
+            ),
+            (
+                "blockquoted",
+                "> ````markdown {{#demo a b}}\n> body\n> ````\n\n{{#demo c d}}\n",
+            ),
+            (
+                "in a list item",
+                "10. Step\n\n    ````markdown {{#demo a b}}\n    body\n    ````\n\n{{#demo c d}}\n",
+            ),
+            (
+                "unclosed",
+                "{{#demo c d}}\n\n````markdown {{#demo a b}}\nbody\n",
+            ),
+            (
+                "opener at end of file",
+                "{{#demo c d}}\n\n````markdown {{#demo a b}}",
+            ),
+        ] {
+            for policy in [FencePolicy::SkipInside, FencePolicy::Annotate] {
+                let got = scan_directives(s, "{{#demo ", policy);
+                let args: Vec<_> = got.iter().map(|o| o.args).collect();
+                assert_eq!(args, ["c d"], "{what}, {policy:?}");
+            }
+        }
     }
 
     #[test]

@@ -98,6 +98,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   added-lines-only rule, which it never mentioned.
 
 ### Fixed
+- **A directive in a fence's info string is left alone.** A `{{#diff}}`,
+  `{{#callout}}` or `{{#listing-ref}}` written after the language on a
+  fence's opening line (````` ````markdown {{#diff a b}} `````) was expanded
+  when the line held an even number of backticks, as a four-backtick or
+  tilde fence does, and the diff pass spliced a code block into the
+  opener. Such a directive is now skipped, in a fence of any length or
+  character, closed or not, and behind a blockquote or list indent. An
+  `{{#include}}` there fails the build and `verify` as one that mdBook will
+  expand, instead of as one sharing its line with other text.
 - **Callout badges on a runnable Rust listing sit on their own lines.**
   mdbook wraps a Rust listing that has no `fn main` in two hidden lines of
   its own, and the badge placement counted them, so in HTML every badge in
