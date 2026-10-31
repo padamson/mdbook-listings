@@ -15,9 +15,9 @@ pub const JS_ASSET: &[u8] = include_bytes!("../assets/mdbook-listings.js");
 /// means the bundled bytes are not the expected build-time asset. Only the
 /// tests below assert on these; nothing at runtime reads them.
 #[cfg(test)]
-const CSS_ASSET_SENTINEL: &str = "mdbook-listings-css-v13";
+const CSS_ASSET_SENTINEL: &str = "mdbook-listings-css-v14";
 #[cfg(test)]
-const JS_ASSET_SENTINEL: &str = "mdbook-listings-js-v15";
+const JS_ASSET_SENTINEL: &str = "mdbook-listings-js-v16";
 
 /// Shared between the writer and the registrar so the two can't drift.
 pub const CSS_ASSET_FILENAME: &str = "mdbook-listings.css";

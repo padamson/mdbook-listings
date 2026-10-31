@@ -44,6 +44,10 @@ screenshots predate all of it.
   until it fits or the page runs out of room, and its callout badges move
   with its right edge. On a narrow window it scrolls, as every other
   listing in the book does.
+- **Pinned callouts.** Chapter 5 says a callout's body shows while you hover
+  or keyboard-focus its badge. A click on the badge now keeps it open until
+  you click the badge again, press Escape, or click outside the body, so
+  you can read it without holding the pointer still, or select its text.
 
 ## Pointers the chapters make that have moved
 

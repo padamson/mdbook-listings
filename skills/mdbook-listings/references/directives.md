@@ -238,8 +238,9 @@ strict:
   misparse).
 
 On render, the marker comment line is **stripped** from the listing and replaced
-with a numbered badge on that line. In HTML the body appears in a hover popover;
-in PDF it renders as a styled note after the listing. A **label-only** marker
+with a numbered badge on that line. In HTML the body appears in a popover on hover
+or keyboard focus, and a click on the badge pins it open until a second click,
+Escape, or a click elsewhere; in PDF it renders as a styled note after the listing. A **label-only** marker
 produces a bare badge with no body — it exists purely as a stable
 cross-reference target. Badges are numbered ordinally within each listing and
 reset between listings; with `number-listings` on, badges are scoped to their

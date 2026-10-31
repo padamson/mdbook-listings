@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **A click pins a callout body open.** In HTML a callout's body used to
+  show only while its badge was hovered or keyboard-focused. A click on the
+  badge now keeps it open until the badge is clicked again, Escape is
+  pressed, or the reader clicks outside the body, and pinning another
+  closes it. A click or a drag inside the open body leaves it open, so its
+  text can be selected. The badge reports its state with `aria-expanded`. Without
+  JavaScript a body shows on hover and keyboard focus, as before.
 - **Wide listings.** `width="wide"` on a `{{#include listings/…}}` or a
   `{{#diff}}` lets the listing grow out of the text column in HTML, and
   `listing-width = "wide"` under `[preprocessor.listings]` makes that the

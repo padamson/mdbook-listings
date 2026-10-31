@@ -20,7 +20,7 @@
  * pre-script behaviour for any environment where JS doesn't run.
  *
  * Sentinel string used by unit tests to confirm the bundled bytes are
- * the expected build-time asset: mdbook-listings-css-v13
+ * the expected build-time asset: mdbook-listings-css-v14
  */
 
 /* A wide listing's negative margins are set inline by mdbook-listings.js,
@@ -140,7 +140,8 @@
 }
 
 .callout-badge:hover,
-.callout-badge:focus-visible {
+.callout-badge:focus-visible,
+.callout-entry--pinned > .callout-badge {
   background: var(--fg, #333);
   color: var(--bg, #fff);
   outline: none;
@@ -241,9 +242,11 @@
 }
 
 /* Hover/focus state (transition IN): Adjacent-sibling selector works because
- * button precedes div in DOM order inside .callout-entry. */
+ * button precedes div in DOM order inside .callout-entry. A body pinned by a
+ * click on its badge (mdbook-listings.js) shows the same way. */
 .callout-entry .callout-badge:hover + .callout-body,
-.callout-entry .callout-badge:focus-visible + .callout-body {
+.callout-entry .callout-badge:focus-visible + .callout-body,
+.callout-entry--pinned > .callout-badge + .callout-body {
   visibility: visible;
   clip-path: inset(-2em -2em -2em -2em);
   color: var(--fg, #333);
@@ -268,7 +271,8 @@
   transition: color 0.15s ease-out;
 }
 .callout-entry .callout-badge:hover + .callout-body [class*="hljs"],
-.callout-entry .callout-badge:focus-visible + .callout-body [class*="hljs"] {
+.callout-entry .callout-badge:focus-visible + .callout-body [class*="hljs"],
+.callout-entry--pinned > .callout-badge + .callout-body [class*="hljs"] {
   color: var(--fg, #333);
   transition: color 0.15s ease-out 0.2s;
 }
@@ -291,7 +295,8 @@
   clip-path: inset(-2em -2em -2em 100%);
 }
 .callout-entry--left-popover .callout-badge:hover + .callout-body,
-.callout-entry--left-popover .callout-badge:focus-visible + .callout-body {
+.callout-entry--left-popover .callout-badge:focus-visible + .callout-body,
+.callout-entry--left-popover.callout-entry--pinned > .callout-badge + .callout-body {
   clip-path: inset(-2em -2em -2em -2em);
 }
 .callout-entry--left-popover .callout-body::after {

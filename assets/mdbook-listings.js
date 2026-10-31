@@ -67,8 +67,14 @@
  *    badge calibration measures the result. A ResizeObserver on the scroll
  *    container re-runs it when the sidebar opens or closes.
  *
+ * 4. Pin a callout body open on a click on its badge, until the badge is
+ *    clicked again, Escape is pressed, or the reader clicks outside the
+ *    body. CSS can't do this alone: no engine gives a clicked button
+ *    `:focus-visible`, and Safari doesn't focus one at all, so hover and
+ *    keyboard focus are all the stylesheet sees.
+ *
  * Sentinel string used by unit tests to confirm the bundled bytes
- * are the expected build-time asset: mdbook-listings-js-v15
+ * are the expected build-time asset: mdbook-listings-js-v16
  */
 (function () {
   var LEFT_FALLBACK_THRESHOLD_EM = 16;
@@ -413,10 +419,69 @@
     adjustPopoverPositioning();
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', recalc);
-  } else {
+  // The entry whose body a click pinned open; one at a time.
+  var pinned = null;
+
+  function setExpanded(entry, expanded) {
+    entry.classList.toggle('callout-entry--pinned', expanded);
+    entry.querySelector('.callout-badge').setAttribute('aria-expanded', String(expanded));
+  }
+
+  function unpin() {
+    if (!pinned) return;
+    setExpanded(pinned, false);
+    pinned = null;
+  }
+
+  // Only a badge with a body pins (a label-only badge has nothing to show),
+  // and `aria-expanded` is what marks it as one that does.
+  function markPinnable() {
+    document.querySelectorAll('.callout-entry > .callout-body').forEach(function (body) {
+      setExpanded(body.parentElement, false);
+    });
+  }
+
+  // `click`, not `pointerdown`, so Enter and Space on a focused badge pin too.
+  document.addEventListener('click', function (event) {
+    var badge = event.target instanceof Element &&
+      event.target.closest('.callout-entry > .callout-badge[aria-expanded]');
+    if (!badge) return;
+    var entry = badge.parentElement;
+    var wasPinned = entry === pinned;
+    unpin();
+    if (!wasPinned) {
+      setExpanded(entry, true);
+      pinned = entry;
+    }
+  });
+
+  // Dismissal goes by where a press starts, not where its click lands. A
+  // drag that selects body text and is released outside it fires its click
+  // on a common ancestor, and iOS sends no click at all for a tap on plain
+  // text. A press inside the pinned entry is left to the click handler (its
+  // badge) or ignored (its body, whose text the reader may be selecting).
+  document.addEventListener('pointerdown', function (event) {
+    if (pinned && event.target instanceof Element && !pinned.contains(event.target)) unpin();
+  });
+
+  // The click that pinned a body focused its badge, and a key press can
+  // make that badge match `:focus-visible`, which would hold the body open.
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape' || !pinned) return;
+    var badge = pinned.querySelector('.callout-badge');
+    if (document.activeElement === badge) badge.blur();
+    unpin();
+  });
+
+  function init() {
+    markPinnable();
     recalc();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
   }
 
   // requestAnimationFrame-debounced trigger: coalesces rapid events

@@ -11,7 +11,7 @@ description: >-
   with its sources.
 license: MIT OR Apache-2.0
 metadata:
-  version: "0.1.24"
+  version: "0.1.25"
 ---
 
 # Authoring with mdbook-listings
@@ -172,8 +172,9 @@ listing-width = "wide"            # "normal" (default) | "wide": grow past the c
   self-contained book-wide "Listings" section below the table of contents.
 - **Callout markers** — `// CALLOUT: <label> <body>` comment lines written *in
   the source* (comment prefix is language-specific). On render the marker line
-  is stripped and replaced with a numbered badge; the body shows on hover (HTML)
-  or as a note (PDF). A label-only marker is a bare cross-reference target.
+  is stripped and replaced with a numbered badge; the body shows on hover, on
+  keyboard focus, or pinned open by a click (HTML), or as a note (PDF). A
+  label-only marker is a bare cross-reference target.
 - **Sidecar callouts** — `listings/<tag>.callouts.toml`, hand-written beside
   the frozen file, attaches callouts without editing the source: one
   `[[callout]]` table per badge with `line` (a line of the frozen file),

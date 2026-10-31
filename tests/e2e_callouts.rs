@@ -1,4 +1,4 @@
-use playwright_rs::protocol::{BoundingBox, Locator, Viewport};
+use playwright_rs::protocol::{AddStyleTagOptions, BoundingBox, Locator, Viewport};
 use playwright_rs::{expect, locator};
 
 mod common;
@@ -225,6 +225,220 @@ async fn callout_marker_comment_is_stripped_and_body_reveals_on_hover() {
                 .to_be_visible()
                 .await
                 .expect("body popover must become visible after hovering its badge");
+        },
+    )
+    .await;
+}
+
+/// Hover the chapter title, so no badge is under the pointer and a body
+/// that is still open is open because it was pinned.
+async fn move_pointer_off_badges(page: &playwright_rs::protocol::Page) {
+    page.locator(locator!("main h1"))
+        .first()
+        .hover(None)
+        .await
+        .expect("hover the chapter title");
+}
+
+/// Click `label`'s badge, move the pointer away, and require its body to
+/// stay open. The body's fade-out holds it visible for 0.35s after the
+/// pointer leaves, long enough for any visibility check to pass on hover
+/// alone, so transitions are switched off first: an unpinned body is then
+/// hidden at once, and a visible one is pinned.
+async fn pin(page: &playwright_rs::protocol::Page, label: &str) {
+    page.add_style_tag(
+        AddStyleTagOptions::builder()
+            .content(".callout-body, .callout-body * { transition: none !important; }")
+            .build(),
+    )
+    .await
+    .expect("switch off popover transitions");
+    page.locator(format!("button#callout-{label}"))
+        .click(None)
+        .await
+        .expect("click badge");
+    move_pointer_off_badges(page).await;
+    expect(page.locator(format!("#callout-body-{label}")))
+        .to_be_visible()
+        .await
+        .unwrap_or_else(|e| panic!("clicking {label}'s badge must keep its body open: {e:?}"));
+}
+
+#[tokio::test]
+async fn clicking_a_badge_keeps_its_body_open_until_it_is_clicked_again() {
+    with_traced_chapter(
+        "clicking_a_badge_keeps_its_body_open_until_it_is_clicked_again",
+        CH05,
+        |page| async move {
+            let badge = page.locator(locator!("button#callout-cross-ref-emit"));
+            let body = page.locator(locator!("#callout-body-cross-ref-emit"));
+            expect(badge.clone())
+                .to_have_attribute("aria-expanded", "false")
+                .await
+                .expect("a badge with a body must say it can expand before any click");
+
+            pin(&page, "cross-ref-emit").await;
+            expect(badge.clone())
+                .to_have_attribute("aria-expanded", "true")
+                .await
+                .expect("a pinned badge must report itself expanded");
+
+            badge.click(None).await.expect("click badge again");
+            move_pointer_off_badges(&page).await;
+            expect(body)
+                .to_be_hidden()
+                .await
+                .expect("a second click must close the body");
+            expect(badge)
+                .to_have_attribute("aria-expanded", "false")
+                .await
+                .expect("an unpinned badge must report itself collapsed");
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_label_only_badge_does_not_pin() {
+    with_traced_chapter("a_label_only_badge_does_not_pin", CH05, |page| async move {
+        let badge = page.locator(locator!("button#callout-cli-parse"));
+        badge.click(None).await.expect("click the label-only badge");
+        assert_eq!(
+            badge
+                .get_attribute("aria-expanded")
+                .await
+                .expect("read aria-expanded"),
+            None,
+            "a badge with no body has nothing to expand"
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn escape_closes_a_pinned_body_and_drops_focus_from_its_badge() {
+    // A badge focused by the click that pinned it can match :focus-visible
+    // after a key press, which shows the body whatever the pin says.
+    with_traced_chapter(
+        "escape_closes_a_pinned_body_and_drops_focus_from_its_badge",
+        CH05,
+        |page| async move {
+            pin(&page, "cross-ref-emit").await;
+            page.keyboard()
+                .press("Escape", None)
+                .await
+                .expect("press Escape");
+            expect(page.locator(locator!("#callout-body-cross-ref-emit")))
+                .to_be_hidden()
+                .await
+                .expect("Escape must close a pinned body");
+            expect(page.locator(locator!("button#callout-cross-ref-emit")))
+                .not()
+                .to_be_focused()
+                .await
+                .expect("Escape must take focus off the pinned badge");
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn only_a_click_outside_a_pinned_body_closes_it() {
+    with_traced_chapter(
+        "only_a_click_outside_a_pinned_body_closes_it",
+        CH05,
+        |page| async move {
+            pin(&page, "cross-ref-emit").await;
+            let badge = page.locator(locator!("button#callout-cross-ref-emit"));
+            let body = page.locator(locator!("#callout-body-cross-ref-emit"));
+
+            // A reader selecting text in the body clicks inside it.
+            body.click(None).await.expect("click inside the body");
+            expect(badge)
+                .to_have_attribute("aria-expanded", "true")
+                .await
+                .expect("a click inside a pinned body must leave it pinned");
+
+            page.locator(locator!("main h1"))
+                .first()
+                .click(None)
+                .await
+                .expect("click the chapter title");
+            expect(body)
+                .to_be_hidden()
+                .await
+                .expect("a click outside a pinned body must close it");
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_selection_dragged_out_of_a_pinned_body_leaves_it_open() {
+    // Released outside the body, the drag's click lands on a common
+    // ancestor, which a click-based dismissal would read as outside.
+    with_traced_chapter(
+        "a_selection_dragged_out_of_a_pinned_body_leaves_it_open",
+        CH05,
+        |page| async move {
+            pin(&page, "cross-ref-emit").await;
+            let body = page.locator(locator!("#callout-body-cross-ref-emit"));
+            body.drag_to(&page.locator(locator!("main h1")).first(), None)
+                .await
+                .expect("drag from the body to the chapter title");
+            expect(page.locator(locator!("button#callout-cross-ref-emit")))
+                .to_have_attribute("aria-expanded", "true")
+                .await
+                .expect("a drag that starts inside a pinned body must leave it pinned");
+            expect(body)
+                .to_be_visible()
+                .await
+                .expect("a drag that starts inside a pinned body must leave it open");
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn pinning_a_second_badge_closes_the_first() {
+    with_traced_chapter(
+        "pinning_a_second_badge_closes_the_first",
+        CH05,
+        |page| async move {
+            pin(&page, "cross-ref-replace").await;
+            pin(&page, "cross-ref-emit").await;
+            expect(page.locator(locator!("#callout-body-cross-ref-replace")))
+                .to_be_hidden()
+                .await
+                .expect("pinning another badge must close the first body");
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn enter_on_a_focused_badge_pins_it_and_closes_the_one_pinned_before() {
+    // No pointer press is involved, so only the click handler can close
+    // the first body; with the mouse, the press outside it already has.
+    with_traced_chapter(
+        "enter_on_a_focused_badge_pins_it_and_closes_the_one_pinned_before",
+        CH05,
+        |page| async move {
+            pin(&page, "cross-ref-replace").await;
+            let emit = page.locator(locator!("button#callout-cross-ref-emit"));
+            emit.focus().await.expect("focus the second badge");
+            page.keyboard()
+                .press("Enter", None)
+                .await
+                .expect("press Enter");
+            expect(emit)
+                .to_have_attribute("aria-expanded", "true")
+                .await
+                .expect("Enter on a focused badge must pin it");
+            expect(page.locator(locator!("button#callout-cross-ref-replace")))
+                .to_have_attribute("aria-expanded", "false")
+                .await
+                .expect("pinning from the keyboard must close the body pinned before");
         },
     )
     .await;
