@@ -102,18 +102,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `{{#callout}}` or `{{#listing-ref}}` written after the language on a
   fence's opening line (````` ````markdown {{#diff a b}} `````) was expanded
   when the line held an even number of backticks, as a four-backtick or
-  tilde fence does, and the diff pass spliced a code block into the
-  opener. Such a directive is now skipped, in a fence of any length or
+  tilde fence does, and a `{{#diff}}` there inserted its code block into
+  the opener. Such a directive is now skipped, in a fence of any length or
   character, closed or not, and behind a blockquote or list indent. An
   `{{#include}}` there fails the build and `verify` as one that mdBook will
   expand, instead of as one sharing its line with other text.
-- **A directive in a code block the preprocessor can't edit is left
+- **A directive in an indented, unclosed, or nested code block is left
   alone.** An indented code block, an unclosed fence, and a fence behind a
   blockquote marker or indented four or more spaces in a list item all show
   their text as written, but a `{{#diff}}`, `{{#callout}}` or
-  `{{#listing-ref}}` in one was expanded unless backticks quoted it. The
-  diff pass spliced a code block into it with no `> ` prefix or indent,
-  which broke the page. A directive anywhere in such a block is now
+  `{{#listing-ref}}` in one was expanded unless backticks quoted it. A
+  `{{#diff}}` inserted its code block with no `> ` prefix or indent on its
+  lines, which broke the page. A directive anywhere in such a block is now
   skipped, quoted or not, as one in any other fenced block already was. An
   `{{#include}}` there fails the build and `verify` as one that mdBook will
   expand; before, one in a blockquoted fence or indented four spaces failed
