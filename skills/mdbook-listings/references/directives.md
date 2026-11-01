@@ -65,6 +65,23 @@ One case is an error either way: a directive that shares its line with other
 text. A code block has to start a line, so there is no rendering for
 `see {{#include listings/foo.rs}} above`.
 
+### Inside a list item
+
+Either form works inside a list item. Put the directive, or the fence around
+it, at the item's indent, as you would any other block in the item:
+
+````markdown
+1. Freeze the file:
+
+   {{#include listings/main-v1.rs}}
+
+2. Build the book.
+````
+
+Every line the preprocessor inserts takes that indent, so the listing, its
+number and caption, and its callout badges all stay in the item. The same
+goes for a `{{#diff}}`.
+
 ### Quoting the include syntax
 
 To mention an include in prose rather than embed one, escape it with a

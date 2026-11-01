@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::fence::FencedBlocks;
+use crate::fence::{FencedBlocks, prefix_lines};
 
 use super::{
     Callout, CalloutRef, SidecarCallouts, SpliceError, SupportedRenderer,
@@ -20,8 +20,13 @@ pub(super) fn splice_callout_lists_pdf(
     let mut cursor = 0;
     let mut emitted_anchor: HashSet<String> = HashSet::new();
     for block in FencedBlocks::new(content) {
-        let block_callouts =
-            split_callouts_for_block(block.info, block.body, content, block.close_end, sidecars)?;
+        let block_callouts = split_callouts_for_block(
+            block.info,
+            &block.unprefixed_body(),
+            content,
+            block.close_end,
+            sidecars,
+        )?;
         // PDF path doesn't strip markers (it keeps them visible in the
         // listing), so the block lines need no translation. Just merge and
         // sort by line for the blockquote ordering.
@@ -32,13 +37,15 @@ pub(super) fn splice_callout_lists_pdf(
             let listing_number = listing_number_after_fence(content, block.close_end);
             out.push_str(&content[cursor..block.close_end]);
             out.push('\n');
-            out.push_str(&render_callout_list(
+            // The blockquote takes a list item's indent to stay in the item.
+            let list = render_callout_list(
                 &callouts,
                 label_to_ordinal,
                 listing_number.as_deref(),
                 &mut emitted_anchor,
                 SupportedRenderer::TypstPdf,
-            ));
+            );
+            out.push_str(&prefix_lines(&list, block.prefix));
             out.push('\n');
             cursor = block.close_end;
         }

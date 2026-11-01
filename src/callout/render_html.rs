@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::fence::FencedBlocks;
+use crate::fence::{FencedBlocks, prefix_lines};
 
 use super::strip::{
     strip_marker_lines, strip_marker_lines_diff, translate_sidecar_line_to_post_strip,
@@ -25,12 +25,15 @@ pub(super) fn splice_callout_lists_html(
     let mut cursor = 0;
     let mut emitted_anchor: HashSet<String> = HashSet::new();
     for block in FencedBlocks::new(content) {
+        // Read the lines as the page does, without a list item's indent;
+        // the indent goes back on every line written out below.
+        let body = block.unprefixed_body();
         let BlockCallouts {
             inline,
             sidecar,
             sidecar_path,
             ..
-        } = split_callouts_for_block(block.info, block.body, content, block.close_end, sidecars)?;
+        } = split_callouts_for_block(block.info, &body, content, block.close_end, sidecars)?;
         let is_diff = block.info == "diff";
         // Diff blocks always go through the strip pass even when no `+`/` `
         // callouts exist — `-`-side markers still need to be dropped from
@@ -39,11 +42,11 @@ pub(super) fn splice_callout_lists_html(
             continue;
         }
         let strip = if is_diff {
-            strip_marker_lines_diff(block.body)
+            strip_marker_lines_diff(&body)
         } else {
-            strip_marker_lines(block.body, block.info)
+            strip_marker_lines(&body, block.info)
         };
-        if is_diff && inline.is_empty() && sidecar.is_empty() && strip.body == block.body {
+        if is_diff && inline.is_empty() && sidecar.is_empty() && strip.body == *body {
             // No-op diff: no markers of any kind to rewrite.
             continue;
         }
@@ -71,20 +74,21 @@ pub(super) fn splice_callout_lists_html(
         let pre_fence = &content[cursor..block.body_start];
         let close_fence_line = closing_fence_text(content, block.close_end);
         out.push_str(pre_fence);
-        out.push_str(&strip.body);
+        out.push_str(&prefix_lines(&strip.body, block.prefix));
         if !strip.body.is_empty() && !strip.body.ends_with('\n') {
             out.push('\n');
         }
         out.push_str(close_fence_line);
         out.push('\n');
         let listing_number = listing_number_after_fence(content, block.close_end);
-        out.push_str(&render_callout_overlay_html(
+        let overlay = render_callout_overlay_html(
             &callouts,
             &post_strip_lines,
             strip.total_lines,
             listing_number.as_deref(),
             &mut emitted_anchor,
-        ));
+        );
+        out.push_str(&prefix_lines(&overlay, block.prefix));
         out.push('\n');
         cursor = block.close_end;
     }

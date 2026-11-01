@@ -187,7 +187,7 @@ fn on_diff_context_line(content: &str, label: &str) -> bool {
     FencedBlocks::new(content)
         .filter(|block| block.info == "diff")
         .any(|block| {
-            parse::callouts_on_diff_lines(block.body, ' ')
+            parse::callouts_on_diff_lines(&block.unprefixed_body(), ' ')
                 .iter()
                 .any(|c| c.label == label)
         })
@@ -222,8 +222,13 @@ fn collect_first_occurrence_ordinals(
 ) -> Result<HashMap<String, CalloutRef>, SpliceError> {
     let mut map: HashMap<String, CalloutRef> = HashMap::new();
     for block in FencedBlocks::new(content) {
-        let callouts =
-            split_callouts_for_block(block.info, block.body, content, block.close_end, sidecars)?;
+        let callouts = split_callouts_for_block(
+            block.info,
+            &block.unprefixed_body(),
+            content,
+            block.close_end,
+            sidecars,
+        )?;
         let listing_number = listing_number_after_fence(content, block.close_end);
         // Inline and sidecar callouts both carry block lines here, so sorting
         // by line orders them as the render path does by post-strip line:
@@ -333,7 +338,7 @@ impl DiffSidecarPlacements {
         for block in FencedBlocks::new(content).filter(|b| b.info == "diff") {
             let callouts = split_callouts_for_block(
                 block.info,
-                block.body,
+                &block.unprefixed_body(),
                 content,
                 block.close_end,
                 sidecars,
@@ -831,6 +836,66 @@ mod tests {
         .expect("splice");
         assert!(out.contains(">1</button>"), "badge stays bare; got:\n{out}");
         assert!(!out.contains("5.3"), "got:\n{out}");
+    }
+
+    #[test]
+    fn a_listing_in_a_list_item_keeps_its_indent_through_the_callout_pass() {
+        // The body, the overlay and the anchor all stay in the item; the
+        // marker line goes and its badge lands on the line that follows.
+        let content = "- Step\n\n  ```rust\n  // CALLOUT: foo A note.\n  fn x() {}\n  ```\n  \
+                       <div data-listing-tag=\"x\" aria-hidden=\"true\"></div>\n\n  \
+                       See {{#callout foo}}.\n\n- Next\n";
+        let out = splice_chapter(content, SupportedRenderer::Html, &SidecarCallouts::empty())
+            .expect("splice");
+        assert!(
+            out.contains("  ```rust\n  fn x() {}\n  ```\n  <div class=\"callout-overlay\""),
+            "got:\n{out}"
+        );
+        assert!(out.contains(r#"data-callout-line="1""#), "got:\n{out}");
+        assert!(
+            out.contains("See <a class=\"callout-badge callout-ref\""),
+            "got:\n{out}"
+        );
+        let inserted: Vec<_> = out.lines().skip(2).take_while(|l| *l != "- Next").collect();
+        assert!(
+            inserted.iter().all(|l| l.is_empty() || l.starts_with("  ")),
+            "every line in the item must keep its indent; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_diff_in_a_list_item_badges_its_added_marker() {
+        // The item's indent sits before each line's diff indicator, so the
+        // `+`, the metadata lines and the marker have to be read past it.
+        let content = "- Step\n\n  ```diff\n  --- a\n  +++ b\n  @@ -1,1 +1,2 @@\n  \
+                       +// CALLOUT: added New.\n   fn f() {}\n  ```\n  \
+                       <div data-listing-diff-left=\"a\" data-listing-diff-right=\"b\" aria-hidden=\"true\"></div>\n";
+        let out = splice_chapter(content, SupportedRenderer::Html, &SidecarCallouts::empty())
+            .expect("splice");
+        assert!(
+            out.contains(
+                "  @@ -1,1 +1,2 @@\n   fn f() {}\n  ```\n  <div class=\"callout-overlay\""
+            ),
+            "the marker line goes and the rest keeps its indent; got:\n{out}"
+        );
+        assert!(out.contains(r#"data-callout-badge="added""#), "got:\n{out}");
+        assert!(out.contains(r#"data-callout-line="4""#), "got:\n{out}");
+    }
+
+    #[test]
+    fn pdf_callout_list_in_a_list_item_takes_the_items_indent() {
+        let content = "- Step\n\n  ```rust\n  // CALLOUT: foo A note.\n  fn x() {}\n  ```\n  \
+                       <div data-listing-tag=\"x\" aria-hidden=\"true\"></div>\n";
+        let out = splice_chapter(
+            content,
+            SupportedRenderer::TypstPdf,
+            &SidecarCallouts::empty(),
+        )
+        .expect("splice");
+        assert!(
+            out.contains("  ```\n\n  > **[1] foo** — A note.\n"),
+            "got:\n{out}"
+        );
     }
 
     #[test]

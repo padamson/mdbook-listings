@@ -403,7 +403,7 @@ fn check_unreferenced_markers(book_root: &Path, manifest: &Manifest, report: &mu
             continue;
         };
         for block in FencedBlocks::new(&expanded) {
-            for callout in callouts_for_block(block.info, block.body) {
+            for callout in callouts_for_block(block.info, &block.unprefixed_body()) {
                 if referenced.contains(&callout.label) {
                     continue;
                 }

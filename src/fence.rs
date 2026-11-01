@@ -39,6 +39,33 @@ pub(crate) struct FencedBlock<'a> {
     pub(crate) close_end: usize,
 }
 
+impl<'a> FencedBlock<'a> {
+    /// The body as the page reads it: each line without up to the prefix's
+    /// width of indent, which is what CommonMark strips, so a line indented
+    /// less than the opener loses only what it has. A pass that reads a
+    /// line's first characters (a diff's `+`, a hunk header) reads this,
+    /// and one that writes the body back puts the prefix on again with
+    /// [`prefix_lines`].
+    pub(crate) fn unprefixed_body(&self) -> std::borrow::Cow<'a, str> {
+        if self.prefix.is_empty() {
+            return std::borrow::Cow::Borrowed(self.body);
+        }
+        std::borrow::Cow::Owned(
+            self.body
+                .split_inclusive('\n')
+                .map(|line| {
+                    let blanks = line
+                        .bytes()
+                        .take(self.prefix.len())
+                        .take_while(|&b| b == b' ' || b == b'\t')
+                        .count();
+                    &line[blanks..]
+                })
+                .collect(),
+        )
+    }
+}
+
 /// A CommonMark parser with the options mdBook's renderer uses by default
 /// (`mdbook_markdown::new_cmark_parser`), so every pass that asks "is this
 /// code?" or "where does this block end?" reads the chapter as the page
@@ -422,6 +449,31 @@ mod tests {
         assert_eq!(got[0].info, "rust");
         assert_eq!(got[0].body, "    fn a() {}\n");
         assert_eq!(got[0].close_end, content.len());
+    }
+
+    #[test]
+    fn unprefixed_body_drops_the_prefix_from_each_line_and_leaves_blank_lines() {
+        let got = blocks("- item\n\n  ```rust\n  fn a() {}\n\n  fn b() {}\n  ```\n");
+        assert_eq!(got[0].unprefixed_body(), "fn a() {}\n\nfn b() {}\n");
+    }
+
+    #[test]
+    fn unprefixed_body_strips_only_what_a_line_has_of_the_openers_indent() {
+        // CommonMark removes up to the opener's indent from each line, so a
+        // line indented less than the fence loses all of its own and no
+        // more; reading it any other way shifts the rendered column.
+        let got = blocks("  ```rust\n // CALLOUT: x Note\n fn a() {}\n\tdeep();\n  ```\n");
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(
+            got[0].unprefixed_body(),
+            "// CALLOUT: x Note\nfn a() {}\ndeep();\n"
+        );
+    }
+
+    #[test]
+    fn unprefixed_body_is_the_body_itself_for_a_top_level_fence() {
+        let got = blocks("```rust\n  indented();\n```\n");
+        assert_eq!(got[0].unprefixed_body(), "  indented();\n");
     }
 
     #[test]
