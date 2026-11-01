@@ -11,7 +11,7 @@ description: >-
   with its sources.
 license: MIT OR Apache-2.0
 metadata:
-  version: "0.1.30"
+  version: "0.1.31"
 ---
 
 # Authoring with mdbook-listings

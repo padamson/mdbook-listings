@@ -82,6 +82,14 @@ Every line the preprocessor inserts takes that indent, so the listing, its
 number and caption, and its callout badges all stay in the item. The same
 goes for a `{{#diff}}`.
 
+A blockquote is the one container that can't hold a listing: the `>` can't
+go on the inserted lines, so an include or `{{#diff}}` inside one fails the
+build and `verify`, naming the line. So does one inside an HTML block (raw
+HTML with no blank line before the directive), where the block it expands to
+shows as text, and so does a `{{#listing-ref}}` there, whose link does the
+same. A `{{#diff}}` sharing its line with other text fails the same way an
+include does.
+
 ### Quoting the include syntax
 
 To mention an include in prose rather than embed one, escape it with a

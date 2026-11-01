@@ -8,7 +8,10 @@ use std::path::{Path, PathBuf};
 
 use crate::anchor::ListingWidth;
 use crate::diff::{LineRange, parse_line_range};
-use crate::directive::{FencePolicy, indent_before, line_number, scan_directives};
+use crate::directive::{
+    FencePolicy, Misplacement, indent_before, line_number, misplaced_message, misplacement,
+    scan_directives,
+};
 use crate::fence::prefix_lines;
 use crate::source_path::SourcePaths;
 
@@ -39,6 +42,10 @@ pub struct IncludeDirective {
     pub wrap: Option<bool>,
     pub span: Range<usize>,
     pub fence_close_end: Option<usize>,
+    /// Why the block it expands to would not render where it sits, for a
+    /// directive outside a fence (inside one, only its own bytes are
+    /// replaced). `None` when it would.
+    pub misplacement: Option<Misplacement>,
 }
 
 impl IncludeDirective {
@@ -65,14 +72,6 @@ fn trailing_newline_end(content: &str, from: usize) -> Option<usize> {
     rest[blanks..]
         .starts_with('\n')
         .then_some(from + blanks + 1)
-}
-
-/// Whether the directive at `at` has nothing but indent before it on its
-/// line. A fence emitted for a directive that shares its line would open
-/// mid-line and never be read as a fence at all, so the splicer rejects
-/// that case instead.
-fn starts_its_own_line(content: &str, at: usize) -> bool {
-    indent_before(content, at).is_some()
 }
 
 // CALLOUT: include-parse-entry The shared directive scanner finds every unescaped `{{#include ...}}` outside inline code (chapter prose quotes the syntax verbatim); this pass keeps only the intercepted path prefixes and parses their range suffix. (Renamed from `parse-entry`, which collided with the marker of the same name in callout.rs.)
@@ -115,6 +114,11 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
         } else {
             None
         };
+        let misplaced = occ
+            .fence_close_end
+            .is_none()
+            .then(|| misplacement(content, &occ))
+            .flatten();
         out.push(IncludeDirective {
             tag,
             rel_path: path.to_string(),
@@ -127,6 +131,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
             wrap,
             span: occ.span,
             fence_close_end: occ.fence_close_end,
+            misplacement: misplaced,
         });
     }
     out
@@ -148,9 +153,9 @@ pub enum Rejection {
     /// This preprocessor leaves it alone, but mdbook's `links` preprocessor,
     /// which runs after it, will still expand it.
     Unintercepted,
-    /// Outside a fence and sharing its line with other text, so the code
-    /// block it expands to could not start a line.
-    MidLine,
+    /// Outside a fence, where the code block it expands to would not render
+    /// as one: sharing its line, in a blockquote, or in an HTML block.
+    Misplaced(Misplacement),
 }
 
 /// The diagnostic both `verify` and the preprocessor print after their own
@@ -166,11 +171,10 @@ impl std::fmt::Display for RejectedInclude {
                  \\{{{{#include …}}}} on a single line",
                 self.path,
             ),
-            Rejection::MidLine => write!(
+            Rejection::Misplaced(why) => write!(
                 f,
-                "{{{{#include {}}}}} shares its line with other text; \
-                 put it on a line of its own so it can render as a code block",
-                self.path,
+                "{}",
+                misplaced_message(&format!("{{{{#include {}}}}}", self.path), why),
             ),
         }
     }
@@ -181,7 +185,7 @@ impl std::fmt::Display for RejectedInclude {
 /// not a directive the author wrote.
 pub fn rejected_includes(content: &str) -> Vec<RejectedInclude> {
     let mut out = unintercepted_includes(content);
-    out.extend(mid_line_includes(content));
+    out.extend(misplaced_includes(content));
     out.sort_by_key(|r| r.line);
     out
 }
@@ -232,16 +236,18 @@ fn unintercepted_includes(content: &str) -> Vec<RejectedInclude> {
         .collect()
 }
 
-/// Includes the splicer would have to render as a code block mid-line, in
-/// document order.
-fn mid_line_includes(content: &str) -> Vec<RejectedInclude> {
+/// Includes outside a fence whose code block would not render where they
+/// sit, in document order.
+fn misplaced_includes(content: &str) -> Vec<RejectedInclude> {
     parse_listing_includes(content)
         .into_iter()
-        .filter(|d| d.fence_close_end.is_none() && !starts_its_own_line(content, d.span.start))
-        .map(|d| RejectedInclude {
-            path: d.rel_path,
-            line: line_number(content, d.span.start),
-            why: Rejection::MidLine,
+        .filter_map(|d| {
+            let why = d.misplacement?;
+            Some(RejectedInclude {
+                path: d.rel_path,
+                line: line_number(content, d.span.start),
+                why: Rejection::Misplaced(why),
+            })
         })
         .collect()
 }
@@ -800,7 +806,7 @@ mod tests {
             include: RejectedInclude {
                 path: "listings/foo.rs".into(),
                 line: 1,
-                why: Rejection::MidLine,
+                why: Rejection::Misplaced(Misplacement::MidLine),
             },
             chapter_path: None,
         };
@@ -832,7 +838,7 @@ mod tests {
                     RejectedInclude {
                         path: "listings/foo.rs".into(),
                         line: 1,
-                        why: Rejection::MidLine,
+                        why: Rejection::Misplaced(Misplacement::MidLine),
                     }
                 );
                 assert_eq!(chapter_path.as_deref(), Some(chapter));
@@ -842,13 +848,13 @@ mod tests {
     }
 
     #[test]
-    fn mid_line_includes_names_a_snippet_by_its_own_path() {
+    fn misplaced_includes_names_a_snippet_by_its_own_path() {
         assert_eq!(
-            mid_line_includes("Intro.\nSee {{#include snippets/a.rs:2:3}} here.\n"),
+            misplaced_includes("Intro.\nSee {{#include snippets/a.rs:2:3}} here.\n"),
             vec![RejectedInclude {
                 path: "snippets/a.rs".into(),
                 line: 2,
-                why: Rejection::MidLine,
+                why: Rejection::Misplaced(Misplacement::MidLine),
             }],
         );
     }
@@ -890,10 +896,58 @@ mod tests {
         assert_eq!(
             got,
             vec![
-                (1, Rejection::MidLine),
+                (1, Rejection::Misplaced(Misplacement::MidLine)),
                 (3, Rejection::Unintercepted),
-                (5, Rejection::MidLine),
+                (5, Rejection::Misplaced(Misplacement::MidLine)),
             ]
+        );
+    }
+
+    #[test]
+    fn rejected_includes_reports_a_bare_include_inside_a_blockquote_or_html_block() {
+        for (what, content, line, why) in [
+            (
+                "blockquote",
+                "> {{#include listings/a.rs}}\n",
+                1,
+                Misplacement::BlockQuote,
+            ),
+            (
+                "list item inside a blockquote",
+                "> - Step\n>\n>   {{#include listings/a.rs}}\n",
+                3,
+                Misplacement::BlockQuote,
+            ),
+            (
+                "html block",
+                "<div class=\"note\">\n{{#include listings/a.rs}}\n</div>\n",
+                2,
+                Misplacement::HtmlBlock,
+            ),
+        ] {
+            let got: Vec<_> = rejected_includes(content)
+                .into_iter()
+                .map(|r| (r.path, r.line, r.why))
+                .collect();
+            assert_eq!(
+                got,
+                vec![("listings/a.rs".to_string(), line, Rejection::Misplaced(why))],
+                "{what}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_misplaced_include_is_described_as_the_directive_then_the_problem() {
+        let rejected = RejectedInclude {
+            path: "listings/a.rs".into(),
+            line: 1,
+            why: Rejection::Misplaced(Misplacement::HtmlBlock),
+        };
+        let msg = rejected.to_string();
+        assert!(
+            msg.starts_with("{{#include listings/a.rs}} is inside an HTML block"),
+            "got: {msg}"
         );
     }
 
@@ -1206,7 +1260,7 @@ mod tests {
                 err,
                 SpliceError::RejectedInclude {
                     include: RejectedInclude {
-                        why: Rejection::MidLine,
+                        why: Rejection::Misplaced(Misplacement::MidLine),
                         ..
                     },
                     ..
@@ -1438,7 +1492,10 @@ mod tests {
         assert_eq!(unintercepted(content), vec![]);
         let rejected = rejected_includes(content);
         assert!(
-            matches!(rejected.as_slice(), [r] if matches!(r.why, Rejection::MidLine)),
+            matches!(
+                rejected.as_slice(),
+                [r] if matches!(r.why, Rejection::Misplaced(Misplacement::MidLine))
+            ),
             "got {rejected:?}"
         );
     }

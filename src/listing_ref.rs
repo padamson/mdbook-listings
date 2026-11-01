@@ -13,7 +13,9 @@
 use std::collections::HashMap;
 
 use crate::callout::SupportedRenderer;
-use crate::directive::{FencePolicy, line_number, scan_directives};
+use crate::directive::{
+    DirectiveOccurrence, FencePolicy, Misplacement, line_number, misplaced_message, scan_directives,
+};
 use crate::list_of_listings::ChapterListings;
 
 /// The directive's literal prefix; the trailing space separates it from
@@ -82,6 +84,14 @@ pub fn replace_refs(
     let mut out = String::with_capacity(content.len());
     let mut cursor = 0;
     for occ in &occs {
+        if let Some(why) = misplaced(occ) {
+            return Err(format!(
+                "{} in chapter \"{chapter_name}\" (line {}) {}",
+                &content[occ.span.clone()],
+                line_number(content, occ.span.start),
+                why.describe(),
+            ));
+        }
         let label = occ.args.trim();
         let Some(target) = index.targets.get(label) else {
             return Err(format!(
@@ -105,6 +115,28 @@ pub fn replace_refs(
     }
     out.push_str(&content[cursor..]);
     Ok(out)
+}
+
+/// Why the ref at `occ` can't render where it sits, when it can't: inside
+/// an HTML block the link shows as text. A blockquote is fine, since the
+/// `>` is already on the line the inline link joins.
+fn misplaced(occ: &DirectiveOccurrence) -> Option<Misplacement> {
+    occ.enclosure.filter(|why| *why == Misplacement::HtmlBlock)
+}
+
+/// The refs that can't render where they sit, as `(line, message)` in the
+/// words the build uses, for `verify`.
+pub fn misplaced_refs(content: &str) -> Vec<(usize, String)> {
+    scan_directives(content, REF_PREFIX, FencePolicy::SkipInside)
+        .into_iter()
+        .filter_map(|occ| {
+            let why = misplaced(&occ)?;
+            Some((
+                line_number(content, occ.span.start),
+                misplaced_message(&content[occ.span], why),
+            ))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -189,6 +221,50 @@ mod tests {
         assert!(
             err.contains("Listing 3.1") && err.contains("Listing 5.1"),
             "names BOTH occurrences distinctly, not the first twice; got: {err}"
+        );
+    }
+
+    #[test]
+    fn ref_inside_an_html_block_errors_with_chapter_and_line() {
+        let index = LabelIndex::build(&chapters()).expect("index");
+        let err = replace_refs(
+            "<div>\nSee {{#listing-ref reuse-manifest}}.\n</div>\n",
+            "Ch",
+            &index,
+            SupportedRenderer::Html,
+        )
+        .expect_err("a link in an HTML block shows as text");
+        assert!(
+            err.starts_with("{{#listing-ref reuse-manifest}} in chapter \"Ch\" (line 2) "),
+            "got: {err}"
+        );
+        assert!(err.contains("HTML block"), "got: {err}");
+    }
+
+    #[test]
+    fn ref_inside_a_blockquote_resolves_like_any_inline_link() {
+        let index = LabelIndex::build(&chapters()).expect("index");
+        let out = replace_refs(
+            "> See {{#listing-ref reuse-manifest}}.\n",
+            "Ch",
+            &index,
+            SupportedRenderer::Html,
+        )
+        .expect("resolve");
+        assert_eq!(out, "> See [Listing 3.1](ch03.md#listing-3-1).\n");
+    }
+
+    #[test]
+    fn misplaced_refs_lists_only_the_ones_in_an_html_block() {
+        let content =
+            "<div>\n{{#listing-ref a}}\n</div>\n\n{{#listing-ref b}}\n\n> {{#listing-ref c}}\n";
+        let got = misplaced_refs(content);
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].0, 2);
+        assert!(
+            got[0].1.starts_with("{{#listing-ref a}} ") && got[0].1.contains("HTML block"),
+            "got {}",
+            got[0].1
         );
     }
 

@@ -79,7 +79,7 @@ pub fn verify(book_root: &Path) -> Result<VerifyReport> {
     let mut report = VerifyReport::default();
     check_snapshot_integrity(book_root, &manifest, &mut report);
     check_references(book_root, &manifest, &mut report);
-    check_rejected_includes(book_root, &mut report);
+    check_rejected_directives(book_root, &mut report);
     check_sidecars(book_root, &manifest, &mut report);
     check_orphans(book_root, &manifest, &mut report);
     check_unreferenced_markers(book_root, &manifest, &mut report);
@@ -185,12 +185,26 @@ fn check_references(book_root: &Path, manifest: &Manifest, report: &mut VerifyRe
     }
 }
 
-/// The includes the preprocessor fails the build on, reported from its own
-/// detector so that a book that passes verify also builds.
-fn check_rejected_includes(book_root: &Path, report: &mut VerifyReport) {
+/// The directives the preprocessor fails the build on for where they sit,
+/// reported from its own detectors so that a book that passes verify also
+/// builds: every rejected include, a `{{#diff}}` whose code block would not
+/// render where it is, and a `{{#listing-ref}}` inside an HTML block.
+fn check_rejected_directives(book_root: &Path, report: &mut VerifyReport) {
     for (rel, content) in chapter_markdown(book_root) {
         for include in rejected_includes(&content) {
             report.error(format!("{rel}:{}: {include}", include.line));
+        }
+        for d in parse_directives(&content) {
+            if let Some(why) = d.misplacement {
+                report.error(format!(
+                    "{rel}:{}: {}",
+                    line_number(&content, d.span.start),
+                    crate::directive::misplaced_message(&content[d.span.clone()], why),
+                ));
+            }
+        }
+        for (line, message) in crate::listing_ref::misplaced_refs(&content) {
+            report.error(format!("{rel}:{line}: {message}"));
         }
     }
 }
@@ -1077,7 +1091,7 @@ mod tests {
     }
 
     #[test]
-    fn check_rejected_includes_flags_an_unintercepted_include_with_chapter_and_line() {
+    fn check_rejected_directives_flags_an_unintercepted_include_with_chapter_and_line() {
         let (_t, root, _manifest) = book_with_demo();
         fs::write(
             root.join("src/ch.md"),
@@ -1086,7 +1100,7 @@ mod tests {
         .unwrap();
 
         let mut report = VerifyReport::default();
-        check_rejected_includes(&root, &mut report);
+        check_rejected_directives(&root, &mut report);
         assert_eq!(report.error_count(), 1, "got {:?}", report.findings);
         let message = &report.findings[0].message;
         assert!(message.starts_with("src/ch.md:3: "), "got: {message}");
@@ -1094,7 +1108,7 @@ mod tests {
     }
 
     #[test]
-    fn check_rejected_includes_skips_frozen_listing_content() {
+    fn check_rejected_directives_skips_frozen_listing_content() {
         // This repo's own frozen sources quote include syntax in strings
         // and doc comments; that text is shown as code, never expanded.
         let (_t, root, _manifest) = book_with_demo();
@@ -1105,12 +1119,12 @@ mod tests {
         .unwrap();
 
         let mut report = VerifyReport::default();
-        check_rejected_includes(&root, &mut report);
+        check_rejected_directives(&root, &mut report);
         assert!(report.findings.is_empty(), "got {:?}", report.findings);
     }
 
     #[test]
-    fn check_rejected_includes_flags_a_mid_line_include_with_chapter_and_line() {
+    fn check_rejected_directives_flags_a_mid_line_include_with_chapter_and_line() {
         let (_t, root, _manifest) = book_with_demo();
         fs::write(
             root.join("src/ch.md"),
@@ -1119,7 +1133,7 @@ mod tests {
         .unwrap();
 
         let mut report = VerifyReport::default();
-        check_rejected_includes(&root, &mut report);
+        check_rejected_directives(&root, &mut report);
         assert_eq!(report.error_count(), 1, "got {:?}", report.findings);
         let message = &report.findings[0].message;
         assert!(message.starts_with("src/ch.md:3: "), "got: {message}");
@@ -1127,7 +1141,7 @@ mod tests {
     }
 
     #[test]
-    fn check_rejected_includes_accepts_an_own_line_include_and_a_fenced_one() {
+    fn check_rejected_directives_accepts_an_own_line_include_and_a_fenced_one() {
         // Inside a fence the splicer replaces only the directive's bytes,
         // so sharing a line there is fine.
         let (_t, root, _manifest) = book_with_demo();
@@ -1138,7 +1152,61 @@ mod tests {
         .unwrap();
 
         let mut report = VerifyReport::default();
-        check_rejected_includes(&root, &mut report);
+        check_rejected_directives(&root, &mut report);
+        assert!(report.findings.is_empty(), "got {:?}", report.findings);
+    }
+
+    #[test]
+    fn check_rejected_directives_flags_a_diff_inside_a_blockquote_with_chapter_and_line() {
+        let (_t, root, _manifest) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "Intro.\n\n> {{#diff demo-v1 demo-v1}}\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_rejected_directives(&root, &mut report);
+        assert_eq!(report.error_count(), 1, "got {:?}", report.findings);
+        let message = &report.findings[0].message;
+        assert!(
+            message.starts_with("src/ch.md:3: {{#diff demo-v1 demo-v1}} "),
+            "got: {message}"
+        );
+        assert!(message.contains("blockquote"), "got: {message}");
+    }
+
+    #[test]
+    fn check_rejected_directives_flags_a_ref_inside_an_html_block() {
+        let (_t, root, _manifest) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "<div>\nSee {{#listing-ref x}}.\n</div>\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_rejected_directives(&root, &mut report);
+        assert_eq!(report.error_count(), 1, "got {:?}", report.findings);
+        let message = &report.findings[0].message;
+        assert!(
+            message.starts_with("src/ch.md:2: {{#listing-ref x}} "),
+            "got: {message}"
+        );
+        assert!(message.contains("HTML block"), "got: {message}");
+    }
+
+    #[test]
+    fn check_rejected_directives_accepts_a_diff_in_a_list_item_and_a_ref_in_a_quote() {
+        let (_t, root, _manifest) = book_with_demo();
+        fs::write(
+            root.join("src/ch.md"),
+            "- Step\n\n  {{#diff demo-v1 demo-v1}}\n\n> See {{#listing-ref x}}.\n",
+        )
+        .unwrap();
+
+        let mut report = VerifyReport::default();
+        check_rejected_directives(&root, &mut report);
         assert!(report.findings.is_empty(), "got {:?}", report.findings);
     }
 

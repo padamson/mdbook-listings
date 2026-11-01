@@ -107,6 +107,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   added-lines-only rule, which it never mentioned.
 
 ### Fixed
+- **A `{{#diff}}` whose code block can't render where it sits fails the
+  build.** One sharing its line with other text, inside a blockquote, or
+  inside an HTML block used to splice its block there anyway, leaving a
+  fence mid-line, a diff that escaped its quote after the first line, or
+  literal backticks in the HTML. The build and `verify` now name the line
+  and the fix, as they already did for an include sharing its line.
+- **An include inside a blockquote or an HTML block fails the build with
+  the reason.** A blockquoted one was reported as sharing its line with
+  text; one inside an HTML block was spliced and showed as text.
+- **A `{{#listing-ref}}` inside an HTML block fails the build and
+  `verify`** instead of rendering as literal link text.
 - **A directive in a fence's info string is left alone.** A `{{#diff}}`,
   `{{#callout}}` or `{{#listing-ref}}` written after the language on a
   fence's opening line (````` ````markdown {{#diff a b}} `````) was expanded

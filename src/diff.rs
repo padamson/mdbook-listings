@@ -6,7 +6,10 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use crate::anchor::ListingWidth;
-use crate::directive::{FencePolicy, indent_before, line_number, scan_directives};
+use crate::directive::{
+    FencePolicy, Misplacement, indent_before, line_number, misplaced_message, misplacement,
+    scan_directives,
+};
 use crate::fence::prefix_lines;
 use crate::manifest::Manifest;
 use crate::source_path::{ShownSource, SourcePaths, relative_to};
@@ -43,6 +46,9 @@ pub struct DiffDirective {
     /// this one diff. `None` when unset.
     pub wrap: Option<bool>,
     pub span: Range<usize>,
+    /// Why the diff's code block would not render where the directive
+    /// sits; `None` when it would.
+    pub misplacement: Option<Misplacement>,
 }
 
 /// `similar`'s default context radius, matching `diff -U3`.
@@ -181,6 +187,7 @@ pub fn parse_directives(content: &str) -> Vec<DiffDirective> {
                 show_provenance,
                 width,
                 wrap,
+                misplacement: misplacement(content, &occ),
                 span: occ.span,
             });
         }
@@ -462,21 +469,42 @@ fn parse_hunk_range(s: &str) -> Option<(usize, usize)> {
 pub struct SpliceError {
     pub chapter_path: Option<PathBuf>,
     pub line: usize,
-    pub source: ResolveError,
+    pub kind: SpliceErrorKind,
+}
+
+#[derive(Debug)]
+pub enum SpliceErrorKind {
+    /// An operand with no bytes behind it.
+    Resolve(ResolveError),
+    /// A directive sitting where its code block would not render as one;
+    /// `directive` is its text as written, for the message.
+    Misplaced {
+        directive: String,
+        why: Misplacement,
+    },
 }
 
 impl std::fmt::Display for SpliceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.chapter_path {
-            Some(p) => write!(f, "{}:{}: {}", p.display(), self.line, self.source),
-            None => write!(f, "<unknown chapter>:{}: {}", self.line, self.source),
+            Some(p) => write!(f, "{}:{}: ", p.display(), self.line)?,
+            None => write!(f, "<unknown chapter>:{}: ", self.line)?,
+        }
+        match &self.kind {
+            SpliceErrorKind::Resolve(source) => write!(f, "{source}"),
+            SpliceErrorKind::Misplaced { directive, why } => {
+                write!(f, "{}", misplaced_message(directive, *why))
+            }
         }
     }
 }
 
 impl std::error::Error for SpliceError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.source)
+        match &self.kind {
+            SpliceErrorKind::Resolve(source) => Some(source),
+            SpliceErrorKind::Misplaced { .. } => None,
+        }
     }
 }
 
@@ -496,11 +524,22 @@ pub fn splice_chapter(
     let mut out = String::with_capacity(content.len());
     let mut cursor = 0;
     for d in parse_directives(content) {
+        let line = line_number(content, d.span.start);
+        if let Some(why) = d.misplacement {
+            return Err(SpliceError {
+                chapter_path: chapter_path.map(Path::to_path_buf),
+                line,
+                kind: SpliceErrorKind::Misplaced {
+                    directive: content[d.span.clone()].to_string(),
+                    why,
+                },
+            });
+        }
         let resolved =
             resolve(&d, manifest, book_root, chapter_dir).map_err(|source| SpliceError {
                 chapter_path: chapter_path.map(Path::to_path_buf),
-                line: line_number(content, d.span.start),
-                source,
+                line,
+                kind: SpliceErrorKind::Resolve(source),
             })?;
         let left_full = String::from_utf8_lossy(&resolved.left_bytes);
         let right_full = String::from_utf8_lossy(&resolved.right_bytes);
@@ -1104,6 +1143,59 @@ mod tests {
     }
 
     #[test]
+    fn splice_chapter_rejects_a_diff_whose_block_cannot_render_where_it_sits() {
+        use std::error::Error;
+        let (tmp, manifest, _) = fixture(b"a\n", b"b\n");
+        for (what, content, line, why) in [
+            (
+                "mid-line",
+                "See {{#diff left-tag right-tag}} here.\n",
+                1,
+                Misplacement::MidLine,
+            ),
+            (
+                "blockquote",
+                "> Note:\n>\n> {{#diff left-tag right-tag}}\n",
+                3,
+                Misplacement::BlockQuote,
+            ),
+            (
+                "html block",
+                "<div>\n{{#diff left-tag right-tag}}\n</div>\n",
+                2,
+                Misplacement::HtmlBlock,
+            ),
+        ] {
+            let err = splice_chapter(
+                content,
+                &manifest,
+                tmp.path(),
+                Some(Path::new("ch.md")),
+                tmp.path(),
+                &SourcePaths::Verbatim,
+            )
+            .expect_err(what);
+            assert_eq!(err.line, line, "{what}");
+            match &err.kind {
+                SpliceErrorKind::Misplaced {
+                    directive,
+                    why: got,
+                } => {
+                    assert_eq!(directive, "{{#diff left-tag right-tag}}", "{what}");
+                    assert_eq!(*got, why, "{what}");
+                }
+                other => panic!("{what}: expected a misplaced diff, got {other:?}"),
+            }
+            let msg = err.to_string();
+            assert!(
+                msg.starts_with(&format!("ch.md:{line}: {{{{#diff left-tag right-tag}}}} ")),
+                "{what}: got {msg}"
+            );
+            assert!(err.source().is_none(), "{what}: nothing underlies this one");
+        }
+    }
+
+    #[test]
     fn ranged_diff_shifts_hunks_to_each_operands_absolute_lines() {
         // Left slice starts at line 3, right at line 4; the hunk header
         // must carry those absolute positions, not the slice-relative 1.
@@ -1167,6 +1259,7 @@ mod tests {
             width: None,
             wrap: None,
             span: 0..0,
+            misplacement: None,
         };
 
         (tmp, manifest, directive)

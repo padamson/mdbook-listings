@@ -23,6 +23,11 @@ pub(crate) struct DirectiveOccurrence<'a> {
     /// the passes walk (only produced under [`FencePolicy::Annotate`]); the
     /// value is the fence's close_end so callers can place trailing anchors.
     pub(crate) fence_close_end: Option<usize>,
+    /// The construct around a prose occurrence that no block a pass emits
+    /// can sit in: a blockquote, whose lines carry a `>` the block's lines
+    /// can't, or an HTML block, where the browser shows markdown as text.
+    /// `None` in plain prose and in a fence.
+    pub(crate) enclosure: Option<Misplacement>,
 }
 
 /// What to do with an occurrence that starts in the body of a fence the
@@ -69,9 +74,9 @@ pub(crate) fn scan_directives<'a>(
             cursor = after_prefix;
             continue;
         }
-        let fence_close_end = match (regions().place(at), policy) {
-            (Place::Prose, _) => None,
-            (Place::Fence(close_end), FencePolicy::Annotate) => Some(close_end),
+        let (fence_close_end, enclosure) = match (regions().place(at), policy) {
+            (Place::Prose, _) => (None, regions().enclosure(at)),
+            (Place::Fence(close_end), FencePolicy::Annotate) => (Some(close_end), None),
             (Place::Fence(_), FencePolicy::SkipInside) | (Place::Skipped, _) => {
                 cursor = after_prefix;
                 continue;
@@ -87,6 +92,7 @@ pub(crate) fn scan_directives<'a>(
             args: &content[after_prefix..after_prefix + close_rel],
             span: at..span_end,
             fence_close_end,
+            enclosure,
         });
         cursor = span_end;
     }
@@ -116,6 +122,8 @@ struct Regions<'a> {
     /// HTML blocks, where CommonMark reads no markdown but the browser
     /// renders HTML.
     html: Vec<Range<usize>>,
+    /// Blockquotes, whose every line carries a `>`.
+    quotes: Vec<Range<usize>>,
     /// The `[body_start, close_end)` of each block `fence::fenced_block`
     /// accepts, the same blocks `FencedBlocks` yields.
     fences: Vec<Range<usize>>,
@@ -127,6 +135,7 @@ impl<'a> Regions<'a> {
 
         let mut hidden = Vec::new();
         let mut html = Vec::new();
+        let mut quotes = Vec::new();
         let mut fences = Vec::new();
         for (event, span) in crate::fence::cmark_parser(content).into_offset_iter() {
             match &event {
@@ -149,6 +158,7 @@ impl<'a> Regions<'a> {
                     html.push(span);
                 }
                 Event::InlineHtml(_) => push_comments(content, span, &mut hidden),
+                Event::Start(Tag::BlockQuote(_)) => quotes.push(span),
                 _ => {}
             }
         }
@@ -156,7 +166,20 @@ impl<'a> Regions<'a> {
             content,
             hidden,
             html,
+            quotes,
             fences,
+        }
+    }
+
+    /// The blockquote or HTML block around `pos`, when there is one. A
+    /// quote wins over an HTML block inside it: the `>` is the harder fact.
+    fn enclosure(&self, pos: usize) -> Option<Misplacement> {
+        if within(&self.quotes, pos).is_some() {
+            Some(Misplacement::BlockQuote)
+        } else if within(&self.html, pos).is_some() {
+            Some(Misplacement::HtmlBlock)
+        } else {
+            None
         }
     }
 
@@ -207,6 +230,57 @@ fn push_comments(content: &str, span: Range<usize>, out: &mut Vec<Range<usize>>)
         out.push(span.start + at..span.start + end);
         cursor = end;
     }
+}
+
+/// Why the block a directive expands to would not render as one where the
+/// directive sits. Every pass that emits a block refuses the directive with
+/// this, in the build and in `verify`, in the same words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Misplacement {
+    /// Sharing its line with other text, so the block could not start one.
+    MidLine,
+    /// Inside a blockquote: each line inserted would need a `>`.
+    BlockQuote,
+    /// Inside an HTML block, where the browser shows markdown as text.
+    HtmlBlock,
+}
+
+impl Misplacement {
+    /// The problem and its fix, to follow the directive's own text.
+    pub fn describe(self) -> &'static str {
+        match self {
+            Misplacement::MidLine => {
+                "shares its line with other text; put it on a line of its own so the block \
+                 it expands to can start one"
+            }
+            Misplacement::BlockQuote => {
+                "is inside a blockquote, and the lines it expands to can't carry the `>`; \
+                 put it after the quote"
+            }
+            Misplacement::HtmlBlock => {
+                "is inside an HTML block, where what it expands to shows as text; add a \
+                 blank line between the HTML and the directive"
+            }
+        }
+    }
+}
+
+/// The diagnostic for `directive` (its text as written) sitting where `why`
+/// says it can't, as the build and `verify` both print it after their
+/// `file:line:` prefix.
+pub fn misplaced_message(directive: &str, why: Misplacement) -> String {
+    format!("{directive} {}", why.describe())
+}
+
+/// Why the block the directive at `occ` expands to would not render as one,
+/// or `None` when it would: the enclosure the scan recorded, else text
+/// sharing its line.
+pub(crate) fn misplacement(content: &str, occ: &DirectiveOccurrence) -> Option<Misplacement> {
+    occ.enclosure.or_else(|| {
+        indent_before(content, occ.span.start)
+            .is_none()
+            .then_some(Misplacement::MidLine)
+    })
 }
 
 /// The indent before the directive at `at`, when nothing else precedes it
@@ -472,6 +546,87 @@ mod tests {
         assert_eq!(got[1].fence_close_end, None);
         let skipped: Vec<_> = scan(s, "{{#demo ").iter().map(|o| o.args).collect();
         assert_eq!(skipped, ["c d"]);
+    }
+
+    #[test]
+    fn scan_records_the_blockquote_or_html_block_around_a_prose_occurrence() {
+        for (what, s, want) in [
+            ("plain prose", "{{#demo a b}}\n", None),
+            ("list item", "- Step\n\n  {{#demo a b}}\n", None),
+            (
+                "blockquote",
+                "> {{#demo a b}}\n",
+                Some(Misplacement::BlockQuote),
+            ),
+            (
+                "lazy continuation of a quoted paragraph",
+                "> text\n{{#demo a b}}\n",
+                Some(Misplacement::BlockQuote),
+            ),
+            (
+                "html block",
+                "<div>\n{{#demo a b}}\n</div>\n",
+                Some(Misplacement::HtmlBlock),
+            ),
+            (
+                "html block inside a blockquote",
+                "> <div>\n> {{#demo a b}}\n> </div>\n",
+                Some(Misplacement::BlockQuote),
+            ),
+        ] {
+            let got = scan(s, "{{#demo ");
+            assert_eq!(got.len(), 1, "{what}: got {got:?}");
+            assert_eq!(got[0].enclosure, want, "{what}");
+        }
+    }
+
+    #[test]
+    fn an_occurrence_in_a_fence_has_no_enclosure() {
+        let got = scan_directives(
+            "- Step\n\n  ```rust\n  {{#demo a b}}\n  ```\n",
+            "{{#demo ",
+            FencePolicy::Annotate,
+        );
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].enclosure, None);
+    }
+
+    #[test]
+    fn misplacement_is_the_enclosure_else_the_text_sharing_the_line() {
+        for (what, s, want) in [
+            ("own line", "  {{#demo a b}}\n", None),
+            (
+                "mid-line",
+                "see {{#demo a b}}\n",
+                Some(Misplacement::MidLine),
+            ),
+            (
+                "list marker on the line",
+                "- {{#demo a b}}\n",
+                Some(Misplacement::MidLine),
+            ),
+            (
+                "blockquote",
+                "> {{#demo a b}}\n",
+                Some(Misplacement::BlockQuote),
+            ),
+        ] {
+            let got = scan(s, "{{#demo ");
+            assert_eq!(misplacement(s, &got[0]), want, "{what}");
+        }
+    }
+
+    #[test]
+    fn misplaced_message_names_the_directive_then_what_is_around_it() {
+        for (why, word) in [
+            (Misplacement::MidLine, "line"),
+            (Misplacement::BlockQuote, "blockquote"),
+            (Misplacement::HtmlBlock, "HTML block"),
+        ] {
+            let msg = misplaced_message("{{#diff a b}}", why);
+            assert!(msg.starts_with("{{#diff a b}} "), "{why:?}: got {msg}");
+            assert!(msg.contains(word), "{why:?}: got {msg}");
+        }
     }
 
     #[test]
