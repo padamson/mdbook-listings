@@ -99,6 +99,12 @@ criteria = "safe-to-deploy"
 delta = "3.1.2 -> 3.2.0"
 notes = "New TextMerge three-way merge module, WhitespaceMode line comparisons, Myers algorithm rework (Git-style bounded splits) plus RawMyers for the old behavior, and performance work. Pure algorithm/API code: no unsafe anywhere in src, no build script, no I/O, no dependency changes."
 
+[[audits.similar]]
+who = "Paul Adamson <paul.adamson.01@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "3.2.0 -> 3.2.1"
+notes = "Performance rewrite (SipHash content hash, word-at-a-time tokenizer, gap-buffer compaction, heap task stack in histogram) plus label sanitizing in merge. No unsafe, no new dependencies, no I/O."
+
 [[audits.typed-path]]
 who = "Paul Adamson <paul.adamson.01@gmail.com>"
 criteria = "safe-to-deploy"
@@ -537,6 +543,12 @@ criteria = "safe-to-deploy"
 user-id = 1139 # Manish Goregaokar (Manishearth)
 start = "2023-07-27"
 end = "2027-05-16"
+
+[[trusted.unicode-width]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2019-12-05"
+end = "2027-11-01"
 
 [[trusted.windows-sys]]
 criteria = "safe-to-deploy"
