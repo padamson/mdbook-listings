@@ -45,7 +45,6 @@ change.
 
 - Syntax-highlighted diffs (currently plain unified-diff text).
 - Multi-paragraph callout bodies, inline code in callouts.
-- Callouts overlaid on diff output.
 
 ### PDF inline-badge rendering
 
