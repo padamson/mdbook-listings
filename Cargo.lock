@@ -1232,8 +1232,9 @@ dependencies = [
 
 [[package]]
 name = "pdf-extract"
-version = "0.12.0"
-source = "git+https://github.com/padamson/pdf-extract?branch=fix%2Fper-page-font-cache#c96b63809a7e4b06f5c82353480261ac1b7bbefa"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5c4820f5811e424ce037d08493ac87752ecc54339e0f1e40c3d17da93278861"
 dependencies = [
  "adobe-cmap-parser",
  "cff-parser",

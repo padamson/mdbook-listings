@@ -6,7 +6,7 @@
 # input. The published crate never links it and it never touches untrusted
 # input. An "unmaintained" advisory carries no fix to apply; drop this once
 # pdf-extract's dependency tree stops pulling ttf-parser.
-# (RUSTSEC-2026-0187 -- lopdf stack overflow -- cleared 2026-07-31: the
-# pdf-extract fork pin pulls the patched lopdf 0.42.)
+# (RUSTSEC-2026-0187 -- lopdf stack overflow -- does not apply:
+# pdf-extract 0.12.1 pulls the patched lopdf 0.42.)
 [advisories]
 ignore = ["RUSTSEC-2026-0192"]

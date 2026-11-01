@@ -31,9 +31,6 @@ url = "https://raw.githubusercontent.com/zcash/rust-ecosystem/main/supply-chain/
 [policy.mdbook-listings]
 audit-as-crates-io = false
 
-[policy.pdf-extract]
-audit-as-crates-io = true
-
 [[exemptions.adobe-cmap-parser]]
 version = "0.4.1"
 criteria = "safe-to-run"
@@ -275,7 +272,7 @@ version = "0.9.12"
 criteria = "safe-to-deploy"
 
 [[exemptions.pdf-extract]]
-version = "0.12.0@git:c96b63809a7e4b06f5c82353480261ac1b7bbefa"
+version = "0.12.1"
 criteria = "safe-to-run"
 
 [[exemptions.pin-project-lite]]

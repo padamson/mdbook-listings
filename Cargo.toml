@@ -27,11 +27,9 @@ unicode-width = "0.2"
 [dev-dependencies]
 assert_cmd = "2"
 futures = "0.3"
-# Fork carries the per-page font-cache fix (upstream jrmuizel/pdf-extract#152,
-# unmerged); 0.12.0 garbles multi-page typst extraction and 0.10 pulls the
-# lopdf with RUSTSEC-2026-0187. Swap back to crates.io when a release ships
-# with the fix. Tracked in #31.
-pdf-extract = { git = "https://github.com/padamson/pdf-extract", branch = "fix/per-page-font-cache" }
+# At least 0.12.1: 0.12.0 garbles text on later pages of a typst PDF
+# (jrmuizel/pdf-extract#151), and 0.10 pulls the lopdf with RUSTSEC-2026-0187.
+pdf-extract = "0.12.1"
 playwright-rs = { workspace = true }
 playwright-rs-trace = "0.2.2"
 predicates = "3"
