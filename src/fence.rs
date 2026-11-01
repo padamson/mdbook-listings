@@ -23,6 +23,12 @@ pub(crate) struct Fence {
 pub(crate) struct FencedBlock<'a> {
     /// The opener's info string, trimmed (empty when the fence has none).
     pub(crate) info: &'a str,
+    /// The whitespace before the opener's fence characters: a list item's
+    /// indent when the block sits in one, otherwise the fence's own indent
+    /// of up to 3 spaces. Lines written under the same item carry it, and
+    /// so must every line a pass inserts into or after the block, or the
+    /// first line without it ends the item.
+    pub(crate) prefix: &'a str,
     /// The body between the fence lines, newline-inclusive; excludes the
     /// fence lines themselves.
     pub(crate) body: &'a str,
@@ -55,10 +61,12 @@ pub(crate) fn cmark_parser(content: &str) -> pulldown_cmark::Parser<'_> {
 /// The closed fenced blocks of a chapter, in order. Blocks come from the
 /// CommonMark parse, so a fence line inside an HTML comment or HTML block is
 /// text, as it is on the page. Two limits keep the passes' byte-level
-/// edits sound: the opener line itself must be a fence (indented at most 3
-/// spaces, no `>` or list marker before it), since the passes do not strip
-/// container prefixes from a body; and an unclosed fence yields nothing,
-/// since without a closer there is no block.
+/// edits sound. A fence behind a `>` is not walked: its lines carry a
+/// marker the passes do not strip. An indent before the opener is fine,
+/// however wide, since the block records it as its `prefix` for the passes
+/// to carry through; that is how a fence inside a list item is walked. And
+/// an unclosed fence yields nothing, since without a closer there is no
+/// block.
 pub(crate) struct FencedBlocks<'a> {
     blocks: std::vec::IntoIter<FencedBlock<'a>>,
 }
@@ -90,23 +98,33 @@ pub(crate) fn fenced_block<'a>(
     }
 }
 
-/// The block a parsed fenced code block spans, when its opener line is a
-/// bare fence and its last line closes it.
+/// The block a parsed fenced code block spans, when its opener sits behind
+/// nothing but indent and its last line closes it.
 fn closed_block(content: &str, range: std::ops::Range<usize>) -> Option<FencedBlock<'_>> {
     let line_start = content[..range.start].rfind('\n').map_or(0, |i| i + 1);
-    let opener_end = content[line_start..]
+    // The parse starts the block at its first fence character, so what
+    // precedes it on the line is the container's: an indent the passes
+    // carry through, or a `>` they don't.
+    let prefix = &content[line_start..range.start];
+    if !prefix.bytes().all(|b| b == b' ' || b == b'\t') {
+        return None;
+    }
+    let opener_end = content[range.start..]
         .find('\n')
-        .map_or(content.len(), |i| line_start + i);
-    let (info, opener) = fence_open_info(&content[line_start..opener_end])?;
+        .map_or(content.len(), |i| range.start + i);
+    let (info, opener) = fence_open_info(&content[range.start..opener_end])?;
     let block = content[..range.end].trim_end_matches('\n');
     let close_start = block.rfind('\n').map_or(0, |i| i + 1);
-    if close_start <= line_start || !line_closes_fence(&block[close_start..], opener) {
+    let closer = &block[close_start..];
+    let closer = closer.strip_prefix(prefix).unwrap_or(closer);
+    if close_start <= line_start || !line_closes_fence(closer, opener) {
         return None;
     }
     let close_end = (block.len() + 1).min(content.len());
     let body_start = opener_end + 1;
     Some(FencedBlock {
         info,
+        prefix,
         body: &content[body_start..close_start],
         body_start,
         close_end,
@@ -219,6 +237,23 @@ pub(crate) fn render_block(info: &str, body: &str) -> String {
     format!("{fence}{info}\n{body}\n{fence}\n")
 }
 
+/// `text` with `prefix` before each non-blank line, so lines inserted under
+/// a list item take the item's indent and stay in it. A blank line needs
+/// no indent to stay, and gets no trailing whitespace.
+pub(crate) fn prefix_lines(text: &str, prefix: &str) -> String {
+    if prefix.is_empty() {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len() * 2);
+    for line in text.split_inclusive('\n') {
+        if line != "\n" {
+            out.push_str(prefix);
+        }
+        out.push_str(line);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,6 +268,7 @@ mod tests {
         let got = blocks(content);
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].info, "rust");
+        assert_eq!(got[0].prefix, "");
         assert_eq!(got[0].body, "let x = 1;\n");
         assert_eq!(got[0].body_start, 15);
         assert_eq!(got[0].close_end, 30);
@@ -296,6 +332,7 @@ mod tests {
     fn fenced_blocks_tolerates_three_space_indent_on_opener_and_closer() {
         let got = blocks("   ```\nbody\n   ```\n");
         assert_eq!(got.len(), 1);
+        assert_eq!(got[0].prefix, "   ");
         assert_eq!(got[0].body, "body\n");
     }
 
@@ -366,10 +403,30 @@ mod tests {
     }
 
     #[test]
-    fn a_fence_in_a_list_item_indented_under_four_spaces_is_a_block() {
+    fn a_fence_in_a_list_item_records_the_items_indent_as_its_prefix() {
         let got = blocks("- item\n\n  ```rust\n  fn a() {}\n  ```\n");
         assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].prefix, "  ");
         assert_eq!(got[0].body, "  fn a() {}\n");
+    }
+
+    #[test]
+    fn a_fence_in_a_list_item_indented_four_or_more_spaces_is_a_block() {
+        // Under `10.` the item's content starts 4 columns in. At the top
+        // level that indent would make the line indented code, but inside
+        // the item CommonMark strips it first, and so does the parse.
+        let content = "10. Step\n\n    ```rust\n    fn a() {}\n    ```\n";
+        let got = blocks(content);
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].prefix, "    ");
+        assert_eq!(got[0].info, "rust");
+        assert_eq!(got[0].body, "    fn a() {}\n");
+        assert_eq!(got[0].close_end, content.len());
+    }
+
+    #[test]
+    fn an_unclosed_fence_in_a_list_item_yields_nothing() {
+        assert_eq!(blocks("- item\n\n  ```rust\n  fn a() {}\n"), vec![]);
     }
 
     #[test]
@@ -465,5 +522,20 @@ mod tests {
         assert_eq!(fence.render(), "~~~~~");
         // Backticks in the body are irrelevant to a tilde fence.
         assert_eq!(fence_for_body("```\n", b'~').count, 3);
+    }
+
+    #[test]
+    fn prefix_lines_indents_every_line_but_leaves_blank_lines_blank() {
+        assert_eq!(prefix_lines("a\n\nb\n", "  "), "  a\n\n  b\n");
+    }
+
+    #[test]
+    fn prefix_lines_indents_a_final_line_without_a_newline() {
+        assert_eq!(prefix_lines("a\nb", "    "), "    a\n    b");
+    }
+
+    #[test]
+    fn prefix_lines_with_an_empty_prefix_returns_the_text_unchanged() {
+        assert_eq!(prefix_lines("a\n\nb\n", ""), "a\n\nb\n");
     }
 }

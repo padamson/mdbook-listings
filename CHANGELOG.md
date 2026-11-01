@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Listings inside list items.** A `{{#include listings/…}}` or
+  `{{#diff}}` on its own line in a list item, or inside a fence in one,
+  puts the item's indent on every line it inserts, so the listing renders
+  as part of the item. The lines after the first used to land at column
+  0, which ended the item and left the rest of the code block as prose.
+  Under a wide marker such as `10.` the directive was rejected as sharing
+  its line with other text.
 - **Wrapped listings.** `wrap="true"` on a `{{#include listings/…}}` or a
   `{{#diff}}` wraps its long lines in HTML instead of scrolling, and
   `listing-wrap = true` under `[preprocessor.listings]` makes that the

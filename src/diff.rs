@@ -6,7 +6,8 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use crate::anchor::ListingWidth;
-use crate::directive::{FencePolicy, line_number, scan_directives};
+use crate::directive::{FencePolicy, indent_before, line_number, scan_directives};
+use crate::fence::prefix_lines;
 use crate::manifest::Manifest;
 use crate::source_path::{ShownSource, SourcePaths, relative_to};
 
@@ -537,10 +538,17 @@ pub fn splice_chapter(
             operand_source(&d.left, manifest, book_root, chapter_dir),
             operand_source(&d.right, manifest, book_root, chapter_dir),
         );
-        out.push_str(&content[cursor..d.span.start]);
-        out.push_str(&crate::fence::render_block("diff", &body));
+        // Inside a list item the directive's indent is the item's, and the
+        // block and anchor need it on every line to stay in the item (see
+        // `include::splice_chapter`).
+        let indent = indent_before(content, d.span.start).unwrap_or("");
+        out.push_str(&content[cursor..d.span.start - indent.len()]);
+        out.push_str(&prefix_lines(
+            &crate::fence::render_block("diff", &body),
+            indent,
+        ));
         // CALLOUT: diff-anchor-dual Locator anchor for the capture-screenshots tool. Both operands are emitted as separate data-attributes so the tool can locate a diff block by its (LEFT, RIGHT) pair — unique even when multiple diffs share the same RIGHT tag, and unambiguous against the include splicer's `data-listing-tag` anchors.
-        out.push_str(&crate::anchor::diff_anchor(
+        let anchor = crate::anchor::diff_anchor(
             &crate::anchor::DiffOperand {
                 tag: operand_tag(&d.left),
                 source: left_source.as_ref(),
@@ -558,7 +566,8 @@ pub fn splice_chapter(
                 width: d.width,
                 wrap: d.wrap,
             },
-        ));
+        );
+        out.push_str(&prefix_lines(&anchor, indent));
         cursor = d.span.end;
     }
     out.push_str(&content[cursor..]);
@@ -1442,6 +1451,35 @@ mod tests {
             out.contains("data-listing-diff-right=\"right-tag\""),
             "expected diff-right anchor attribute; got:\n{out}",
         );
+    }
+
+    #[test]
+    fn splice_chapter_indents_a_diff_to_its_list_item() {
+        let (tmp, manifest, _) = fixture(b"line one\nline two\n", b"line one\nline TWO\n");
+        let content = "- Step\n\n  {{#diff left-tag right-tag}}\n\n- Next\n";
+        let out = splice_chapter(
+            content,
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .unwrap();
+        assert!(
+            out.contains("\n  ```diff\n  --- left-tag\n  +++ right-tag\n"),
+            "got:\n{out}"
+        );
+        assert!(
+            out.contains("\n  ```\n  <div data-listing-diff-left=\"left-tag\""),
+            "got:\n{out}"
+        );
+        let inserted: Vec<_> = out.lines().skip(2).take_while(|l| *l != "- Next").collect();
+        assert!(
+            inserted.iter().all(|l| l.is_empty() || l.starts_with("  ")),
+            "every inserted line should carry the item's indent; got:\n{out}"
+        );
+        assert!(out.ends_with("\n- Next\n"), "got:\n{out}");
     }
 
     #[test]

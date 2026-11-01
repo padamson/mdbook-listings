@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 
 use crate::anchor::ListingWidth;
 use crate::diff::{LineRange, parse_line_range};
-use crate::directive::{FencePolicy, line_number, scan_directives};
+use crate::directive::{FencePolicy, indent_before, line_number, scan_directives};
+use crate::fence::prefix_lines;
 use crate::source_path::SourcePaths;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,14 +67,12 @@ fn trailing_newline_end(content: &str, from: usize) -> Option<usize> {
         .then_some(from + blanks + 1)
 }
 
-/// Whether the directive at `at` is the only thing on its line, give or
-/// take CommonMark's 3 spaces of leading indent. A fence emitted for a
-/// directive that shares its line would open mid-line and never be read
-/// as a fence at all, so the splicer rejects that case instead.
+/// Whether the directive at `at` has nothing but indent before it on its
+/// line. A fence emitted for a directive that shares its line would open
+/// mid-line and never be read as a fence at all, so the splicer rejects
+/// that case instead.
 fn starts_its_own_line(content: &str, at: usize) -> bool {
-    let line_start = content[..at].rfind('\n').map_or(0, |nl| nl + 1);
-    let indent = &content[line_start..at];
-    indent.len() <= 3 && indent.chars().all(|c| c == ' ')
+    indent_before(content, at).is_some()
 }
 
 // CALLOUT: include-parse-entry The shared directive scanner finds every unescaped `{{#include ...}}` outside inline code (chapter prose quotes the syntax verbatim); this pass keeps only the intercepted path prefixes and parses their range suffix. (Renamed from `parse-entry`, which collided with the marker of the same name in callout.rs.)
@@ -355,7 +354,12 @@ pub fn splice_chapter(
             let sliced = range.slice(&body);
             body = format!("{header}\n{sliced}");
         }
-        out.push_str(&content[cursor..d.span.start]);
+        // Inside a list item the directive's indent is the item's, and
+        // every line put in its place needs it too, or the first line
+        // without it ends the item. The indent is emitted with the lines
+        // rather than copied through ahead of them.
+        let indent = indent_before(content, d.span.start).unwrap_or("");
+        out.push_str(&content[cursor..d.span.start - indent.len()]);
         match d.fence_close_end {
             // The author wrote the fence, so only the bytes between its
             // lines are ours to replace.
@@ -375,7 +379,7 @@ pub fn splice_chapter(
                 // directives escaped too — acceptable, since rendering
                 // them as literal text inside a code fence is what an
                 // author quoting markdown wants anyway.
-                out.push_str(&body.replace("{{", "\\{{"));
+                out.push_str(&prefix_lines(&body.replace("{{", "\\{{"), indent));
                 out.push_str(&content[d.span.end..close_end]);
                 cursor = close_end;
             }
@@ -384,7 +388,10 @@ pub fn splice_chapter(
             // the highlighting, and the callout pass reads it back to learn
             // which comment prefix marks a `CALLOUT:` line.
             None => {
-                out.push_str(&crate::fence::render_block(d.info_string(), &body));
+                out.push_str(&prefix_lines(
+                    &crate::fence::render_block(d.info_string(), &body),
+                    indent,
+                ));
                 // The emitted block already ends in a newline, so the
                 // directive's own line terminator would leave a stray blank
                 // line — and the two forms would stop rendering identically.
@@ -402,7 +409,7 @@ pub fn splice_chapter(
                 .find(tag)
                 .and_then(|l| paths.display(&l.source, l.url.as_deref()));
             // CALLOUT: include-anchor-emit One `<div data-listing-tag="...">` per `listings/` include, dropped just past the closing fence so the screenshot tool can find the rendered `<pre>` via `previousElementSibling`.
-            out.push_str(&crate::anchor::include_anchor(
+            let anchor = crate::anchor::include_anchor(
                 tag,
                 source.as_ref(),
                 d.range.as_ref(),
@@ -413,7 +420,8 @@ pub fn splice_chapter(
                     width: d.width,
                     wrap: d.wrap,
                 },
-            ));
+            );
+            out.push_str(&prefix_lines(&anchor, indent));
         }
     }
     out.push_str(&content[cursor..]);
@@ -581,6 +589,14 @@ mod tests {
         let got = parse_listing_includes(content);
         assert_eq!(got.len(), 1);
         assert!(got[0].fence_close_end.is_some());
+    }
+
+    #[test]
+    fn parse_listing_includes_records_fence_close_end_inside_a_list_items_fence() {
+        let content = "10. Step\n\n    ```rust\n    {{#include listings/foo.rs}}\n    ```\n";
+        let got = parse_listing_includes(content);
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].fence_close_end, Some(content.len()));
     }
 
     #[test]
@@ -901,11 +917,6 @@ mod tests {
                 "> ```rust\n> {{#include listings/a.rs}}\n> ```\n",
                 2,
             ),
-            (
-                "fence in a list item",
-                "10. Step\n\n    ```rust\n    {{#include listings/a.rs}}\n    ```\n",
-                4,
-            ),
             ("unclosed fence", "```rust\n{{#include listings/a.rs}}\n", 2),
             (
                 "indented code",
@@ -951,6 +962,64 @@ mod tests {
         assert!(out.starts_with("Before.\n"), "got:\n{out}");
         assert!(out.ends_with("After.\n"), "got:\n{out}");
         assert!(!out.contains("{{#include"), "got:\n{out}");
+    }
+
+    #[test]
+    fn splice_chapter_indents_a_bare_include_to_its_list_item() {
+        let out = splice_one(
+            "listings/foo.rs",
+            "fn a() {\n    x();\n}\n",
+            "- Step\n\n  {{#include listings/foo.rs}}\n\n- Next\n",
+        );
+        assert_eq!(
+            out,
+            "- Step\n\n  ```rust\n  fn a() {\n      x();\n  }\n  ```\n  \
+             <div data-listing-tag=\"foo\" aria-hidden=\"true\"></div>\n\n\n- Next\n",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_indents_an_include_inside_a_fence_in_a_list_item() {
+        let out = splice_one(
+            "listings/foo.rs",
+            "fn a() {}\nfn b() {}\n",
+            "- Step\n\n  ```rust\n  {{#include listings/foo.rs}}\n  ```\n",
+        );
+        assert_eq!(
+            out,
+            "- Step\n\n  ```rust\n  fn a() {}\n  fn b() {}\n  ```\n  \
+             <div data-listing-tag=\"foo\" aria-hidden=\"true\"></div>\n\n",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_indents_a_bare_include_under_a_wide_list_marker() {
+        // `10.` puts the item's content 4 columns in. Inside the item that
+        // is not indented code, and the splicer follows the item's indent
+        // rather than a fence's 3-space limit.
+        let out = splice_one(
+            "listings/foo.rs",
+            "fn a() {}\n",
+            "10. Step\n\n    {{#include listings/foo.rs}}\n",
+        );
+        assert_eq!(
+            out,
+            "10. Step\n\n    ```rust\n    fn a() {}\n    ```\n    \
+             <div data-listing-tag=\"foo\" aria-hidden=\"true\"></div>\n\n",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_leaves_a_listings_blank_lines_blank_inside_a_list_item() {
+        let out = splice_one(
+            "listings/foo.rs",
+            "fn a() {}\n\nfn b() {}\n",
+            "- Step\n\n  {{#include listings/foo.rs}}\n",
+        );
+        assert!(
+            out.contains("  fn a() {}\n\n  fn b() {}\n"),
+            "a blank line should carry no indent; got:\n{out}"
+        );
     }
 
     #[test]
@@ -1046,14 +1115,20 @@ mod tests {
     }
 
     #[test]
-    fn splice_chapter_accepts_up_to_three_spaces_of_indent_before_a_bare_include() {
-        // CommonMark's own threshold for a fence opener.
+    fn splice_chapter_carries_a_bare_includes_indent_onto_every_line_of_its_block() {
+        // Outside any container the indent is cosmetic: CommonMark strips
+        // up to the opener's indent from each line, so the code renders at
+        // its own columns either way.
         let out = splice_one(
             "listings/foo.rs",
             "fn body() {}\n",
             "   {{#include listings/foo.rs}}\n",
         );
-        assert!(out.contains("```rust\n"), "got:\n{out}");
+        assert_eq!(
+            out,
+            "   ```rust\n   fn body() {}\n   ```\n   \
+             <div data-listing-tag=\"foo\" aria-hidden=\"true\"></div>\n\n",
+        );
     }
 
     #[test]

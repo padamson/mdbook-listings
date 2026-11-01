@@ -45,8 +45,8 @@ pub(crate) enum FencePolicy {
 /// span are skipped so chapters can quote directive syntax verbatim, and so
 /// are ones inside an HTML comment, which the page never shows: a listing
 /// commented out there must not be numbered. So is any occurrence in a code
-/// block the passes can't edit (indented, unclosed, or behind a container
-/// prefix), quoted or not. mdbook's `links` pass expands `{{#include}}` in
+/// block the passes can't edit (indented, unclosed, or behind a `>`),
+/// quoted or not. mdbook's `links` pass expands `{{#include}}` in
 /// all of these all the same, so for includes only the backslash form is a
 /// safe quote; the include pass reports the rest
 /// (`include::rejected_includes`).
@@ -138,9 +138,9 @@ impl<'a> Regions<'a> {
                             hidden.push(span.start..b.body_start);
                             fences.push(b.body_start..b.close_end);
                         }
-                        // Indented, unclosed, or behind a container prefix:
-                        // the passes edit bytes and can't splice into it
-                        // without breaking the page.
+                        // Indented, unclosed, or behind a `>`: the passes
+                        // edit bytes and can't splice into it without
+                        // breaking the page.
                         None => hidden.push(span),
                     }
                 }
@@ -207,6 +207,19 @@ fn push_comments(content: &str, span: Range<usize>, out: &mut Vec<Range<usize>>)
         out.push(span.start + at..span.start + end);
         cursor = end;
     }
+}
+
+/// The indent before the directive at `at`, when nothing else precedes it
+/// on its line. Inside a list item that is the item's indent, which a
+/// splicer puts on every line it inserts so the listing stays in the item.
+/// `None` when the directive shares its line with text or a `>`.
+pub(crate) fn indent_before(content: &str, at: usize) -> Option<&str> {
+    let line_start = content[..at].rfind('\n').map_or(0, |nl| nl + 1);
+    let indent = &content[line_start..at];
+    indent
+        .bytes()
+        .all(|b| b == b' ' || b == b'\t')
+        .then_some(indent)
 }
 
 /// 1-based line number of `byte_offset` in `content`, for diagnostics.
@@ -422,16 +435,12 @@ mod tests {
 
     #[test]
     fn scan_skips_an_unquoted_occurrence_in_a_code_block_the_passes_dont_walk() {
-        // The passes edit bytes and can't carry a `> ` or an indent through,
-        // so a splice into one of these blocks breaks the page.
+        // The passes edit bytes and can't carry a `> ` through, so a splice
+        // into one of these blocks breaks the page.
         for (what, s) in [
             (
                 "blockquoted fence",
                 "> ```markdown\n> {{#demo a b}}\n> ```\n\n{{#demo c d}}\n",
-            ),
-            (
-                "fence in a list item",
-                "10. Step\n\n    ```markdown\n    {{#demo a b}}\n    ```\n\n{{#demo c d}}\n",
             ),
             (
                 "indented code",
@@ -448,6 +457,31 @@ mod tests {
                 assert_eq!(args, ["c d"], "{what}, {policy:?}");
             }
         }
+    }
+
+    #[test]
+    fn scan_annotate_yields_close_end_for_an_occurrence_in_a_fence_in_a_list_item() {
+        // The passes carry the item's indent through, so the fence is
+        // walked like one at the top level.
+        let s = "10. Step\n\n    ```markdown\n    {{#demo a b}}\n    ```\n\n{{#demo c d}}\n";
+        let got = scan_directives(s, "{{#demo ", FencePolicy::Annotate);
+        let args: Vec<_> = got.iter().map(|o| o.args).collect();
+        assert_eq!(args, ["a b", "c d"]);
+        let close_end = s.find("    ```\n").unwrap() + "    ```\n".len();
+        assert_eq!(got[0].fence_close_end, Some(close_end));
+        assert_eq!(got[1].fence_close_end, None);
+        let skipped: Vec<_> = scan(s, "{{#demo ").iter().map(|o| o.args).collect();
+        assert_eq!(skipped, ["c d"]);
+    }
+
+    #[test]
+    fn indent_before_is_the_whitespace_alone_on_the_line_before_the_directive() {
+        let s = "- Step\n\n    {{#demo a b}}\n";
+        let at = s.find("{{").unwrap();
+        assert_eq!(indent_before(s, at), Some("    "));
+        assert_eq!(indent_before("{{#demo a b}}", 0), Some(""));
+        assert_eq!(indent_before("- {{#demo a b}}", 2), None);
+        assert_eq!(indent_before("> {{#demo a b}}", 2), None);
     }
 
     #[test]
