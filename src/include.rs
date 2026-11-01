@@ -153,7 +153,8 @@ pub enum Rejection {
     /// which runs after it, will still expand it.
     Unintercepted,
     /// Outside a fence, where the code block it expands to would not render
-    /// as one: sharing its line, in a blockquote, or in an HTML block.
+    /// as one: sharing its line, in a blockquote, in an HTML block, or
+    /// indented into the paragraph above it.
     Misplaced(Misplacement),
 }
 
@@ -1238,6 +1239,51 @@ mod tests {
                 }
             ),
             "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn splice_chapter_rejects_a_bare_include_indented_into_the_paragraph_above() {
+        // Four spaces under a line of text continue its paragraph, so the
+        // fence the splicer would write there renders as prose.
+        let tmp = TempDir::new().unwrap();
+        let err = splice_chapter(
+            "Some text\n    {{#include listings/foo.rs}}\n",
+            tmp.path(),
+            None,
+            &no_manifest(),
+            &SourcePaths::Verbatim,
+        )
+        .expect_err("a lazy continuation line should be rejected");
+        assert!(
+            matches!(
+                err,
+                SpliceError::RejectedInclude {
+                    include: RejectedInclude {
+                        why: Rejection::Misplaced(Misplacement::Indented),
+                        line: 2,
+                        ..
+                    },
+                    ..
+                }
+            ),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn splice_chapter_puts_an_include_on_a_lazy_quote_line_after_the_quote() {
+        // No `>` on the directive's line: the fence ends the quoted
+        // paragraph and renders after it, as the author laid it out.
+        let out = splice_one(
+            "listings/foo.rs",
+            "fn a() {}\n",
+            "> Note\n{{#include listings/foo.rs}}\n",
+        );
+        assert_eq!(
+            out,
+            "> Note\n```rust\nfn a() {}\n```\n\
+             <div data-listing-tag=\"foo\" aria-hidden=\"true\"></div>\n\n",
         );
     }
 

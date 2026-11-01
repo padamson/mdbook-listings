@@ -108,14 +108,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 - **A `{{#diff}}` whose code block can't render where it sits fails the
-  build.** One sharing its line with other text, inside a blockquote, or
-  inside an HTML block used to splice its block there anyway, leaving a
-  fence mid-line, a diff that escaped its quote after the first line, or
-  literal backticks in the HTML. The build and `verify` now name the line
-  and the fix, as they already did for an include sharing its line.
-- **An include inside a blockquote or an HTML block fails the build with
-  the reason.** A blockquoted one was reported as sharing its line with
-  text; one inside an HTML block was spliced and showed as text.
+  build.** One sharing its line with other text, inside a blockquote,
+  inside an HTML block, or indented 4 or more under a line of text used to
+  splice its block there anyway, leaving a fence mid-line, a diff that
+  escaped its quote after the first line, literal backticks in the HTML, or
+  a fence read as part of the paragraph. The build and `verify` now name
+  the line and the fix, as they already did for an include sharing its
+  line.
+- **An include inside a blockquote or an HTML block, or indented 4 or more
+  under a line of text, fails the build with the reason.** The first and
+  last were reported as sharing their line with text; one inside an HTML
+  block was spliced and showed as text. The indent counts from the list
+  item's text when the directive is in one, so a listing at the item's
+  indent is fine, and the `>` has to be on the directive's own line: one
+  on the line after a quote, at the margin, renders after the quote.
 - **A `{{#listing-ref}}` inside an HTML block fails the build and
   `verify`** instead of rendering as literal link text.
 - **A directive in a fence's info string is left alone.** A `{{#diff}}`,

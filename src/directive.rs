@@ -24,10 +24,11 @@ pub(crate) struct DirectiveOccurrence<'a> {
     /// the passes walk (only produced under [`FencePolicy::Annotate`]); the
     /// value is the fence's close_end so callers can place trailing anchors.
     pub(crate) fence_close_end: Option<usize>,
-    /// The construct around a prose occurrence that no block a pass emits
-    /// can sit in: a blockquote, whose lines carry a `>` the block's lines
-    /// can't, or an HTML block, where the browser shows markdown as text.
-    /// `None` in plain prose and in a fence.
+    /// What around a prose occurrence keeps the block a pass emits from
+    /// rendering there: a blockquote, whose `>` the block's lines can't
+    /// carry; an HTML block, where the browser shows markdown as text; or
+    /// the paragraph above, when an indent of 4 or more makes the line a
+    /// continuation of it. `None` in plain prose and in a fence.
     pub(crate) enclosure: Option<Misplacement>,
 }
 
@@ -123,8 +124,13 @@ struct Regions<'a> {
     /// HTML blocks, where CommonMark reads no markdown but the browser
     /// renders HTML.
     html: Vec<Range<usize>>,
-    /// Blockquotes, whose every line carries a `>`.
+    /// Blockquotes, with the lazy lines CommonMark lets continue a quoted
+    /// paragraph without a `>`.
     quotes: Vec<Range<usize>>,
+    /// List items, each with the column its content starts in, so an
+    /// occurrence's indent reads against its item's text and not the
+    /// margin.
+    items: Vec<(Range<usize>, usize)>,
     /// The `[body_start, close_end)` of each block `fence::fenced_block`
     /// accepts, the same blocks `FencedBlocks` yields.
     fences: Vec<Range<usize>>,
@@ -137,6 +143,7 @@ impl<'a> Regions<'a> {
         let mut hidden = Vec::new();
         let mut html = Vec::new();
         let mut quotes = Vec::new();
+        let mut items = Vec::new();
         let mut fences = Vec::new();
         for (event, span) in crate::fence::cmark_parser(content).into_offset_iter() {
             match &event {
@@ -160,6 +167,10 @@ impl<'a> Regions<'a> {
                 }
                 Event::InlineHtml(_) => push_comments(content, span, &mut hidden),
                 Event::Start(Tag::BlockQuote(_)) => quotes.push(span),
+                // The parse starts an item at its marker.
+                Event::Start(Tag::Item) => {
+                    items.push((span.clone(), item_content_column(content, span.start)));
+                }
                 _ => {}
             }
         }
@@ -168,20 +179,42 @@ impl<'a> Regions<'a> {
             hidden,
             html,
             quotes,
+            items,
             fences,
         }
     }
 
-    /// The blockquote or HTML block around `pos`, when there is one. A
-    /// quote wins over an HTML block inside it: the `>` is the harder fact.
+    /// What around `pos` keeps a block from rendering there, when something
+    /// does. A quote counts only with its `>` on the occurrence's own line:
+    /// without one the line is a lazy continuation of the quoted paragraph,
+    /// which a block at the margin ends, so the block renders after the
+    /// quote. A quote wins over an HTML block inside it: the `>` is the
+    /// harder fact. An indent of 4 or more past the item's text, where no
+    /// `>` or text precedes the occurrence, continues the paragraph above.
     fn enclosure(&self, pos: usize) -> Option<Misplacement> {
-        if within(&self.quotes, pos).is_some() {
+        let before = &self.content[line_start(self.content, pos)..pos];
+        if within(&self.quotes, pos).is_some() && before.contains('>') {
             Some(Misplacement::BlockQuote)
         } else if within(&self.html, pos).is_some() {
             Some(Misplacement::HtmlBlock)
+        } else if indent_before(self.content, pos)
+            .is_some_and(|indent| indent.len() > self.item_content_column(pos) + 3)
+        {
+            Some(Misplacement::Indented)
         } else {
             None
         }
+    }
+
+    /// The column the innermost list item around `pos` starts its content
+    /// in; 0 outside any item. Items are recorded in document order, so of
+    /// those holding `pos` the last is the innermost.
+    fn item_content_column(&self, pos: usize) -> usize {
+        self.items
+            .iter()
+            .rev()
+            .find(|(item, _)| item.contains(&pos))
+            .map_or(0, |(_, column)| *column)
     }
 
     /// Where a directive at `pos` sits. In a fence body or an HTML block the
@@ -243,6 +276,10 @@ pub enum Misplacement {
     BlockQuote,
     /// Inside an HTML block, where the browser shows markdown as text.
     HtmlBlock,
+    /// Indented 4 or more past its list item's text, or the margin, under a
+    /// line of text: markdown reads the line as more of that paragraph, so
+    /// no block can start on it.
+    Indented,
 }
 
 impl Misplacement {
@@ -261,8 +298,28 @@ impl Misplacement {
                 "is inside an HTML block, where what it expands to shows as text; add a \
                  blank line between the HTML and the directive"
             }
+            Misplacement::Indented => {
+                "is indented 4 or more past the text above it, which makes it more of that \
+                 paragraph; outdent it so the block it expands to can start one"
+            }
         }
     }
+}
+
+/// The column a list item's content starts in, read from its marker at
+/// `marker_start`: the marker, then the 1 to 4 blanks after it, or one
+/// blank when there are 5 or more (the rest is indented code) or the line
+/// ends at the marker.
+fn item_content_column(content: &str, marker_start: usize) -> usize {
+    let line = &content[marker_start..];
+    let line = line.split_once('\n').map_or(line, |(l, _)| l);
+    let marker = line.find([' ', '\t']).unwrap_or(line.len());
+    let blanks = line[marker..]
+        .bytes()
+        .take_while(|&b| b == b' ' || b == b'\t')
+        .count();
+    let blanks = if (1..=4).contains(&blanks) { blanks } else { 1 };
+    marker_start - line_start(content, marker_start) + marker + blanks
 }
 
 /// The diagnostic for `directive` (its text as written) sitting where `why`
@@ -546,9 +603,26 @@ mod tests {
                 Some(Misplacement::BlockQuote),
             ),
             (
+                "quoted line of a quoted paragraph",
+                "> text\n> {{#demo a b}}\n",
+                Some(Misplacement::BlockQuote),
+            ),
+            (
+                "mid-line in a quote",
+                "> see {{#demo a b}}\n",
+                Some(Misplacement::BlockQuote),
+            ),
+            // A block at the margin ends the quoted paragraph, so the
+            // block renders after the quote where the author put it.
+            (
                 "lazy continuation of a quoted paragraph",
                 "> text\n{{#demo a b}}\n",
-                Some(Misplacement::BlockQuote),
+                None,
+            ),
+            (
+                "lazy continuation of a quoted paragraph in a list item",
+                "- > text\n  {{#demo a b}}\n",
+                None,
             ),
             (
                 "html block",
@@ -564,6 +638,86 @@ mod tests {
             let got = scan(s, "{{#demo ");
             assert_eq!(got.len(), 1, "{what}: got {got:?}");
             assert_eq!(got[0].enclosure, want, "{what}");
+        }
+    }
+
+    #[test]
+    fn scan_records_an_indent_that_continues_the_paragraph_above() {
+        // Four or more past the container's text, a line can't start a
+        // block: it is more of the paragraph above it. The container is the
+        // innermost list item, whose content column its marker sets.
+        for (what, s, want) in [
+            (
+                "four at the top level",
+                "Some text\n    {{#demo a b}}\n",
+                Some(Misplacement::Indented),
+            ),
+            (
+                "three at the top level",
+                "Some text\n   {{#demo a b}}\n",
+                None,
+            ),
+            (
+                "four past the item's text",
+                "- item\n      {{#demo a b}}\n",
+                Some(Misplacement::Indented),
+            ),
+            (
+                "three past the item's text",
+                "- item\n     {{#demo a b}}\n",
+                None,
+            ),
+            (
+                "four past a wide marker's text",
+                "10. item\n        {{#demo a b}}\n",
+                Some(Misplacement::Indented),
+            ),
+            (
+                "three past a wide marker's text",
+                "10. item\n       {{#demo a b}}\n",
+                None,
+            ),
+            (
+                "four past a nested item's text",
+                "- a\n  - b\n        {{#demo a b}}\n",
+                Some(Misplacement::Indented),
+            ),
+            (
+                "three past a nested item's text",
+                "- a\n  - b\n       {{#demo a b}}\n",
+                None,
+            ),
+            (
+                "four under a quoted line",
+                "> text\n    {{#demo a b}}\n",
+                Some(Misplacement::Indented),
+            ),
+            (
+                "four past the text of a later sibling item",
+                "- a\n- b\n      {{#demo a b}}\n",
+                Some(Misplacement::Indented),
+            ),
+        ] {
+            let got = scan(s, "{{#demo ");
+            assert_eq!(got.len(), 1, "{what}: got {got:?}");
+            assert_eq!(got[0].enclosure, want, "{what}");
+        }
+    }
+
+    #[test]
+    fn item_content_column_is_the_marker_then_one_to_four_blanks() {
+        for (what, s, marker_at, want) in [
+            ("bullet", "- x\n", 0, 2),
+            ("one-digit ordinal", "1. x\n", 0, 3),
+            ("two-digit ordinal", "10. x\n", 0, 4),
+            ("three blanks", "-   x\n", 0, 4),
+            ("four blanks", "-    x\n", 0, 5),
+            ("five blanks is indented code after one", "-     x\n", 0, 2),
+            ("empty item", "-\n  x\n", 0, 2),
+            ("nested marker", "- a\n  - x\n", 6, 4),
+            ("task marker", "- [ ] x\n", 0, 2),
+        ] {
+            assert_eq!(item_content_column(s, marker_at), want, "{what}");
         }
     }
 
@@ -609,6 +763,7 @@ mod tests {
             (Misplacement::MidLine, "line"),
             (Misplacement::BlockQuote, "blockquote"),
             (Misplacement::HtmlBlock, "HTML block"),
+            (Misplacement::Indented, "indented"),
         ] {
             let msg = misplaced_message("{{#diff a b}}", why);
             assert!(msg.starts_with("{{#diff a b}} "), "{why:?}: got {msg}");

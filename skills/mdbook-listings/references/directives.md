@@ -80,7 +80,10 @@ it, at the item's indent, as you would any other block in the item:
 
 Every line the preprocessor inserts takes that indent, so the listing, its
 number and caption, and its callout badges all stay in the item. The same
-goes for a `{{#diff}}`.
+goes for a `{{#diff}}`. Keep to the item's indent: on the line after some
+of the item's text, a directive indented 4 or more past that text
+continues the paragraph instead of starting a block, and the build and
+`verify` name the line.
 
 A blockquote is the one container that can't hold a listing: the `>` can't
 go on the inserted lines, so an include or `{{#diff}}` inside one fails the

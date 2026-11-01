@@ -1164,6 +1164,12 @@ mod tests {
                 2,
                 Misplacement::HtmlBlock,
             ),
+            (
+                "indented into the paragraph above",
+                "- Step\n      {{#diff left-tag right-tag}}\n",
+                2,
+                Misplacement::Indented,
+            ),
         ] {
             let err = splice_chapter(
                 content,
@@ -1542,6 +1548,24 @@ mod tests {
         assert!(
             out.contains("data-listing-diff-right=\"right-tag\""),
             "expected diff-right anchor attribute; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_puts_a_diff_on_a_lazy_quote_line_after_the_quote() {
+        let (tmp, manifest, _) = fixture(b"a\n", b"b\n");
+        let out = splice_chapter(
+            "> Note\n{{#diff left-tag right-tag}}\n",
+            &manifest,
+            tmp.path(),
+            None,
+            tmp.path(),
+            &SourcePaths::Verbatim,
+        )
+        .expect("a block at the margin ends the quote and renders after it");
+        assert!(
+            out.starts_with("> Note\n```diff\n--- left-tag\n"),
+            "got:\n{out}"
         );
     }
 
