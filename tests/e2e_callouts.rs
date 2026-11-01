@@ -7,6 +7,7 @@ use common::e2e_harness::with_traced_chapter;
 
 const CH05: &str = "ch05-render-inline-callouts";
 const CH06: &str = "ch06-dogfooding-polish";
+const CH08: &str = "ch08-recipes";
 
 /// The rendered box of a locator's first match. `Locator::bounding_box` is
 /// a plain query with no auto-wait, and it answers `None` both for a
@@ -761,6 +762,39 @@ async fn every_badge_renders_inside_its_owning_pre() {
                 failures.is_empty(),
                 "badges rendered outside their owning <pre>:\n{}",
                 failures.join("\n")
+            );
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_listing_inside_a_list_item_renders_in_the_item_with_its_badge() {
+    // ch08 puts a numbered, badged listing inside a numbered step. The
+    // caption, the <pre> and the overlay must all be children of that one
+    // <li>, and the badge must land inside that <pre>: a line emitted at
+    // column 0 would have ended the item and left them outside it.
+    with_traced_chapter(
+        "a_listing_inside_a_list_item_renders_in_the_item_with_its_badge",
+        CH08,
+        |page| async move {
+            let item = page.locator(locator!("li:has(> .callout-overlay)"));
+            expect(item.clone())
+                .to_have_count(1)
+                .await
+                .expect("one list item holds a badged listing");
+            expect(item.locator("> .listing-caption"))
+                .to_have_count(1)
+                .await
+                .expect("the caption is a child of the item");
+            let pre_box = bounding_box(&item.locator("> pre")).await;
+            let badge = item.locator("> .callout-overlay .callout-badge");
+            let badge_box = bounding_box(&badge).await;
+            let (top, bottom) = (pre_box.y, pre_box.y + pre_box.height);
+            assert!(
+                badge_box.y >= top - 2.0 && badge_box.y <= bottom + 2.0,
+                "badge y={:.0} outside its <pre> [{top:.0}..{bottom:.0}]",
+                badge_box.y
             );
         },
     )

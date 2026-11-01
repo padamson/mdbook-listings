@@ -1,0 +1,7 @@
+# Sidecar callouts attached to listing `fence-v2` (src/fence.rs at the
+# freeze that added `prefix_lines`). The source carries no inline markers.
+
+[[callout]]
+line = 267
+label = "blank-line-stays-blank"
+body = "A blank line gets no indent. It stays in the item either way, and with the indent it would end in trailing spaces."

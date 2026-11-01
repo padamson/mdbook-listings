@@ -24,6 +24,22 @@ fix that — the prose keys to a label, not a line.
 The list can no longer drift out of sync, because there are no line
 numbers left to drift.
 
+## Put a listing inside a list item
+
+A step-by-step recipe often wants its code inside the step. Write the
+directive at the item's indent, as you would any other block in the item,
+and the listing renders as part of the step, numbered and badged like any
+other:
+
+1. The preprocessor puts the item's indent on every line it inserts:
+
+   {{#include listings/fence-v2.rs:258:273 caption="The helper that carries a list item's indent onto inserted lines"}}
+
+   The blank line is the exception ({{#callout blank-line-stays-blank}}).
+
+2. A fence you wrote around the include works the same way, and so does a
+   `\{{#diff}}`.
+
 ## Manage multiple revisions of the same source
 
 When to freeze a new tag versus `--force`-overwriting an existing one:

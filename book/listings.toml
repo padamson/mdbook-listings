@@ -708,3 +708,9 @@ tag = "verify-tests-v3"
 source = "../tests/verify.rs"
 frozen = "src/listings/verify-tests-v3.rs"
 sha256 = "e25958873ea90746056ac0cae08f6782c3f6c68da736d9efac6117a6e6ceb88b"
+
+[[listing]]
+tag = "fence-v2"
+source = "../src/fence.rs"
+frozen = "src/listings/fence-v2.rs"
+sha256 = "b7f115c7b4b239742acdba51235df0aba9f78a3401574f9470a07edf3fad40cc"
