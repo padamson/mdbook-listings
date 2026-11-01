@@ -20,16 +20,27 @@ pub(crate) struct DirectiveOccurrence<'a> {
     pub(crate) args: &'a str,
     /// Byte range of the full `{{#… }}` text.
     pub(crate) span: Range<usize>,
-    /// `Some(close_end)` when the occurrence starts in the body of a fence
-    /// the passes walk (only produced under [`FencePolicy::Annotate`]); the
-    /// value is the fence's close_end so callers can place trailing anchors.
-    pub(crate) fence_close_end: Option<usize>,
+    /// The fence the occurrence starts in the body of, when it is one the
+    /// passes walk (only produced under [`FencePolicy::Annotate`]).
+    pub(crate) fence: Option<HostFence<'a>>,
     /// What around a prose occurrence keeps the block a pass emits from
     /// rendering there: a blockquote, whose `>` the block's lines can't
     /// carry; an HTML block, where the browser shows markdown as text; or
     /// the paragraph above, when an indent of 4 or more makes the line a
     /// continuation of it. `None` in plain prose and in a fence.
     pub(crate) enclosure: Option<Misplacement>,
+}
+
+/// The fence an occurrence sits in, for the pass that replaces the
+/// occurrence inside it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct HostFence<'a> {
+    /// One past the closing fence line, where a trailing anchor goes.
+    pub(crate) close_end: usize,
+    /// The fence's prefix (see `FencedBlock::prefix`), for every line the
+    /// pass puts inside or after it; the occurrence's own indent within
+    /// the fence is the author's layout, not the page's.
+    pub(crate) prefix: &'a str,
 }
 
 /// What to do with an occurrence that starts in the body of a fence the
@@ -76,9 +87,9 @@ pub(crate) fn scan_directives<'a>(
             cursor = after_prefix;
             continue;
         }
-        let (fence_close_end, enclosure) = match (regions().place(at), policy) {
+        let (fence, enclosure) = match (regions().place(at), policy) {
             (Place::Prose, _) => (None, regions().enclosure(at)),
-            (Place::Fence(close_end), FencePolicy::Annotate) => (Some(close_end), None),
+            (Place::Fence(fence), FencePolicy::Annotate) => (Some(fence), None),
             (Place::Fence(_), FencePolicy::SkipInside) | (Place::Skipped, _) => {
                 cursor = after_prefix;
                 continue;
@@ -93,7 +104,7 @@ pub(crate) fn scan_directives<'a>(
         out.push(DirectiveOccurrence {
             args: &content[after_prefix..after_prefix + close_rel],
             span: at..span_end,
-            fence_close_end,
+            fence,
             enclosure,
         });
         cursor = span_end;
@@ -102,12 +113,12 @@ pub(crate) fn scan_directives<'a>(
 }
 
 /// Where a directive sits on the page CommonMark renders.
-enum Place {
+enum Place<'a> {
     /// Rendered markdown, or an HTML block, where a directive whose output
     /// is inline HTML still renders.
     Prose,
-    /// The body of a fence the passes walk, with that fence's `close_end`.
-    Fence(usize),
+    /// The body of a fence the passes walk.
+    Fence(HostFence<'a>),
     /// Hidden or quoted, or in a code block the passes can't edit.
     Skipped,
 }
@@ -132,8 +143,8 @@ struct Regions<'a> {
     /// margin.
     items: Vec<(Range<usize>, usize)>,
     /// The `[body_start, close_end)` of each block `fence::fenced_block`
-    /// accepts, the same blocks `FencedBlocks` yields.
-    fences: Vec<Range<usize>>,
+    /// accepts, the same blocks `FencedBlocks` yields, with its prefix.
+    fences: Vec<(Range<usize>, &'a str)>,
 }
 
 impl<'a> Regions<'a> {
@@ -153,7 +164,7 @@ impl<'a> Regions<'a> {
                         // The opener's info string is never prose.
                         Some(b) => {
                             hidden.push(span.start..b.body_start);
-                            fences.push(b.body_start..b.close_end);
+                            fences.push((b.body_start..b.close_end, b.prefix));
                         }
                         // Indented, unclosed, or behind a `>`: the passes
                         // edit bytes and can't splice into it without
@@ -221,15 +232,18 @@ impl<'a> Regions<'a> {
     /// backticks are the sample's own quoting (a markdown example showing
     /// `` `{{#diff a b}}` ``), so an odd count before the directive on its
     /// line marks it as quoted.
-    fn place(&self, pos: usize) -> Place {
+    fn place(&self, pos: usize) -> Place<'a> {
         if within(&self.hidden, pos).is_some() {
             return Place::Skipped;
         }
-        if let Some(fence) = within(&self.fences, pos) {
+        if let Some((fence, prefix)) = self.fences.iter().find(|(r, _)| r.contains(&pos)) {
             return if self.quoted_on_its_line(pos) {
                 Place::Skipped
             } else {
-                Place::Fence(fence.end)
+                Place::Fence(HostFence {
+                    close_end: fence.end,
+                    prefix,
+                })
             };
         }
         if within(&self.html, pos).is_some() && self.quoted_on_its_line(pos) {
@@ -280,6 +294,9 @@ pub enum Misplacement {
     /// line of text: markdown reads the line as more of that paragraph, so
     /// no block can start on it.
     Indented,
+    /// In a fence an earlier directive already fills: a block holds one
+    /// listing, and the anchor after the fence names one.
+    SharedFence,
 }
 
 impl Misplacement {
@@ -301,6 +318,10 @@ impl Misplacement {
             Misplacement::Indented => {
                 "is indented 4 or more past the text above it, which makes it more of that \
                  paragraph; outdent it so the block it expands to can start one"
+            }
+            Misplacement::SharedFence => {
+                "is the second directive in its code block, which holds one listing; give \
+                 it a block of its own"
             }
         }
     }
@@ -480,7 +501,7 @@ mod tests {
         assert_eq!(got[0].args, "a b");
         assert_eq!(got[0].span, 7..20);
         assert_eq!(&s[got[0].span.clone()], "{{#demo a b}}");
-        assert_eq!(got[0].fence_close_end, None);
+        assert_eq!(got[0].fence, None);
     }
 
     #[test]
@@ -586,8 +607,14 @@ mod tests {
         let args: Vec<_> = got.iter().map(|o| o.args).collect();
         assert_eq!(args, ["a b", "c d"]);
         let close_end = s.find("    ```\n").unwrap() + "    ```\n".len();
-        assert_eq!(got[0].fence_close_end, Some(close_end));
-        assert_eq!(got[1].fence_close_end, None);
+        assert_eq!(
+            got[0].fence,
+            Some(HostFence {
+                close_end,
+                prefix: "    "
+            })
+        );
+        assert_eq!(got[1].fence, None);
         let skipped: Vec<_> = scan(s, "{{#demo ").iter().map(|o| o.args).collect();
         assert_eq!(skipped, ["c d"]);
     }
@@ -764,6 +791,7 @@ mod tests {
             (Misplacement::BlockQuote, "blockquote"),
             (Misplacement::HtmlBlock, "HTML block"),
             (Misplacement::Indented, "indented"),
+            (Misplacement::SharedFence, "code block"),
         ] {
             let msg = misplaced_message("{{#diff a b}}", why);
             assert!(msg.starts_with("{{#diff a b}} "), "{why:?}: got {msg}");
@@ -781,22 +809,27 @@ mod tests {
     }
 
     #[test]
-    fn scan_annotate_yields_fence_close_end_for_in_fence_occurrence() {
-        let s = "```rust\n{{#demo a b}}\n```\nafter\n";
+    fn scan_annotate_yields_the_fence_for_an_in_fence_occurrence() {
+        // The fence's prefix, not the occurrence's own indent, is what the
+        // pass carries onto the lines it writes.
+        let s = "```rust\n    {{#demo a b}}\n```\nafter\n";
         let got = scan_directives(s, "{{#demo ", FencePolicy::Annotate);
         assert_eq!(got.len(), 1);
-        let close_end = s
-            .find("```\n")
-            .map(|_| s.rfind("```\n").unwrap() + 4)
-            .unwrap();
-        assert_eq!(got[0].fence_close_end, Some(close_end));
+        let close_end = s.rfind("```\n").unwrap() + 4;
+        assert_eq!(
+            got[0].fence,
+            Some(HostFence {
+                close_end,
+                prefix: ""
+            })
+        );
     }
 
     #[test]
-    fn scan_annotate_yields_none_close_end_outside_fence() {
+    fn scan_annotate_yields_no_fence_outside_one() {
         let got = scan_directives("{{#demo a b}}\n", "{{#demo ", FencePolicy::Annotate);
         assert_eq!(got.len(), 1);
-        assert_eq!(got[0].fence_close_end, None);
+        assert_eq!(got[0].fence, None);
     }
 
     #[test]

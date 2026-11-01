@@ -9,13 +9,14 @@ use std::path::{Path, PathBuf};
 use crate::anchor::ListingWidth;
 use crate::diff::{LineRange, parse_line_range};
 use crate::directive::{
-    FencePolicy, Misplacement, line_number, misplaced_message, misplacement, scan_directives,
+    FencePolicy, HostFence, Misplacement, line_number, misplaced_message, misplacement,
+    scan_directives,
 };
 use crate::fence::{indent_before, prefix_lines};
 use crate::source_path::SourcePaths;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IncludeDirective {
+pub struct IncludeDirective<'a> {
     pub tag: Option<String>,
     /// Path part of the directive — never carries a `:start:end` suffix.
     pub rel_path: String,
@@ -40,14 +41,15 @@ pub struct IncludeDirective {
     /// this one listing. `None` when unset.
     pub wrap: Option<bool>,
     pub span: Range<usize>,
-    pub fence_close_end: Option<usize>,
-    /// Why the block it expands to would not render where it sits, for a
-    /// directive outside a fence (inside one, only its own bytes are
-    /// replaced). `None` when it would.
+    /// The author's fence around it, when there is one: only the bytes
+    /// between its lines are replaced, at its indent.
+    pub fence: Option<HostFence<'a>>,
+    /// Why the block it expands to would not render where it sits, or why
+    /// its fence can't take it. `None` when it would.
     pub misplacement: Option<Misplacement>,
 }
 
-impl IncludeDirective {
+impl IncludeDirective<'_> {
     /// The info string for a self-contained expansion: the explicit
     /// `lang="..."` when the author set one, otherwise the language named
     /// by the file's extension. Empty for an extensionless path, which
@@ -74,8 +76,11 @@ fn trailing_newline_end(content: &str, from: usize) -> Option<usize> {
 }
 
 // CALLOUT: include-parse-entry The shared directive scanner finds every unescaped `{{#include ...}}` outside inline code (chapter prose quotes the syntax verbatim); this pass keeps only the intercepted path prefixes and parses their range suffix. (Renamed from `parse-entry`, which collided with the marker of the same name in callout.rs.)
-pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
+pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective<'_>> {
     let mut out = Vec::new();
+    // The close_end of the fence the previous directive filled, so a second
+    // one in the same fence is refused rather than spliced over the first.
+    let mut filled = None;
     for occ in scan_directives(content, "{{#include ", FencePolicy::Annotate) {
         let (args, caption) = crate::directive::split_caption(occ.args);
         let (args, label) = crate::directive::split_label(&args);
@@ -113,11 +118,14 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
         } else {
             None
         };
-        let misplaced = occ
-            .fence_close_end
-            .is_none()
-            .then(|| misplacement(content, &occ))
-            .flatten();
+        let misplaced = match occ.fence {
+            None => misplacement(content, &occ),
+            Some(fence) if filled == Some(fence.close_end) => Some(Misplacement::SharedFence),
+            Some(fence) => {
+                filled = Some(fence.close_end);
+                None
+            }
+        };
         out.push(IncludeDirective {
             tag,
             rel_path: path.to_string(),
@@ -129,7 +137,7 @@ pub fn parse_listing_includes(content: &str) -> Vec<IncludeDirective> {
             width,
             wrap,
             span: occ.span,
-            fence_close_end: occ.fence_close_end,
+            fence: occ.fence,
             misplacement: misplaced,
         });
     }
@@ -152,9 +160,9 @@ pub enum Rejection {
     /// This preprocessor leaves it alone, but mdbook's `links` preprocessor,
     /// which runs after it, will still expand it.
     Unintercepted,
-    /// Outside a fence, where the code block it expands to would not render
-    /// as one: sharing its line, in a blockquote, in an HTML block, or
-    /// indented into the paragraph above it.
+    /// Where the code block it expands to would not render as one: sharing
+    /// its line, in a blockquote, in an HTML block, or indented into the
+    /// paragraph above it; or in a fence an earlier include fills.
     Misplaced(Misplacement),
 }
 
@@ -362,14 +370,17 @@ pub fn splice_chapter(
         }
         // Inside a list item the directive's indent is the item's, and
         // every line put in its place needs it too, or the first line
-        // without it ends the item. The indent is emitted with the lines
+        // without it ends the item. Inside an author's fence the fence's
+        // own prefix is the one to carry, however the directive was laid
+        // out within it. Either way the indent is emitted with the lines
         // rather than copied through ahead of them.
-        let indent = indent_before(content, d.span.start).unwrap_or("");
-        out.push_str(&content[cursor..d.span.start - indent.len()]);
-        match d.fence_close_end {
+        let own_indent = indent_before(content, d.span.start).unwrap_or("");
+        out.push_str(&content[cursor..d.span.start - own_indent.len()]);
+        let indent = d.fence.map_or(own_indent, |fence| fence.prefix);
+        match d.fence {
             // The author wrote the fence, so only the bytes between its
             // lines are ours to replace.
-            Some(close_end) => {
+            Some(HostFence { close_end, .. }) => {
                 // Why: the chapter's newline-after-directive (preserved via
                 // `content[d.span.end..close_end]`) terminates the last
                 // content line; keeping the file's own trailing newline
@@ -590,27 +601,89 @@ mod tests {
     }
 
     #[test]
-    fn parse_listing_includes_records_fence_close_end_for_in_fence_directive() {
+    fn parse_listing_includes_records_the_fence_around_an_in_fence_directive() {
         let content = "```rust\n{{#include listings/foo.rs}}\n```\nafter\n";
         let got = parse_listing_includes(content);
         assert_eq!(got.len(), 1);
-        assert!(got[0].fence_close_end.is_some());
+        assert_eq!(
+            got[0].fence,
+            Some(HostFence {
+                close_end: content.len() - "after\n".len(),
+                prefix: "",
+            })
+        );
     }
 
     #[test]
-    fn parse_listing_includes_records_fence_close_end_inside_a_list_items_fence() {
+    fn parse_listing_includes_records_the_fence_inside_a_list_item_with_its_indent() {
         let content = "10. Step\n\n    ```rust\n    {{#include listings/foo.rs}}\n    ```\n";
         let got = parse_listing_includes(content);
         assert_eq!(got.len(), 1, "got {got:?}");
-        assert_eq!(got[0].fence_close_end, Some(content.len()));
+        assert_eq!(
+            got[0].fence,
+            Some(HostFence {
+                close_end: content.len(),
+                prefix: "    ",
+            })
+        );
     }
 
     #[test]
-    fn parse_listing_includes_records_no_fence_close_end_for_out_of_fence_directive() {
+    fn parse_listing_includes_records_no_fence_for_an_out_of_fence_directive() {
         let content = "Inline mention: {{#include listings/foo.rs}} not in fence.\n";
         let got = parse_listing_includes(content);
         assert_eq!(got.len(), 1);
-        assert_eq!(got[0].fence_close_end, None);
+        assert_eq!(got[0].fence, None);
+    }
+
+    #[test]
+    fn rejected_includes_reports_a_second_include_in_one_fence() {
+        // A block holds one listing and its anchor names one; the second
+        // directive would be spliced over the first's close.
+        let content = "```rust\n{{#include listings/a.rs}}\n{{#include listings/b.rs}}\n```\n";
+        assert_eq!(
+            rejected_includes(content),
+            vec![RejectedInclude {
+                path: "listings/b.rs".into(),
+                line: 3,
+                why: Rejection::Misplaced(Misplacement::SharedFence),
+            }],
+        );
+        let again = "```rust\n{{#include listings/a.rs}}\n```\n\n```rust\n{{#include listings/b.rs}}\n```\n";
+        assert_eq!(
+            rejected_includes(again),
+            vec![],
+            "one include per fence is the ordinary case"
+        );
+    }
+
+    #[test]
+    fn splice_chapter_refuses_a_second_include_in_one_fence() {
+        // Used to panic on a reversed slice once the cursor had passed the
+        // fence's close.
+        let tmp = TempDir::new().unwrap();
+        let err = splice_chapter(
+            "```rust\n{{#include listings/a.rs}}\n{{#include listings/b.rs}}\n```\n",
+            tmp.path(),
+            None,
+            &no_manifest(),
+            &SourcePaths::Verbatim,
+        )
+        .expect_err("two includes in one fence should be refused");
+        assert!(
+            matches!(
+                err,
+                SpliceError::RejectedInclude {
+                    include: RejectedInclude {
+                        why: Rejection::Misplaced(Misplacement::SharedFence),
+                        line: 3,
+                        ..
+                    },
+                    ..
+                }
+            ),
+            "got {err:?}"
+        );
     }
 
     #[test]
@@ -1038,6 +1111,33 @@ mod tests {
             "listings/foo.rs",
             "fn a() {}\nfn b() {}\n",
             "- Step\n\n  ```rust\n  {{#include listings/foo.rs}}\n  ```\n",
+        );
+        assert_eq!(
+            out,
+            "- Step\n\n  ```rust\n  fn a() {}\n  fn b() {}\n  ```\n  \
+             <div data-listing-tag=\"foo\" aria-hidden=\"true\"></div>\n\n",
+        );
+    }
+
+    #[test]
+    fn splice_chapter_puts_an_include_indented_inside_its_fence_at_the_fences_indent() {
+        // The directive's own indent inside the fence is the author's
+        // layout; the listing and its anchor take the fence's. Carried
+        // onto the anchor, four spaces would make it indented code.
+        let out = splice_one(
+            "listings/foo.rs",
+            "fn a() {}\nfn b() {}\n",
+            "```rust\n    {{#include listings/foo.rs}}\n```\n",
+        );
+        assert_eq!(
+            out,
+            "```rust\nfn a() {}\nfn b() {}\n```\n\
+             <div data-listing-tag=\"foo\" aria-hidden=\"true\"></div>\n\n",
+        );
+        let out = splice_one(
+            "listings/foo.rs",
+            "fn a() {}\nfn b() {}\n",
+            "- Step\n\n  ```rust\n      {{#include listings/foo.rs}}\n  ```\n",
         );
         assert_eq!(
             out,

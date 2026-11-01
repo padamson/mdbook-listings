@@ -124,6 +124,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   on the line after a quote, at the margin, renders after the quote.
 - **A `{{#listing-ref}}` inside an HTML block fails the build and
   `verify`** instead of rendering as literal link text.
+- **Two includes in one fence fail the build with the line** instead of
+  crashing the preprocessor. A fence holds one listing; the second include
+  is reported by the build and by `verify`.
+- **An include indented inside its fence renders at the fence's indent.**
+  The directive's own indent used to land on the listing's first line and
+  nowhere else.
 - **A directive in a fence's info string is left alone.** A `{{#diff}}`,
   `{{#callout}}` or `{{#listing-ref}}` written after the language on a
   fence's opening line (````` ````markdown {{#diff a b}} `````) was expanded

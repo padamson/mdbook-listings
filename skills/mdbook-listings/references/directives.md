@@ -59,7 +59,9 @@ The older form, with the author supplying the fence, renders identically:
 
 Both produce byte-identical output, so there is nothing to migrate in an
 existing book. Inside a fence the fence's own info string sets the language and
-`lang="..."` is ignored.
+`lang="..."` is ignored, and the listing takes the fence's indent, not the
+directive's. A fence holds one include; a second in the same fence fails the
+build and `verify`, naming its line.
 
 One case is an error either way: a directive that shares its line with other
 text. A code block has to start a line, so there is no rendering for
