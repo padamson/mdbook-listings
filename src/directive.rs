@@ -8,6 +8,7 @@
 use std::ops::Range;
 
 use crate::anchor::ListingWidth;
+use crate::fence::{indent_before, line_start};
 
 /// One unescaped directive occurrence outside inline code, HTML comments,
 /// and code blocks the passes don't walk.
@@ -205,8 +206,7 @@ impl<'a> Regions<'a> {
     }
 
     fn quoted_on_its_line(&self, pos: usize) -> bool {
-        let before = &self.content[..pos];
-        let line = before.rsplit_once('\n').map_or(before, |(_, t)| t);
+        let line = &self.content[line_start(self.content, pos)..pos];
         line.bytes().filter(|&b| b == b'`').count() % 2 == 1
     }
 }
@@ -281,19 +281,6 @@ pub(crate) fn misplacement(content: &str, occ: &DirectiveOccurrence) -> Option<M
             .is_none()
             .then_some(Misplacement::MidLine)
     })
-}
-
-/// The indent before the directive at `at`, when nothing else precedes it
-/// on its line. Inside a list item that is the item's indent, which a
-/// splicer puts on every line it inserts so the listing stays in the item.
-/// `None` when the directive shares its line with text or a `>`.
-pub(crate) fn indent_before(content: &str, at: usize) -> Option<&str> {
-    let line_start = content[..at].rfind('\n').map_or(0, |nl| nl + 1);
-    let indent = &content[line_start..at];
-    indent
-        .bytes()
-        .all(|b| b == b' ' || b == b'\t')
-        .then_some(indent)
 }
 
 /// 1-based line number of `byte_offset` in `content`, for diagnostics.
@@ -627,16 +614,6 @@ mod tests {
             assert!(msg.starts_with("{{#diff a b}} "), "{why:?}: got {msg}");
             assert!(msg.contains(word), "{why:?}: got {msg}");
         }
-    }
-
-    #[test]
-    fn indent_before_is_the_whitespace_alone_on_the_line_before_the_directive() {
-        let s = "- Step\n\n    {{#demo a b}}\n";
-        let at = s.find("{{").unwrap();
-        assert_eq!(indent_before(s, at), Some("    "));
-        assert_eq!(indent_before("{{#demo a b}}", 0), Some(""));
-        assert_eq!(indent_before("- {{#demo a b}}", 2), None);
-        assert_eq!(indent_before("> {{#demo a b}}", 2), None);
     }
 
     #[test]

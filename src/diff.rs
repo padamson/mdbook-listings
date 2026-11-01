@@ -7,10 +7,9 @@ use std::path::{Path, PathBuf};
 
 use crate::anchor::ListingWidth;
 use crate::directive::{
-    FencePolicy, Misplacement, indent_before, line_number, misplaced_message, misplacement,
-    scan_directives,
+    FencePolicy, Misplacement, line_number, misplaced_message, misplacement, scan_directives,
 };
-use crate::fence::prefix_lines;
+use crate::fence::{indent_before, prefix_lines};
 use crate::manifest::Manifest;
 use crate::source_path::{ShownSource, SourcePaths, relative_to};
 

@@ -100,9 +100,7 @@ fn closing_fence_text(content: &str, close_end: usize) -> &str {
     // close_end is one past the trailing newline of the closing fence
     // (or equal to bytes.len() if the file ends without a trailing newline).
     let end = close_end.saturating_sub(1);
-    let slice = &content[..end];
-    let line_start = slice.rfind('\n').map(|i| i + 1).unwrap_or(0);
-    &content[line_start..end]
+    &content[crate::fence::line_start(content, end)..end]
 }
 
 /// HTML overlay (slice 7 shape): one interactive `<button>` per marker

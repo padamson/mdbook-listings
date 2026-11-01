@@ -433,8 +433,7 @@ fn join_sources(left: Option<ShownSource>, right: Option<ShownSource>) -> Vec<Sh
 /// Byte offset of the first character of the opener fence's line. `body_start`
 /// is one past that line's trailing newline.
 fn opener_line_start(content: &str, body_start: usize) -> usize {
-    let newline = body_start.saturating_sub(1);
-    content[..newline].rfind('\n').map(|i| i + 1).unwrap_or(0)
+    crate::fence::line_start(content, body_start.saturating_sub(1))
 }
 
 #[cfg(test)]

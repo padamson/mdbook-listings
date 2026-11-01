@@ -128,14 +128,11 @@ pub(crate) fn fenced_block<'a>(
 /// The block a parsed fenced code block spans, when its opener sits behind
 /// nothing but indent and its last line closes it.
 fn closed_block(content: &str, range: std::ops::Range<usize>) -> Option<FencedBlock<'_>> {
-    let line_start = content[..range.start].rfind('\n').map_or(0, |i| i + 1);
     // The parse starts the block at its first fence character, so what
     // precedes it on the line is the container's: an indent the passes
     // carry through, or a `>` they don't.
-    let prefix = &content[line_start..range.start];
-    if !prefix.bytes().all(|b| b == b' ' || b == b'\t') {
-        return None;
-    }
+    let prefix = indent_before(content, range.start)?;
+    let line_start = range.start - prefix.len();
     let opener_end = content[range.start..]
         .find('\n')
         .map_or(content.len(), |i| range.start + i);
@@ -262,6 +259,23 @@ pub(crate) fn render_block(info: &str, body: &str) -> String {
     let fence = fence_for_body(body, b'`').render();
     let body = body.trim_end_matches('\n').replace("{{", "\\{{");
     format!("{fence}{info}\n{body}\n{fence}\n")
+}
+
+/// Byte offset of the first character of the line holding `at`.
+pub(crate) fn line_start(content: &str, at: usize) -> usize {
+    content[..at].rfind('\n').map_or(0, |i| i + 1)
+}
+
+/// The indent before `at`, when nothing else precedes it on its line.
+/// Inside a list item that is the item's indent, which a splicer puts on
+/// every line it inserts so the listing stays in the item. `None` when
+/// text or a `>` precedes `at`.
+pub(crate) fn indent_before(content: &str, at: usize) -> Option<&str> {
+    let indent = &content[line_start(content, at)..at];
+    indent
+        .bytes()
+        .all(|b| b == b' ' || b == b'\t')
+        .then_some(indent)
 }
 
 /// `text` with `prefix` before each non-blank line, so lines inserted under
@@ -452,6 +466,20 @@ mod tests {
     }
 
     #[test]
+    fn back_to_back_fences_under_a_wide_marker_are_a_block_with_an_empty_body() {
+        // The closer is told from the opener by the opener's line start,
+        // which lies the prefix's width before the fence characters. With a
+        // 4-column prefix and nothing between the fences, measuring from
+        // the wrong side of the fence puts the closer on the opener's line.
+        let content = "10. Step\n\n    ```\n    ```\n";
+        let got = blocks(content);
+        assert_eq!(got.len(), 1, "got {got:?}");
+        assert_eq!(got[0].prefix, "    ");
+        assert_eq!(got[0].body, "");
+        assert_eq!(got[0].close_end, content.len());
+    }
+
+    #[test]
     fn unprefixed_body_drops_the_prefix_from_each_line_and_leaves_blank_lines() {
         let got = blocks("- item\n\n  ```rust\n  fn a() {}\n\n  fn b() {}\n  ```\n");
         assert_eq!(got[0].unprefixed_body(), "fn a() {}\n\nfn b() {}\n");
@@ -574,6 +602,25 @@ mod tests {
         assert_eq!(fence.render(), "~~~~~");
         // Backticks in the body are irrelevant to a tilde fence.
         assert_eq!(fence_for_body("```\n", b'~').count, 3);
+    }
+
+    #[test]
+    fn line_start_is_the_offset_after_the_previous_newline() {
+        let s = "one\ntwo\nthree";
+        assert_eq!(line_start(s, 0), 0);
+        assert_eq!(line_start(s, 2), 0);
+        assert_eq!(line_start(s, 4), 4);
+        assert_eq!(line_start(s, s.len()), 8);
+    }
+
+    #[test]
+    fn indent_before_is_the_whitespace_alone_on_the_line_before_the_offset() {
+        let s = "- Step\n\n    {{#demo a b}}\n";
+        let at = s.find("{{").unwrap();
+        assert_eq!(indent_before(s, at), Some("    "));
+        assert_eq!(indent_before("{{#demo a b}}", 0), Some(""));
+        assert_eq!(indent_before("- {{#demo a b}}", 2), None);
+        assert_eq!(indent_before("> {{#demo a b}}", 2), None);
     }
 
     #[test]
