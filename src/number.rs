@@ -11,7 +11,7 @@
 
 use crate::anchor::{ListingDisplay, ListingWidth, width_attr, wrap_attr};
 use crate::callout::SupportedRenderer;
-use crate::fence::FencedBlocks;
+use crate::fence::{FencedBlocks, prefix_lines};
 use crate::source_path::ShownSource;
 
 /// A numbered listing's locator anchor.
@@ -45,7 +45,7 @@ struct Anchor {
 ///
 /// `Serialize` feeds the sidebar manifest ([`crate::list_of_listings`]); the
 /// field names are the manifest's JSON keys, read by `mdbook-listings.js`.
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 pub struct ListingRef {
     pub number: String,
     pub caption: Option<String>,
@@ -79,13 +79,18 @@ pub fn splice_chapter(
     renderer: SupportedRenderer,
     display: ListingDisplay,
 ) -> (String, Vec<ListingRef>) {
-    // (opener_start, anchor) for each block immediately followed by a locator
-    // anchor, in document order. Plain code blocks and snippets have no anchor
-    // and are not listings.
-    let mut listings: Vec<(usize, Anchor)> = Vec::new();
+    // (opener_start, indent, anchor) for each block immediately followed by a
+    // locator anchor, in document order. Plain code blocks and snippets have
+    // no anchor and are not listings. The indent is the list item's when the
+    // block sits in one, for the lines inserted above it.
+    let mut listings: Vec<(usize, &str, Anchor)> = Vec::new();
     for block in FencedBlocks::new(content) {
         if let Some(anchor) = anchor_after_fence(content, block.close_end) {
-            listings.push((opener_line_start(content, block.body_start), anchor));
+            listings.push((
+                opener_line_start(content, block.body_start),
+                block.prefix,
+                anchor,
+            ));
         }
     }
     if listings.is_empty() {
@@ -102,7 +107,7 @@ pub fn splice_chapter(
     // `ListingRef` for the index.
     let mut edits: Vec<(usize, String)> = Vec::new();
     let mut refs: Vec<ListingRef> = Vec::new();
-    for (i, (opener_start, anchor)) in listings.iter().enumerate() {
+    for (i, (opener_start, indent, anchor)) in listings.iter().enumerate() {
         let number = match (&prefix, number_listings) {
             (Some(p), true) => Some(format!("{p}.{}", i + 1)),
             _ => None,
@@ -123,7 +128,7 @@ pub fn splice_chapter(
             chrome.push_str(&element);
         }
         if !chrome.is_empty() {
-            edits.push((*opener_start, chrome));
+            edits.push((*opener_start, prefix_lines(&chrome, indent)));
         }
         if !anchor.has_width && display.width == ListingWidth::Wide {
             edits.push((anchor.div_start + "<div".len(), width_attr(display.width)));
@@ -341,10 +346,13 @@ fn render_provenance(
 
 /// Find the locator anchor the include or diff splicer drops immediately past
 /// a listing's closing fence. `None` for any other block. Tolerates the one
-/// optional newline the splicers may place between the fence and the anchor.
+/// optional newline the splicers may place between the fence and the anchor,
+/// and the list item's indent they put on the anchor inside one.
 fn anchor_after_fence(content: &str, close_end: usize) -> Option<Anchor> {
     let nl = usize::from(content[close_end..].starts_with('\n'));
-    let div_start = close_end + nl;
+    let after_newline = &content[close_end + nl..];
+    let indent = after_newline.len() - after_newline.trim_start_matches([' ', '\t']).len();
+    let div_start = close_end + nl + indent;
     let tail = &content[div_start..];
     if !(tail.starts_with("<div data-listing-tag=\"")
         || tail.starts_with("<div data-listing-diff-left=\""))
@@ -1106,6 +1114,77 @@ mod tests {
             open_tag(div_with(&out, r#"data-listing-tag="a""#))
                 .contains(r#"data-listing-number="5.1""#),
             "got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn a_listing_in_a_list_item_is_numbered_with_its_caption_at_the_items_indent() {
+        // The include splicer put the item's indent on the fence and the
+        // anchor; the caption has to take it too, or it ends the item.
+        let content = "- Step\n\n  ```rust\n  fn a() {}\n  ```\n  \
+                       <div data-listing-tag=\"a\" data-listing-caption=\"Cap\" aria-hidden=\"true\"></div>\n\n\
+                       - Next\n";
+        let (out, refs) = splice_chapter(content, Some("5"), true, false, Html, NORMAL);
+        assert_eq!(refs.len(), 1, "got {refs:?}");
+        assert_eq!(refs[0].number, "5.1");
+        let caption = div_span(&out, r#"id="listing-5-1""#);
+        assert!(
+            out[..caption.start].ends_with("- Step\n\n  "),
+            "caption must sit at the item's indent; got:\n{out}",
+        );
+        assert!(
+            out[caption.end..].starts_with("\n\n  ```rust\n"),
+            "the fence must keep its indent after the caption; got:\n{out}",
+        );
+        assert!(
+            open_tag(div_with(&out, r#"data-listing-tag="a""#))
+                .contains(r#"data-listing-number="5.1""#),
+            "the indented anchor must be found and numbered; got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn a_listing_under_a_wide_list_marker_is_numbered() {
+        let content = "10. Step\n\n    ```rust\n    fn a() {}\n    ```\n    \
+                       <div data-listing-tag=\"a\" aria-hidden=\"true\"></div>\n";
+        let (out, refs) = splice_chapter(content, Some("5"), true, false, Html, NORMAL);
+        assert_eq!(refs.len(), 1, "got {refs:?}");
+        assert!(
+            out.contains(
+                "10. Step\n\n    <div class=\"listing-caption\" id=\"listing-5-1\">Listing 5.1</div>\n\n    ```rust\n"
+            ),
+            "got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn finds_an_indented_anchor_separated_from_fence_by_one_newline() {
+        // Both tolerances at once: the newline is skipped before the indent
+        // is measured, so the indent must be read after it.
+        let content = "- Step\n\n  ```rust\n  fn a() {}\n  ```\n\n  \
+                       <div data-listing-tag=\"a\" aria-hidden=\"true\"></div>\n";
+        let (out, refs) = splice_chapter(content, Some("5"), true, false, Html, NORMAL);
+        assert_eq!(refs.len(), 1, "got {refs:?}");
+        assert!(
+            open_tag(div_with(&out, r#"data-listing-tag="a""#))
+                .contains(r#"data-listing-number="5.1""#),
+            "got:\n{out}",
+        );
+    }
+
+    #[test]
+    fn provenance_in_a_list_item_takes_the_items_indent_in_both_renderers() {
+        let content = "- Step\n\n  ```rust\n  fn a() {}\n  ```\n  \
+                       <div data-listing-tag=\"a\" data-listing-source=\"src/a.rs\" aria-hidden=\"true\"></div>\n";
+        let (html, _) = splice_chapter(content, Some("5"), true, true, Html, NORMAL);
+        assert!(
+            html.contains("</div>\n\n  <div class=\"listing-provenance\">"),
+            "got:\n{html}"
+        );
+        let (pdf, _) = splice_chapter(content, Some("5"), true, true, TypstPdf, NORMAL);
+        assert!(
+            pdf.contains("- Step\n\n  **Listing 5.1**\n\n  `src/a.rs` (`a`)\n\n  ```rust\n"),
+            "got:\n{pdf}"
         );
     }
 
