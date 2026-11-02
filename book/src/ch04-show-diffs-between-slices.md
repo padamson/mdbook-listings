@@ -546,7 +546,8 @@ lands.
 * **Language-aware syntax highlighting *inside* the diff** (e.g.,
   Rust syntax overlaid on `+`/`−` coloring). Neither highlight.js
   nor typst-pdf does this; would need server-side rendering with
-  `syntect`. Separate story; sketched on the v0.3.0 roadmap.
+  `syntect`. Separate story; listed under *Richer rendering* in
+  [Future Work](ch09-future-work.md).
 * **Per-line callouts and anchors on diff output.** Covered by
   ch. 4 (*Render Inline Callouts*); the diff primitive emits a
   bare ` ```diff ` fence that ch. 4 layers callouts on top of.

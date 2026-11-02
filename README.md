@@ -14,12 +14,20 @@ real and the prose keyed to it:
 
 - **Freeze** a source file under a tag and embed it with mdbook's
   `{{#include}}`, so a chapter shows a stable snapshot even as the code
-  evolves.
+  evolves, inside a list item as readily as between paragraphs.
 - **Diff** two frozen tags inline with `{{#diff a b}}` to show how a
-  listing changed between slices.
-- **Callouts** — `// CALLOUT: <label>` markers turn into numbered badges
-  with hover annotations and prose cross-references, so explanations stay
+  listing changed between slices, and annotate the diff from a sidecar
+  without editing either file.
+- **Callouts** — `// CALLOUT: <label>` markers, or a sidecar TOML for code
+  you don't own, turn into numbered badges with hover annotations (click
+  one to pin it open) and prose cross-references, so explanations stay
   attached to specific lines instead of fragile line numbers.
+- **Fit the page** — `width="wide"` lets a listing grow out of the text
+  column, `wrap="true"` wraps its long lines instead of scrolling, and
+  `max-line-width` caps how wide a frozen line may be, so `freeze` refuses
+  a source over it and `verify` catches one frozen before the budget was
+  set. Each has a book-wide default under `[preprocessor.listings]` and a
+  per-listing override.
 - **Number and reference** — opt-in `Listing N.M` numbers (letters in
   appendices) with per-listing captions, a book-wide List of Listings as
   a page or in the sidebar, and `label=` + `{{#listing-ref}}`
@@ -28,11 +36,14 @@ real and the prose keyed to it:
 - **Show where a listing came from** — opt-in, a muted line under each
   caption names the file the snapshot was taken from and the tag it was
   frozen under, so a book that freezes one file repeatedly doesn't have to
-  spend its captions saying which version you're looking at.
+  spend its captions saying which version you're looking at. With
+  `freeze --source-url` the path links to the file at the commit it was
+  frozen from.
 - **Verify** in CI — `mdbook-listings verify` fails the build if a frozen
-  snapshot was tampered with or a reference doesn't resolve, and warns on
-  the quieter slips: an annotation no prose picks up, a slice that cuts off
-  the line it annotates, an argument that will never render.
+  snapshot was tampered with, a reference doesn't resolve, or a directive
+  sits where its code block can't render, and warns on the quieter slips:
+  an annotation no prose picks up, a slice that cuts off the line it
+  annotates, an argument that will never render.
 
 ## Installation
 

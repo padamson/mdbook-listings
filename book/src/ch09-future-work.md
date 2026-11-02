@@ -6,12 +6,14 @@ records what has shipped; this chapter records what is intended, with
 enough design depth that a future implementer doesn't have to rediscover
 it.
 
-Releases are grouped by theme rather than by a fixed feature list, and
-the versions are emergent: a release happens when its theme has shipped
-enough to feel useful, even if not every item below has landed. The
-groupings are judgement, not commitment — a v0.3.0 may ship with two of
-the items in its section if those land cleanly and the others need more
-design.
+The work is grouped by theme rather than by a fixed feature list, in
+roughly the order it is likely to be taken up, and a theme ships under
+whatever the next release is once enough of it has landed to feel useful.
+The groupings are judgement, not commitment: a release may carry two
+items from one theme and none from the others, and 0.3.0 came out of
+dogfooding rather than from any section below. The one version named
+here is v1.0.0, because it is a promise about formats rather than a place
+in the sequence.
 
 When one of these ships, it moves to the CHANGELOG and its entry leaves
 this chapter, reappearing as a slice in its parent story chapter or as
@@ -19,7 +21,7 @@ its own new chapter. New ideas land here by editing this file in a pull
 request; substantive shifts (adopting something deferred to v1.0.0 into
 the next release, say) get discussed in an issue first.
 
-## v0.3.0 — power-user ergonomics
+## Power-user ergonomics
 
 - `mdbook-listings unfreeze <tag>` for orphan cleanup.
 - `verify --prune` for interactive orphan removal.
@@ -41,7 +43,7 @@ change.
   first. The `{{` escape the include and diff splicers each applied is
   already done: both emit through `fence::render_block`, which owns it.
 
-## v0.4.0 — richer rendering
+## Richer rendering
 
 - Syntax-highlighted diffs (currently plain unified-diff text).
 - Multi-paragraph callout bodies, inline code in callouts.
@@ -61,7 +63,7 @@ badge.
 The `pdf_callouts` integration test grows assertions for the inline
 marker; the existing assertions for blockquote bodies stay.
 
-## v0.5.0 — language reach + workflow
+## Language reach and workflow
 
 - Block-comment-only languages for inline callouts (CSS, plain
   Markdown).
@@ -69,7 +71,7 @@ marker; the existing assertions for blockquote bodies stay.
   `verify` on every commit.
 - Watch mode (re-freeze on source change, opt-in).
 
-## v1.0.0 — stability + deep verify
+## v1.0.0 — stability and deep verify
 
 - Manifest schema and preprocessor JSON protocol committed, with a
   compatibility promise across future minors.

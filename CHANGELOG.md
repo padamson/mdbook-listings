@@ -5,6 +5,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-02
+
+Listings fit the page they are on, and the preprocessor reads a chapter
+the way mdBook renders it. A listing can grow out of the text column,
+wrap its long lines, sit inside a list item, or carry callouts on a diff
+from a sidecar, and a `max-line-width` budget keeps frozen code inside
+the width the book chose. Underneath, directives are found on the same
+CommonMark parse mdBook renders with, so one in a code span, an HTML
+comment, a blockquote, or a fence's info string is treated as the page
+shows it, and one placed where its code block cannot render stops the
+build with the line and the fix instead of breaking the page.
+
+**What changes for an existing book.** Two things render differently
+without an edit. With `show-listing-provenance` on, the provenance line
+shows the path relative to the repository root (`schema/cqa.yaml`, not
+`../schema/cqa.yaml`) and no path at all for a source outside it. Callout
+badges on a Rust listing that mdbook wraps in a hidden `main` move down
+two lines, onto the lines they annotate. Some books that built clean will
+now fail: an include or diff inside a blockquote, an HTML block, or an
+HTML comment, indented 4 or more under a line of text, sharing a fence
+with another include, or written so that mdBook expands it but the
+preprocessor does not (inside inline code, say) used to land on the page
+in a shape it could not render, and now fails the build and `verify` with
+the chapter, the line, and the fix. Everything else is opt-in: with
+`wrap`, `width`, `max-line-width`, and `--source-url` unset, listings
+render as before.
+
 ### Added
 - **Listings inside list items.** A `{{#include listings/…}}` or
   `{{#diff}}` on its own line in a list item, or inside a fence in one,
@@ -490,6 +517,7 @@ primitives and a verification gate (each is a user-story chapter in the
 - Claude Code plugin (marketplace + bundled skill) giving an agent a
   current reference for the CLI and directive syntax while authoring.
 
+[0.3.0]: https://github.com/padamson/mdbook-listings/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/padamson/mdbook-listings/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/padamson/mdbook-listings/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/padamson/mdbook-listings/compare/v0.1.1...v0.2.0
