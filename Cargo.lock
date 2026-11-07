@@ -472,7 +472,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1311,9 +1311,9 @@ dependencies = [
 
 [[package]]
 name = "playwright-rs-trace"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad22b204ffa30e47b101c6db4668d0448535eb98f7dc8c3a8d99d1e21209c7d5"
+checksum = "52e578ba2cb26262a5e8208f21a1e7e60a488a9a166b90dc4433556ed4750db5"
 dependencies = [
  "serde",
  "serde_json",
@@ -1520,7 +1520,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1844,7 +1844,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
