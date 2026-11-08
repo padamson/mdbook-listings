@@ -1,5 +1,7 @@
 name: CI
 
+# A tag pattern added here also goes into the `release tags` ruleset and
+# the `release` environment's deployment policies.
 on:
   push:
     branches: [main]
@@ -504,21 +506,19 @@ jobs:
 
   publish-crates:
     name: Publish to crates.io
-    # Only publishing needs to mint an OIDC token, and `id-token: write`
-    # is what lets a job request one.
     permissions:
       contents: read
-      id-token: write
-    # Gates on the binaries building, not on their reaching the release
-    # page -- crates.io consumers never see the tarballs. `always()` so a
-    # failed build leg fails this job by name instead of leaving it
-    # `skipped`, which the run summary reads as "not applicable" (#63).
-    # semver-checks is listed so a failed gate is named as the cause; it
-    # also skips build-release, which would otherwise read as a failed build.
+      id-token: write       # mint the OIDC token for trusted publishing
+    # Waits on the binaries building, not on release-assets: crates.io never
+    # sees the tarballs. `always()` so a failed gate fails this job by name
+    # instead of leaving it `skipped`, which reads as "not applicable" (#63).
     needs: [semver-checks, build-release]
     if: always() && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Only `v*` tags can deploy here and the crates.io publisher requires this
+    # environment, so a copy of this workflow run from a branch can't publish.
+    environment: release
     steps:
       - name: Require the semver gate and the release binaries
         env:
@@ -546,33 +546,22 @@ jobs:
         with:
           tool: parse-changelog
 
-      # The CHANGELOG entry used to be checked as a side effect of writing
-      # release notes in the build job, which this job waited on. It is a
-      # precondition of publishing, not of uploading: a tag whose version
-      # CHANGELOG.md does not know is a mistake, and `cargo publish` cannot
-      # be undone.
+      # A tag CHANGELOG.md doesn't know is a mistake, and `cargo publish`
+      # can't be undone.
       - name: Require a CHANGELOG entry for this version
         env:
           TAG: ${{ github.ref_name }}
         run: parse-changelog CHANGELOG.md "${TAG#v}" >/dev/null
 
-      # Trusted publishing: exchange a GitHub OIDC token for a crates.io
-      # token scoped to this repo + workflow and valid for minutes, instead
-      # of holding a long-lived CARGO_REGISTRY_TOKEN that works from
-      # anywhere and never expires. The action's post step revokes it when
-      # the job ends. The trusted publisher is configured on crates.io
-      # (owner padamson, this repo, workflow ci.yml, no environment); with
-      # none configured this step fails, which is correct.
+      # Exchanges this run's OIDC token for a crates.io token that lasts
+      # minutes and is revoked when the job ends. The trusted publisher on
+      # crates.io names this repo, ci.yml, and environment `release`.
       - name: Authenticate to crates.io
         id: auth
         uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
 
-      # No soft guard and no continue-on-error, deliberately. Both were here
-      # and both turned a release that published nothing into a green run:
-      # a missing secret skipped the step and reported success, and a failed
-      # `cargo publish` was swallowed. A tag that does not reach crates.io
-      # must fail loudly -- consumers pin the registry version, so a silent
-      # skip is indistinguishable from a release to everyone downstream.
+      # No skip-if-missing guard and no continue-on-error: both were here,
+      # and both turned a release that published nothing into a green run.
       - name: Publish to crates.io
         run: cargo publish
         env:

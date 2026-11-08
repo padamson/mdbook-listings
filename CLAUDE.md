@@ -194,5 +194,15 @@ publishes to crates.io. Publishing authenticates through crates.io Trusted
 Publishing: the job mints a GitHub OIDC token and exchanges it for a
 short-lived registry token, so there is no `CARGO_REGISTRY_TOKEN` secret to
 rotate. The trusted publisher lives in the crate's settings on crates.io
-(owner `padamson`, this repo, workflow `ci.yml`, no environment); if it is
-ever removed the publish step fails, which is the right outcome.
+(owner `padamson`, this repo, workflow `ci.yml`, environment `release`); if it
+is ever removed the publish step fails, which is the right outcome.
+
+The publisher checks the repository and workflow filename, not the ref, and
+the merge App can write workflows. So the publish job runs in the `release`
+environment, whose only deployment policy is tag `v*`: a branch run that keeps
+`environment:` is refused by GitHub, and one that drops it gets a token
+crates.io refuses. The environment and the `release tags` ruleset both need
+admin to change, so keep the App off the ruleset's bypass list and without
+Administration permission. A new tag pattern goes into `on.push.tags`, the
+ruleset, and the environment. Create the environment before anything names
+it, since a run naming a missing one creates it open to every branch.
