@@ -31,7 +31,7 @@ futures = "0.3"
 # (jrmuizel/pdf-extract#151), and 0.10 pulls the lopdf with RUSTSEC-2026-0187.
 pdf-extract = "0.12.1"
 playwright-rs = { workspace = true }
-playwright-rs-trace = "0.2.2"
+playwright-rs-trace = "0.3.0"
 predicates = "3"
 tempfile = "3"
 tokio = { workspace = true }
