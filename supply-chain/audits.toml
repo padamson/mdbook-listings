@@ -183,6 +183,12 @@ user-id = 539 # Josh Stone (cuviper)
 start = "2019-05-22"
 end = "2027-05-16"
 
+[[trusted.base64]]
+criteria = "safe-to-deploy"
+user-id = 5563 # Marshall Pierce (marshallpierce)
+start = "2019-10-25"
+end = "2027-11-08"
+
 [[trusted.bstr]]
 criteria = "safe-to-deploy"
 user-id = 189 # Andrew Gallant (BurntSushi)
