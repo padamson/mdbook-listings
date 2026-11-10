@@ -155,31 +155,16 @@ cargo install --path . --locked --force
 
 ## Watching CI
 
-```bash
-./scripts/ci-watch.sh              # the current HEAD
-./scripts/ci-watch.sh <sha|ref>    # a specific commit
-./scripts/ci-watch.sh --poll 15 --timeout 600
-```
-
-Prints one line per job as it reaches a terminal state, one per workflow
-when it finishes, then exits: 0 all green, 1 some job failed, 2 timed out.
-Every terminal state is reported, not just successes -- a watcher that only
-greps for "success" is silent through a crashloop, which looks exactly like
-still-running. A run that fails with no jobs at all (an invalid workflow file)
-counts as a failure, and a run re-run mid-watch is reported by its new result.
-
-It exists as a script for a sandbox reason worth knowing before writing any
-other polling loop here. `excludedCommands` in `.claude/settings.json` match
-the **top-level command line**. `gh run list` alone is excluded and works;
-`gh` inside a `for` or `while` loop is not matched, so the whole invocation
-stays sandboxed and every call fails on the read-denied `~/.config/gh` --
-silently, if the loop swallows errors. Excluding the script instead
-unsandboxes its whole process tree, and the `gh` it spawns inherits that,
-the same route `git push` takes for SSH. Run it as its own command: chaining
-an excluded command onto another line unsandboxes that line too. Pass the
-interval and timeout as flags for the same reason: `TIMEOUT=600
-./scripts/ci-watch.sh` is not the excluded command, so it runs sandboxed and
-every `gh` call fails.
+From a terminal, `gh run watch`. A session uses the CI watcher its user-level
+skills provide, which is excluded from the sandbox in the user's settings, and
+does not write a polling loop of its own here. `excludedCommands` match the
+**top-level command line**. `gh run list` alone is excluded and works; `gh`
+inside a `for` or `while` loop is not matched, so the whole invocation stays
+sandboxed and every call fails on the read-denied `~/.config/gh` (silently, if
+the loop swallows errors). An excluded script unsandboxes its whole process
+tree, and the `gh` it spawns inherits that. Run it as its own command, with
+flags rather than an env-var prefix: a chained or prefixed line is not the
+excluded command, so it runs sandboxed.
 
 ## Release process
 
