@@ -186,10 +186,26 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}-
 
-      - name: Install mdbook (prebuilt)
+      # mdbook releases its crates in lockstep, so the binary that renders
+      # the book follows the mdbook-preprocessor this crate builds against,
+      # and a Dependabot bump of one moves the other in the same PR.
+      - name: Read the mdbook version
+        id: mdbook
+        shell: bash
+        run: |
+          version=$(awk '$0 == "name = \"mdbook-preprocessor\"" { getline; gsub(/"/, "", $3); print $3 }' Cargo.lock)
+          if [ -z "$version" ]; then
+            echo "::error::no mdbook-preprocessor entry in Cargo.lock"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # A version newer than this action's manifest falls back to
+      # cargo-binstall rather than failing.
+      - name: Install mdbook
         uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b # v2.89.0
         with:
-          tool: mdbook
+          tool: mdbook@${{ steps.mdbook.outputs.version }}
 
       - name: Resolve mdbook-typst-pdf fork SHA
         # SHA-pin the install so a transient upstream regression on the
