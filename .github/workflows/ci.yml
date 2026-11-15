@@ -95,6 +95,7 @@ jobs:
         uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: cargo-nextest
+          fallback: none
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -135,6 +136,7 @@ jobs:
         uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: cargo-nextest
+          fallback: none
 
       - name: Install fonts (for Typst PDF rendering)
         run: |
@@ -200,12 +202,14 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      # A version newer than this action's manifest falls back to
-      # cargo-binstall rather than failing.
+      # A version newer than this action's manifest fails the step: the
+      # mdbook-preprocessor bump then waits for the github-actions bump
+      # that carries the newer manifest.
       - name: Install mdbook
         uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: mdbook@${{ steps.mdbook.outputs.version }}
+          fallback: none
 
       - name: Resolve mdbook-typst-pdf fork SHA
         # SHA-pin the install so a transient upstream regression on the
@@ -465,6 +469,7 @@ jobs:
         uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: parse-changelog
+          fallback: none
 
       - name: Collect the archives
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -561,6 +566,7 @@ jobs:
         uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: parse-changelog
+          fallback: none
 
       # A tag CHANGELOG.md doesn't know is a mistake, and `cargo publish`
       # can't be undone.
