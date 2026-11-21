@@ -92,7 +92,7 @@ jobs:
           shared-key: test
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: cargo-nextest
           fallback: none
@@ -133,7 +133,7 @@ jobs:
           toolchain: stable
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: cargo-nextest
           fallback: none
@@ -206,7 +206,7 @@ jobs:
       # mdbook-preprocessor bump then waits for the github-actions bump
       # that carries the newer manifest.
       - name: Install mdbook
-        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: mdbook@${{ steps.mdbook.outputs.version }}
           fallback: none
@@ -466,7 +466,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install parse-changelog
-        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: parse-changelog
           fallback: none
@@ -563,7 +563,7 @@ jobs:
           toolchain: stable
 
       - name: Install parse-changelog
-        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: parse-changelog
           fallback: none
