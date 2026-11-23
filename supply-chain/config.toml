@@ -416,10 +416,6 @@ criteria = "safe-to-deploy"
 version = "0.6.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.url]]
-version = "2.5.8"
-criteria = "safe-to-deploy"
-
 [[exemptions.utf8-zero]]
 version = "0.8.1"
 criteria = "safe-to-deploy"

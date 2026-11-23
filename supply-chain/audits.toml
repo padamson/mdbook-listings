@@ -243,6 +243,12 @@ user-id = 1 # Alex Crichton (alexcrichton)
 start = "2019-04-23"
 end = "2027-07-12"
 
+[[trusted.form_urlencoded]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2021-02-19"
+end = "2027-11-23"
+
 [[trusted.glob]]
 criteria = "safe-to-deploy"
 user-id = 55123
@@ -555,6 +561,12 @@ criteria = "safe-to-deploy"
 user-id = 1139 # Manish Goregaokar (Manishearth)
 start = "2019-12-05"
 end = "2027-11-01"
+
+[[trusted.url]]
+criteria = "safe-to-deploy"
+user-id = 1139 # Manish Goregaokar (Manishearth)
+start = "2021-02-18"
+end = "2027-11-23"
 
 [[trusted.windows-sys]]
 criteria = "safe-to-deploy"
