@@ -52,3 +52,26 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  # The cargo-lockpatrol hook rev in .pre-commit-config.yaml. Its action
+  # pin moves in the github-actions group above, so the commit hook and the
+  # CI gate can sit a release apart until both PRs merge. The auto-merge
+  # workflow merges this PR like every other, and nothing in CI runs the
+  # hooks, so the next local commit runs the new rev unreviewed: that is
+  # accepted for cargo-lockpatrol, one of our own crates, as it is for its
+  # action pin. `allow` keeps the third-party hooks (pre-commit-hooks, typos) to
+  # hand bumps for the same reason. Only default-days, as for
+  # github-actions.
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "04:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 7
+    # pre-commit dependency names are full repo URLs, hence the wildcards.
+    allow:
+      - dependency-name: "*padamson/cargo-lockpatrol*"

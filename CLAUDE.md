@@ -13,8 +13,8 @@ cargo nextest run --test pdf_callouts --run-ignored only   # PDF content; needs 
 cargo test --doc         # doc tests
 cargo clippy             # lint
 cargo fmt                # format
-cargo audit              # security scan
-cargo deny check         # license/dependency check
+cargo deny --workspace check  # advisories (root lockfile only), licenses, bans, sources (one ignore list: deny.toml)
+prek run cargo-lockpatrol --all-files  # advisories in every tracked Cargo.lock, the way CI gates them
 cargo vet                # supply chain review
 ```
 
