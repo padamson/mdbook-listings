@@ -4,6 +4,7 @@
 //! by the CLI-scaffolding chore.
 
 use predicates::str::contains;
+use std::path::Path;
 
 mod common;
 use common::mdbook_listings;
@@ -23,7 +24,8 @@ fn help_lists_all_subcommands() {
 #[test]
 fn version_prints_the_string_the_build_script_computed() {
     // build.rs decides once per build whether to suffix a sha; the binary
-    // prints that decision verbatim. Its shape has its own test below.
+    // prints that decision verbatim. The decision itself is unit-tested in
+    // tests/build_id.rs.
     let text = version_output();
     assert_eq!(
         text,
@@ -32,53 +34,51 @@ fn version_prints_the_string_the_build_script_computed() {
 }
 
 #[test]
-fn version_is_the_crate_version_with_an_optional_short_sha() {
-    // Contract, not environment: `mdbook-listings <version>` exactly, plus an
-    // optional ` (<7+ hex digits>)` build id. Bare is valid (crates.io
-    // install, or HEAD sitting on the release tag); anything else must be a
-    // well-formed short sha.
-    let text = version_output();
-    let prefix = concat!("mdbook-listings ", env!("CARGO_PKG_VERSION"));
-    let suffix = text
-        .strip_prefix(prefix)
-        .unwrap_or_else(|| panic!("version must start with `{prefix}`; got `{text}`"));
-    if suffix.is_empty() {
-        return;
-    }
-    let sha = suffix
-        .strip_prefix(" (")
-        .and_then(|s| s.strip_suffix(')'))
-        .unwrap_or_else(|| panic!("suffix must be ` (<sha>)`; got `{suffix}`"));
-    assert!(
-        sha.len() >= 7 && sha.chars().all(|c| c.is_ascii_hexdigit()),
-        "build id must be a short git sha; got `{sha}`"
-    );
-}
-
-#[test]
 fn version_carries_a_sha_exactly_when_head_is_off_the_release_tag() {
-    // git is the oracle, asked a different question than build.rs asks
-    // (`tag --points-at`, not `describe --exact-match`), so a build script
-    // that stops consulting git, or misreads the answer, fails here. Both
-    // branches assert: outside git, or with HEAD on the release tag, the
-    // bare version is the whole contract.
+    // git is the oracle, asked here and not through build.rs, so a build
+    // script that stops consulting git, or misreads the answer, fails. Both
+    // branches assert: outside this crate's own checkout, or with HEAD on
+    // the release tag, the bare version is the whole contract.
     let text = version_output();
     let bare = concat!("mdbook-listings ", env!("CARGO_PKG_VERSION"));
-    let in_git = git(&["rev-parse", "--git-dir"]).is_some();
-    let on_release_tag = git(&["tag", "--points-at", "HEAD"]).is_some_and(|tags| {
+    // The crate's own checkout, not a repository around it (a vendored
+    // copy, a home directory under git), whose commit is not this build's.
+    let own_checkout = git(&["rev-parse", "--show-toplevel"]).is_some_and(|top| {
+        Path::new(top.trim()).canonicalize().ok()
+            == Path::new(env!("CARGO_MANIFEST_DIR")).canonicalize().ok()
+    });
+    // `--no-column`: with `column.ui=always`, git puts several tags on a
+    // line even into a pipe.
+    let on_release_tag = git(&["tag", "--no-column", "--points-at", "HEAD"]).is_some_and(|tags| {
         tags.lines()
             .any(|t| t == concat!("v", env!("CARGO_PKG_VERSION")))
     });
-    if in_git && !on_release_tag {
-        assert!(
-            text.len() > bare.len(),
-            "a non-release build from a git checkout must report its commit; got `{text}`"
-        );
-    } else {
-        assert_eq!(
+    // `None` where git cannot read HEAD (a `git init` with no commit yet),
+    // which build.rs answers with the bare version too.
+    let head = own_checkout.then(|| git(&["rev-parse", "HEAD"])).flatten();
+    match head.filter(|_| !on_release_tag) {
+        Some(head) => {
+            let sha = text
+                .strip_prefix(bare)
+                .and_then(|suffix| suffix.strip_prefix(" ("))
+                .and_then(|suffix| suffix.strip_suffix(')'))
+                .unwrap_or_else(|| {
+                    panic!("a non-release build from a git checkout must report its commit; got `{text}`")
+                });
+            // By prefix against the full sha: the length git abbreviates
+            // to grows with the object count, so the short sha asked for
+            // now can be longer than the one baked in at build time. Never
+            // the full sha, which is not what `--version` prints.
+            let head = head.trim();
+            assert!(
+                (7..head.len()).contains(&sha.len()) && head.starts_with(sha),
+                "`{sha}` must abbreviate HEAD, {head}"
+            );
+        }
+        None => assert_eq!(
             text, bare,
             "a release or non-git build reports the bare version and nothing else"
-        );
+        ),
     }
 }
 

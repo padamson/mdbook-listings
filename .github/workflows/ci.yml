@@ -425,6 +425,22 @@ jobs:
       - name: Build release binary
         run: cargo build --release --bin mdbook-listings --target ${{ matrix.target }} --verbose
 
+      # build.rs prints the bare version only when it sees the release tag
+      # at HEAD, and no test can see what the shipped binary prints. One
+      # leg is enough: the check is of build.rs reading the tagged checkout,
+      # which is the same on every target.
+      - name: Check the release binary reports the bare version
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
+        run: |
+          got=$("target/${{ matrix.target }}/release/mdbook-listings" --version)
+          want="mdbook-listings $VERSION"
+          if [ "$got" != "$want" ]; then
+            echo "::error::--version printed '$got', expected '$want'"
+            exit 1
+          fi
+
       - name: Strip binary (Unix)
         if: runner.os != 'Windows'
         # Best-effort: cross-target strip can no-op on a foreign-arch binary.

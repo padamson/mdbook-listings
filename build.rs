@@ -1,75 +1,156 @@
-//! Emits `CRATE_VERSION_WITH_BUILD` for the CLI's `--version`: the crate
-//! version, suffixed with the short git sha when this is not a release
-//! build. A binary built from `main` and one from the last release
-//! otherwise print the same thing, which makes "rebuild from main to pick
-//! up the fix" unverifiable and lets a stale binary impersonate a current
-//! one.
+//! Makes `--version` name the commit a binary was built from when it is
+//! not the tagged release, so a build from `main` (`cargo install --git`)
+//! can be told from the release it follows, and a stale binary cannot pass
+//! for a current one. No dirty-tree marker: nothing re-runs this script on
+//! an uncommitted edit, so it would be wrong as often as right.
+
+#[path = "build/build_id.rs"]
+mod build_id;
+
+use std::path::Path;
+use std::process::{Command, Stdio};
 
 fn main() {
-    emit_build_version();
-}
+    let version = env!("CARGO_PKG_VERSION");
+    // With no rerun-if-changed at all, cargo re-runs this script whenever
+    // any file in the package changes.
+    println!("cargo:rerun-if-changed=build.rs");
 
-/// Three cases, deliberately:
-/// - no git (crates.io install, source tarball): bare crate version — a
-///   released artifact must not carry a hash that can't be reproduced from
-///   what was published;
-/// - HEAD exactly at the release tag `v<version>`: bare crate version —
-///   that IS the release, however it was built;
-/// - anything else: `<version> (<short sha>)`.
-///
-/// No dirty-tree marker: nothing re-runs this script on an uncommitted
-/// edit, so the marker would be wrong as often as right.
-fn emit_build_version() {
-    let version = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
-    let build_id = match git_short_sha() {
-        Some(sha) if !at_release_tag(&version) => format!("{version} ({sha})"),
-        _ => version,
-    };
-    println!("cargo:rustc-env=CRATE_VERSION_WITH_BUILD={build_id}");
-
-    // Freshness: `.git/HEAD` covers checkouts and branch switches; the
-    // branch's ref file covers commits. Absent when refs are packed, which
-    // just means the sha can lag until the next checkout.
-    let git_dir = std::path::Path::new(".git");
-    if !git_dir.exists() {
+    // Only this crate's own checkout (`.git` is a file in a worktree).
+    // Without the check, git walks up to any repository around the crate,
+    // a home directory under git or a project that vendors it, and reports
+    // that one's HEAD.
+    if !Path::new(".git").exists() {
+        emit(version, None, &[]);
         return;
     }
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    if let Ok(head) = std::fs::read_to_string(git_dir.join("HEAD"))
-        && let Some(reference) = head.strip_prefix("ref: ")
-        && git_dir.join(reference.trim()).exists()
-    {
-        println!("cargo:rerun-if-changed=.git/{}", reference.trim());
-    }
-    // A tag laid on the current commit flips the answer from sha to bare
-    // without HEAD or the branch ref moving.
-    for tags in [".git/refs/tags", ".git/packed-refs"] {
-        if std::path::Path::new(tags).exists() {
-            println!("cargo:rerun-if-changed={tags}");
+
+    // Ahead of everything that can fail: a build that could not read git
+    // has to run again once it can, or its bare version passes for the
+    // release from then on.
+    watch_refs(version);
+
+    let Some(sha) = git(&["rev-parse", "--short", "HEAD"]).filter(|sha| !sha.is_empty()) else {
+        println!(
+            "cargo:warning=git could not read HEAD in this checkout; --version prints the bare version"
+        );
+        emit(version, None, &[]);
+        return;
+    };
+
+    // `for-each-ref`, not `git tag`: with `column.ui=always`, `git tag`
+    // prints several tags to a line even into a pipe. `strip=2`, not
+    // `short`, which prints `tags/v1` when a branch has the same name.
+    //
+    // A failed query is not "no tags": on the release commit it would print
+    // a sha. Keep the sha, which cannot pass for a release, and say so.
+    let tags = git(&[
+        "for-each-ref",
+        "--points-at",
+        "HEAD",
+        "--format=%(refname:strip=2)",
+        "refs/tags",
+    ])
+    .unwrap_or_else(|| {
+        println!("cargo:warning=git could not list the tags at HEAD; --version names the commit");
+        String::new()
+    });
+    let tags: Vec<&str> = tags.lines().collect();
+    emit(version, Some(&sha), &tags);
+}
+
+fn emit(version: &str, sha: Option<&str>, tags_at_head: &[&str]) {
+    println!(
+        "cargo:rustc-env=CRATE_VERSION_WITH_BUILD={}",
+        build_id::build_id(version, sha, tags_at_head)
+    );
+}
+
+/// Re-run when the answer can have changed: a checkout (HEAD), a commit on
+/// the checked-out branch, the release tag arriving or going, and a repack
+/// (`packed-refs`, or `reftable` in a repo that uses that format).
+///
+/// The branch and the release tag are each watched as their own loose ref
+/// file, so a commit on another branch or an unrelated tag, in this
+/// worktree or any other, rebuilds nothing. While that file does not exist
+/// (the ref is packed, or the tag is not made yet), the directory it will
+/// be written under is watched instead. A path that does not exist is
+/// never emitted, since cargo re-runs on every build for one.
+fn watch_refs(version: &str) {
+    let release_tag = format!("refs/tags/v{version}");
+    // Empty on a detached HEAD, where a commit rewrites HEAD itself.
+    let branch = git(&["symbolic-ref", "-q", "HEAD"]).unwrap_or_default();
+
+    // `--git-path` resolves each path in a worktree too. `reftable` there
+    // is the worktree's own stack; branches and tags go to the common
+    // directory's, hence `--git-common-dir`.
+    let mut query = vec!["rev-parse", "--git-common-dir"];
+    let fixed = [
+        "HEAD",
+        "packed-refs",
+        "reftable",
+        "refs/heads",
+        "refs/tags",
+        release_tag.as_str(),
+    ];
+    for path in fixed.into_iter().chain([branch.as_str()]) {
+        if !path.is_empty() {
+            query.extend(["--git-path", path]);
         }
     }
-}
+    let resolved = git(&query).unwrap_or_default();
+    let resolved: Vec<&str> = resolved.lines().collect();
+    let [
+        common,
+        head,
+        packed,
+        reftable,
+        heads_dir,
+        tags_dir,
+        tag_file,
+        branch_file @ ..,
+    ] = resolved.as_slice()
+    else {
+        // git cannot run here at all (not on PATH, or it refuses the
+        // checkout). Nothing can be watched, so name a path that never
+        // exists: cargo then runs this script on every build, and the
+        // first one where git works gets the commit.
+        println!("cargo:rerun-if-changed=.git/build-rs-could-not-run-git");
+        return;
+    };
 
-fn git_short_sha() -> Option<String> {
-    let out = std::process::Command::new("git")
-        .args(["rev-parse", "--short", "HEAD"])
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
+    let loose_or = |file: &str, dir: &str| {
+        if Path::new(file).exists() {
+            file.to_string()
+        } else {
+            dir.to_string()
+        }
+    };
+    let mut watch = vec![
+        head.to_string(),
+        packed.to_string(),
+        reftable.to_string(),
+        format!("{common}/reftable"),
+        loose_or(tag_file, tags_dir),
+    ];
+    if let [branch_file] = branch_file {
+        watch.push(loose_or(branch_file, heads_dir));
     }
-    let sha = String::from_utf8(out.stdout).ok()?.trim().to_string();
-    (!sha.is_empty()).then_some(sha)
+    watch.sort();
+    watch.dedup();
+    for path in watch.iter().filter(|path| Path::new(path).exists()) {
+        println!("cargo:rerun-if-changed={path}");
+    }
 }
 
-fn at_release_tag(version: &str) -> bool {
-    std::process::Command::new("git")
-        .args(["describe", "--exact-match", "--tags", "HEAD"])
-        .stderr(std::process::Stdio::null())
+/// Trimmed stdout of a git command that succeeded, empty when it printed
+/// nothing; `None` when it failed.
+fn git(args: &[&str]) -> Option<String> {
+    let out = Command::new("git")
+        .args(args)
+        .stderr(Stdio::null())
         .output()
         .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .is_some_and(|tag| tag.trim() == format!("v{version}"))
+        .filter(|o| o.status.success())?;
+    Some(String::from_utf8(out.stdout).ok()?.trim().to_string())
 }

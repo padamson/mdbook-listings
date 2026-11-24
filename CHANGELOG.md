@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- **`--version` names the right build in more cases.** A release
+  tagged `v<version>` prints the bare version even when another tag
+  (annotated or not) sits on the same commit. A copy built inside some
+  other repository, a vendored crate or a home directory kept in git,
+  prints the bare version instead of that repository's commit. A build
+  after `git gc` packs the refs picks up the next commit, and a build in
+  a worktree no longer recompiles the crate every time. A checkout where
+  git cannot read HEAD warns at build time instead of quietly printing
+  what looks like a release, and the next build that can read it gets the
+  commit. One case still prints the commit on a release: `cargo install
+  --git <repo> --tag v<version>`, because cargo's checkout carries no
+  tags to tell the build it is one.
+
 ## [0.3.0] - 2026-11-02
 
 Listings fit the page they are on, and the preprocessor reads a chapter
