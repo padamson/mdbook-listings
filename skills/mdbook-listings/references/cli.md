@@ -140,6 +140,11 @@ Errors (any one exits non-zero):
    the code block the include expands to has to start a line.
 6. With `max-line-width` set, every frozen listing whose record doesn't
    allow long lines fits it (see [Line-width budget](#line-width-budget)).
+7. Every `{{#callout <label>}}` in a chapter `SUMMARY.md` lists names a
+   callout that a listing in that chapter defines, inline or in a sidecar.
+   The build looks nowhere else, so citing a label from another chapter's
+   listing fails it. (Not checked in 0.3.0 and earlier, where only the
+   build catches it.)
 
 Warnings (reported on stderr, exit stays 0):
 

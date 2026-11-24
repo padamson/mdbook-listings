@@ -174,11 +174,46 @@ pub fn splice_chapter(
     let label_to_ordinal = collect_first_occurrence_ordinals(content, sidecars)?;
     let with_lists = splice_callout_lists(content, &label_to_ordinal, renderer, sidecars)?;
     replace_callout_refs(&with_lists, &label_to_ordinal, renderer).map_err(|err| match err {
-        SpliceError::UnknownLabel { label } if on_diff_context_line(content, &label) => {
-            SpliceError::DiffContextLabel { label }
-        }
+        SpliceError::UnknownLabel { label } => citation_error(content, label),
         other => other,
     })
+}
+
+/// The error for a `{{#callout <label>}}` the chapter defines no callout
+/// for. `content` is the chapter before callout splicing, which strips the
+/// markers a diff's context lines carry.
+fn citation_error(content: &str, label: String) -> SpliceError {
+    if on_diff_context_line(content, &label) {
+        SpliceError::DiffContextLabel { label }
+    } else {
+        SpliceError::UnknownLabel { label }
+    }
+}
+
+/// The labels the chapter's `{{#callout <label>}}` citations name that no
+/// callout in the chapter defines, each with the error the build fails on,
+/// once per label in order of first citation. `content` is the chapter with
+/// its includes and diffs expanded, as the callout pass sees it.
+pub(crate) fn unresolved_citations(
+    content: &str,
+    sidecars: &SidecarCallouts,
+) -> Result<Vec<(String, SpliceError)>, SpliceError> {
+    let defined = collect_first_occurrence_ordinals(content, sidecars)?;
+    let mut unresolved: Vec<(String, SpliceError)> = Vec::new();
+    for occ in scan_directives(content, "{{#callout ", FencePolicy::SkipInside) {
+        let label = occ.args.trim();
+        if !is_valid_label(label)
+            || defined.contains_key(label)
+            || unresolved.iter().any(|(l, _)| l == label)
+        {
+            continue;
+        }
+        unresolved.push((
+            label.to_string(),
+            citation_error(content, label.to_string()),
+        ));
+    }
+    Ok(unresolved)
 }
 
 /// Whether `label` has a marker on a context line of one of the chapter's
@@ -628,6 +663,18 @@ mod tests {
             out.contains("`{{#callout LABEL}}`"),
             "literal example syntax in inline backticks must survive verbatim; got:\n{out}",
         );
+    }
+
+    #[test]
+    fn unresolved_citations_names_each_unknown_label_once_in_citation_order() {
+        let content = "```rust\n// CALLOUT: known Defined.\n```\n\n\
+                       {{#callout b}}, {{#callout known}}, {{#callout a}}, {{#callout b}}.\n";
+        let labels: Vec<String> = unresolved_citations(content, &SidecarCallouts::empty())
+            .expect("callouts resolve")
+            .into_iter()
+            .map(|(label, _)| label)
+            .collect();
+        assert_eq!(labels, ["b", "a"]);
     }
 
     #[test]

@@ -16,6 +16,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   chapter and line.
 
 ### Fixed
+- **`verify` checks `{{#callout}}` citations.** A citation resolves only
+  against the listings its own chapter shows, and the build fails on one
+  that names a label from another chapter's listing (or from a listing
+  the chapter no longer includes). `verify` passed such a book; it now
+  reports each one with the build's message, at its chapter and line.
 - **`--version` names the right build in more cases.** A release
   tagged `v<version>` prints the bare version even when another tag
   (annotated or not) sits on the same commit. A copy built inside some

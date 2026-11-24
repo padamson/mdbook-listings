@@ -7,10 +7,15 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use anyhow::Result;
+use regex::Regex;
 
-use crate::callout::{callouts_for_block, comment_prefix_for_extension, parse_callouts};
+use crate::callout::{
+    SidecarCallouts, callouts_for_block, comment_prefix_for_extension, parse_callouts,
+    unresolved_citations,
+};
 use crate::diff::{parse_directives, splice_chapter as splice_diffs};
 use crate::directive::{
     FencePolicy, line_number, scan_directives, split_caption, split_label, split_lang,
@@ -83,6 +88,7 @@ pub fn verify(book_root: &Path) -> Result<VerifyReport> {
     check_sidecars(book_root, &manifest, &mut report);
     check_orphans(book_root, &manifest, &mut report);
     check_unreferenced_markers(book_root, &manifest, &mut report);
+    check_callout_citations(book_root, &manifest, &mut report);
     check_slice_ends_on_marker(book_root, &mut report);
     check_live_operands(book_root, &mut report);
     check_snippet_arguments(book_root, &mut report);
@@ -460,33 +466,7 @@ fn check_unreferenced_markers(book_root: &Path, manifest: &Manifest, report: &mu
     let src_dir = chapter_src_dir(book_root);
     let mut reported: HashSet<(String, String)> = HashSet::new();
     for (rel, content) in chapter_markdown(book_root) {
-        let chapter_abs = book_root.join(&rel);
-        let chapter_path = chapter_abs.strip_prefix(&src_dir).ok();
-        let chapter_dir = chapter_abs
-            .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| src_dir.clone());
-        // A chapter the splicers reject is skipped: whatever is broken
-        // there is the reference, rejected-include or integrity pass's
-        // finding. Only the expanded listings matter here, so the source
-        // paths stay as recorded.
-        let Ok(expanded) = splice_includes(
-            &content,
-            &src_dir,
-            chapter_path,
-            manifest,
-            &SourcePaths::Verbatim,
-        ) else {
-            continue;
-        };
-        let Ok(expanded) = splice_diffs(
-            &expanded,
-            manifest,
-            book_root,
-            chapter_path,
-            &chapter_dir,
-            &SourcePaths::Verbatim,
-        ) else {
+        let Some(expanded) = expand_chapter(book_root, &src_dir, manifest, &rel, &content) else {
             continue;
         };
         for block in FencedBlocks::new(&expanded) {
@@ -504,6 +484,85 @@ fn check_unreferenced_markers(book_root: &Path, manifest: &Manifest, report: &mu
                     report.warning(format!(
                         "{}:{}: CALLOUT marker `{}` is referenced by no {{{{#callout}}}} directive",
                         listing.frozen, line, callout.label,
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/// The chapter at `rel` with its includes and diffs expanded, as the
+/// callout pass sees it, or `None` when a splicer rejects it: whatever is
+/// broken there is the reference, rejected-include or integrity pass's
+/// finding. Only the expanded listings matter to the callers, so source
+/// paths stay as recorded.
+fn expand_chapter(
+    book_root: &Path,
+    src_dir: &Path,
+    manifest: &Manifest,
+    rel: &str,
+    content: &str,
+) -> Option<String> {
+    let chapter_abs = book_root.join(rel);
+    let chapter_path = chapter_abs.strip_prefix(src_dir).ok();
+    let chapter_dir = chapter_abs
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| src_dir.to_path_buf());
+    let expanded = splice_includes(
+        content,
+        src_dir,
+        chapter_path,
+        manifest,
+        &SourcePaths::Verbatim,
+    )
+    .ok()?;
+    splice_diffs(
+        &expanded,
+        manifest,
+        book_root,
+        chapter_path,
+        &chapter_dir,
+        &SourcePaths::Verbatim,
+    )
+    .ok()
+}
+
+/// Each `{{#callout <label>}}` citation must name a callout that a listing
+/// in its own chapter defines, inline or in a sidecar: that is the only
+/// place the build looks, and it fails the build on any it can't find.
+/// Asked of the expanded chapter by the build's own resolver, and reported
+/// at each citation's line in the chapter source.
+fn check_callout_citations(book_root: &Path, manifest: &Manifest, report: &mut VerifyReport) {
+    let src_dir = chapter_src_dir(book_root);
+    // A sidecar that won't load fails the build at load time, before any
+    // citation is read; the sidecar pass reports what it can of that.
+    let Ok(sidecars) = SidecarCallouts::load(&src_dir.join("listings")) else {
+        return;
+    };
+    let chapters = summary_chapters(book_root);
+    for (rel, content) in chapter_markdown(book_root) {
+        // The build runs the callout pass only on the chapters SUMMARY.md
+        // lists, so a draft left out of it, or a partial mdBook includes
+        // after this preprocessor has run, resolves nothing.
+        if chapters.as_ref().is_some_and(|c| !c.contains(&rel)) {
+            continue;
+        }
+        let Some(expanded) = expand_chapter(book_root, &src_dir, manifest, &rel, &content) else {
+            continue;
+        };
+        // A chapter whose callouts themselves fail (a label defined twice,
+        // a sidecar line on a stripped marker) fails the build before any
+        // citation resolves.
+        let Ok(unresolved) = unresolved_citations(&expanded, &sidecars) else {
+            continue;
+        };
+        for (label, err) in unresolved {
+            for occ in scan_directives(&content, "{{#callout ", FencePolicy::SkipInside) {
+                if occ.args.trim() == label {
+                    report.error(format!(
+                        "{rel}:{}: {err}",
+                        line_number(&content, occ.span.start)
                     ));
                 }
             }
@@ -650,6 +709,29 @@ pub(crate) fn chapter_markdown(book_root: &Path) -> Vec<(String, String)> {
         }
     }
     out
+}
+
+/// The chapters `SUMMARY.md` links, as book-relative paths in the form
+/// [`chapter_markdown`] gives, or `None` when the book has no
+/// `SUMMARY.md` to read. A draft entry (`[Title]()`) names no file.
+fn summary_chapters(book_root: &Path) -> Option<HashSet<String>> {
+    static LINK: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\]\(<?([^)<>\s]+\.md)>?\)").expect("valid regex"));
+    let src = chapter_src_dir(book_root);
+    let summary = fs::read_to_string(src.join("SUMMARY.md")).ok()?;
+    let src_rel = src
+        .strip_prefix(book_root)
+        .unwrap_or(&src)
+        .to_string_lossy()
+        .replace('\\', "/");
+    Some(
+        LINK.captures_iter(&summary)
+            .map(|c| {
+                let path = c[1].trim_start_matches("./");
+                format!("{src_rel}/{path}")
+            })
+            .collect(),
+    )
 }
 
 /// The book's chapter source directory: `[book] src` from `book.toml`,

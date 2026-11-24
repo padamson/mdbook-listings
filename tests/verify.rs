@@ -61,6 +61,13 @@ impl FrozenFixtureBook {
         fs::write(self.root.join(format!("src/{slug}.md")), content).unwrap();
     }
 
+    fn verify(&self) -> assert_cmd::assert::Assert {
+        mdbook_listings()
+            .args(["verify", "--book-root"])
+            .arg(&self.root)
+            .assert()
+    }
+
     /// Write a raw file into `src/listings/` (e.g. an orphan or a sidecar).
     fn write_listing_file(&self, name: &str, content: &str) {
         fs::write(self.root.join("src/listings").join(name), content).unwrap();
@@ -406,4 +413,108 @@ fn verify_fails_on_a_listing_wider_than_max_line_width() {
         .arg(book.root())
         .assert()
         .success();
+}
+
+// A `{{#callout}}` resolves only against the listings its own chapter
+// shows, so the build fails on one that cites a label from another
+// chapter's listing, and verify reports each citation where it sits.
+#[test]
+fn verify_fails_on_a_callout_citation_no_listing_in_its_chapter_defines() {
+    let book = FrozenFixtureBook::new();
+    book.freeze("hello-v1", "a: 1\n# CALLOUT: greeting Says hello.\nb: 2\n");
+    book.write_chapter(
+        "ch01",
+        "{{#include listings/hello-v1.yaml}}\n\nSee {{#callout greeting}}.\n",
+    );
+    book.write_chapter(
+        "ch02",
+        "# Two\n\nAlso {{#callout greeting}}.\n\nAnd {{#callout greeting}} again.\n",
+    );
+
+    book.verify()
+        .failure()
+        .stderr(contains("src/ch02.md:3: {{#callout greeting}}"))
+        .stderr(contains("src/ch02.md:5: {{#callout greeting}}"))
+        .stderr(contains("src/ch01.md").not());
+}
+
+// The same chapter cites one label it defines and one it does not, so the
+// test fails unless the chapter was checked and the defined one accepted.
+#[test]
+fn verify_reports_only_the_citation_its_chapter_does_not_define() {
+    let book = FrozenFixtureBook::new();
+    book.freeze("hello-v1", "a: 1\n# CALLOUT: greeting Says hello.\nb: 2\n");
+    book.write_chapter(
+        "ch01",
+        "{{#include listings/hello-v1.yaml}}\n\nSee {{#callout greeting}} and {{#callout nope}}.\n",
+    );
+
+    book.verify()
+        .failure()
+        .stderr(contains("{{#callout nope}}"))
+        .stderr(contains("{{#callout greeting}}").not());
+}
+
+#[test]
+fn verify_resolves_a_callout_citation_against_a_sidecar() {
+    let book = FrozenFixtureBook::new();
+    book.write_listing_file(
+        "compose-v1.callouts.toml",
+        "[[callout]]\nline = 2\nlabel = \"web\"\nbody = \"The web service.\"\n",
+    );
+    book.write_chapter(
+        "ch01",
+        "{{#include listings/compose-v1.yaml}}\n\nSee {{#callout web}} and {{#callout nope}}.\n",
+    );
+
+    book.verify()
+        .failure()
+        .stderr(contains("{{#callout nope}}"))
+        .stderr(contains("{{#callout web}}").not());
+}
+
+// A diff badges only the lines it changed, so a marker on an unchanged
+// line defines nothing there; the build says why, and so does verify.
+#[test]
+fn verify_says_why_a_citation_of_a_diff_context_marker_fails() {
+    let book = FrozenFixtureBook::new();
+    book.freeze("hello-v1", "a: 1\n# CALLOUT: greeting Says hello.\nb: 2\n");
+    book.freeze("hello-v2", "a: 1\n# CALLOUT: greeting Says hello.\nb: 3\n");
+    book.write_chapter(
+        "ch01",
+        "{{#diff hello-v1 hello-v2}}\n\nSee {{#callout greeting}}.\n",
+    );
+
+    book.verify()
+        .failure()
+        .stderr(contains("src/ch01.md:3"))
+        .stderr(contains("unchanged context line"));
+}
+
+// An example of the syntax, in inline code or escaped, is not a citation.
+#[test]
+fn verify_passes_over_a_quoted_callout_citation() {
+    let book = FrozenFixtureBook::new();
+    book.write_chapter(
+        "ch01",
+        "Cite one with `{{#callout label}}`, or \\{{#callout other}}.\n",
+    );
+
+    book.verify().success();
+}
+
+// mdBook runs the callout pass only on the chapters SUMMARY.md lists: a
+// draft left out of it, or a partial a chapter includes after this
+// preprocessor runs, never has its citations resolved.
+#[test]
+fn verify_checks_citations_only_in_chapters_summary_lists() {
+    let book = FrozenFixtureBook::new();
+    book.write_chapter("SUMMARY", "# Summary\n\n- [One](./ch01.md)\n- [Draft]()\n");
+    book.write_chapter("ch01", "# One\n\nSee {{#callout nope}}.\n");
+    book.write_chapter("draft", "# Draft\n\nSee {{#callout also-nope}}.\n");
+
+    book.verify()
+        .failure()
+        .stderr(contains("src/ch01.md:3"))
+        .stderr(contains("src/draft.md").not());
 }
