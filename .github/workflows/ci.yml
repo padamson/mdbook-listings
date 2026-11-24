@@ -356,6 +356,15 @@ jobs:
       - name: Check semver compatibility
         run: cargo semver-checks check-release
 
+  # deny and vet judge the tagged commit itself, at the pin security.yml
+  # uses, rather than trusting that main's last run covered it. They read
+  # advisories and imported audits when this job runs, so a re-run reads
+  # them again. Tag-only: on branches security.yml makes the same call.
+  supply-chain-gates:
+    name: Supply-chain gates
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: padamson/rust-ci-workflows/.github/workflows/supply-chain.yml@07d9be408f21f565a66488d6931b1a39b3f872e0 # v0.2.0
+
   # The release is three jobs, not one. This job only builds: each matrix
   # leg hands its archive to `release-assets` as a workflow artifact and
   # never touches the GitHub Release or crates.io. That is what lets a
@@ -370,9 +379,9 @@ jobs:
       contents: read
       id-token: write       # provenance attestation
       attestations: write
-    # publish-crates needs this job's success, so the semver gate holds
-    # back the crate as well as the release page.
-    needs: [e2e, semver-checks]
+    # publish-crates needs this job's success, so the semver and
+    # supply-chain gates hold back the crate as well as the release page.
+    needs: [e2e, semver-checks, supply-chain-gates]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -533,7 +542,7 @@ jobs:
     # Waits on the binaries building, not on release-assets: crates.io never
     # sees the tarballs. `always()` so a failed gate fails this job by name
     # instead of leaving it `skipped`, which reads as "not applicable" (#63).
-    needs: [semver-checks, build-release]
+    needs: [semver-checks, supply-chain-gates, build-release]
     if: always() && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -541,13 +550,18 @@ jobs:
     # environment, so a copy of this workflow run from a branch can't publish.
     environment: release
     steps:
-      - name: Require the semver gate and the release binaries
+      - name: Require the gates and the release binaries
         env:
           SEMVER: ${{ needs.semver-checks.result }}
+          SUPPLY_CHAIN: ${{ needs.supply-chain-gates.result }}
           RESULT: ${{ needs.build-release.result }}
         run: |
           if [ "$SEMVER" != success ]; then
             echo "::error::semver check did not pass ($SEMVER); crate not published"
+            exit 1
+          fi
+          if [ "$SUPPLY_CHAIN" != success ]; then
+            echo "::error::supply-chain gates did not pass ($SUPPLY_CHAIN); crate not published"
             exit 1
           fi
           if [ "$RESULT" != success ]; then

@@ -74,8 +74,8 @@ cargo install prek
 prek install
 ```
 
-Hooks mirror CI checks: fmt, clippy, check, nextest, doctest, audit, deny,
-vet. The nextest hook runs the same filterset as CI's test job, so a
+Hooks mirror CI checks: fmt, clippy, check, nextest, doctest, deny
+(advisories included), vet. The nextest hook runs the same filterset as CI's test job, so a
 commit needs neither a built book nor a browser.
 
 `.config/nextest.toml` bounds every test: a hung test is a TIMEOUT
@@ -96,11 +96,14 @@ testing to just the lines a commit touched. A full-codebase run grows
 linearly with codebase size and routinely takes hours; `--in-diff`
 keeps the loop fast enough to use while the test is still warm.
 
-CI runs the per-diff variant on every push and PR (`mutation-testing-diff`
-in `security.yml`). The full-codebase job (`mutation-testing`) runs on
-the weekly schedule and on `workflow_dispatch`, as the backstop for code
-no push touched: a test that stops killing a mutant in a file nobody
-edited is invisible to the diff job.
+CI runs both through `security.yml`'s `mutation` job, a call to
+`mutation.yml` in padamson/rust-ci-workflows: the per-diff variant on
+every push and PR, and the full sweep on the weekly schedule and on
+`workflow_dispatch`, as the backstop for code no push touched (a test
+that stops killing a mutant in a file nobody edited is invisible to the
+diff job). The deny and vet gates are calls to the same repo's
+`supply-chain.yml`, from `security.yml` and, on a tag, from `ci.yml`
+before anything publishes.
 
 Configuration lives in `.cargo/mutants.toml` — that exact path;
 cargo-mutants reads no other location and won't complain about a file
@@ -110,11 +113,11 @@ mutants under `exclude_re` with the proof for each.
 
 A surviving `MISSED` mutation is a missing test: write the test in the
 same commit, or if it's provably equivalent under all reachable inputs,
-add it to `exclude_re` with the reasoning. CI's `mutation-testing-diff`
-job exits non-zero on any MISSED, so per-diff findings can't be
-deferred. TIMEOUT outcomes pass (a mutant that hangs the tests is
-detected, just not by an assertion); the script and workflow both
-verify `missed.txt` is empty before treating exit 3 as success.
+add it to `exclude_re` with the reasoning. CI's diff job exits non-zero
+on any MISSED, so per-diff findings can't be deferred. A TIMEOUT fails
+too, in CI and in the script: a mutant known to hang (an infinite loop no
+assertion can catch sooner) goes in `exclude_re` with a comment saying
+the timeout detects it, so a new timeout still shows up red.
 
 ## Building the book locally
 

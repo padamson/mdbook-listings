@@ -49,10 +49,17 @@ if [[ $# -gt 0 && "$1" == "--" ]]; then
   shift
 fi
 
-DIFF="$(mktemp -t mutants.XXXXXX.diff)"
+# A full template under $TMPDIR, not `mktemp -t`: on macOS `-t` ignores
+# $TMPDIR and writes to the per-user /var/folders dir, which a sandboxed
+# session cannot write. The X's come last: BSD mktemp randomizes only a
+# trailing run of them, so `mutants.XXXXXX.diff` would be one fixed path
+# that a concurrent run, or a stale file from a killed run, collides with.
+DIFF="$(mktemp "${TMPDIR:-/tmp}/mutants.XXXXXX")"
 trap 'rm -f "$DIFF"' EXIT
 
-git diff "${BASE}..HEAD" > "$DIFF"
+# `--no-renames`, as CI's diff job uses: a pure `git mv` otherwise shows no
+# content lines, and `--in-diff` reads that as nothing changed.
+git diff --no-renames "${BASE}..HEAD" > "$DIFF"
 
 if [[ ! -s "$DIFF" ]]; then
   echo "no diff between ${BASE} and HEAD — nothing to mutate."
@@ -61,16 +68,8 @@ if [[ ! -s "$DIFF" ]]; then
 fi
 
 echo "mutating changes in ${BASE}..HEAD ($(wc -l < "$DIFF") diff lines)"
-rc=0
-cargo mutants --in-diff "$DIFF" "$@" || rc=$?
 
-# Exit 3 means some mutants timed out and none were missed. A timeout
-# here is a detection: the known cases are FencedBlocks::next cursor
-# mutations that turn the iterator into an infinite loop, which no
-# assertion can catch faster than the harness's timeout. Only treat it
-# as a pass when missed.txt confirms nothing actually survived.
-if [[ $rc -eq 3 && ! -s mutants.out/missed.txt ]]; then
-  echo "timeouts only (hung mutants are detections, not gaps) — treating as pass"
-  rc=0
-fi
-exit $rc
+# Exit 3 (a mutant timed out) fails, as it does in CI. A mutant known to
+# hang goes in `.cargo/mutants.toml`'s `exclude_re`, with a comment saying
+# the timeout detects it.
+cargo mutants --in-diff "$DIFF" "$@"

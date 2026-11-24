@@ -8,10 +8,10 @@ jobs:
   auto-merge:
     # Arm GitHub's auto-merge on every Dependabot PR. This is safe because
     # the main ruleset requires the full gate (tests on three platforms,
-    # MSRV, e2e + book build, audit, deny, cargo vet, and mutation diff),
-    # so the PR only merges if every gate is green. A bump nobody has
-    # vouched for fails Supply Chain Review, never merges, and falls
-    # through to the manual flow: audit the delta locally, land the bump
+    # MSRV, e2e + book build, deny with advisories, cargo vet, and mutation
+    # diff), so the PR only merges if every gate is green. A bump nobody has
+    # vouched for fails `supply-chain / Supply Chain Review`, never merges,
+    # and falls through to the manual flow: audit the delta locally, land the bump
     # on main, and Dependabot closes the PR itself.
     #
     # The merge is made with a GitHub App token, not GITHUB_TOKEN. A merge

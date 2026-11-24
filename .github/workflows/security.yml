@@ -1,5 +1,11 @@
 name: Security & Quality
 
+# The jobs are shared workflows in padamson/rust-ci-workflows. Each check
+# reports as `<job id here> / <job name there>`, the names the `main`
+# ruleset requires. The local half of each gate stays here: `deny.toml`,
+# `supply-chain/`, `.cargo/mutants.toml`, `.config/nextest.toml`, and the
+# prek hooks.
+
 on:
   push:
     branches: [main]
@@ -10,229 +16,21 @@ on:
     - cron: '0 9 * * 6'
   workflow_dispatch:
 
-env:
-  CARGO_TERM_COLOR: always
-
 permissions:
   contents: read
 
 jobs:
-  audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # stable
-        with:
-          toolchain: stable
-
-      # Unpinned on purpose: an older cargo-audit can fail to parse newer
-      # advisory-db entries (CVSS 4.0, 2025), and a pinned copy waits on a
-      # Dependabot bump to recover. `--locked` builds against its own lock.
-      - name: Install cargo-audit
-        run: cargo install --locked cargo-audit
-
-      - name: Run cargo audit
-        run: cargo audit
-
-  deny:
-    name: License & Dependency Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # stable
-        with:
-          toolchain: stable
-
-      - name: Install cargo-deny
-        run: cargo install --locked cargo-deny
-
-      - name: Run cargo deny
-        run: cargo deny --workspace check bans licenses sources
-
-      # Advisories go through the script advisory-monitor.yml runs daily,
-      # so the gate and the monitor read the same lockfiles and agree on
-      # what counts as a finding. The self-test pins its classifier to
-      # cargo-deny's output format.
-      - name: Verify the advisory checker classifies cargo-deny output
-        run: scripts/test-check-advisories.sh
-
-      - name: Check advisories in every lockfile
-        run: scripts/check-advisories.sh
-
   supply-chain:
-    name: Supply Chain Review
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+    uses: padamson/rust-ci-workflows/.github/workflows/supply-chain.yml@07d9be408f21f565a66488d6931b1a39b3f872e0 # v0.2.0
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # stable
-        with:
-          toolchain: stable
+  semver-preview:
+    uses: padamson/rust-ci-workflows/.github/workflows/semver-preview.yml@07d9be408f21f565a66488d6931b1a39b3f872e0 # v0.2.0
 
-      # Built from crates.io on purpose: install-action serves GitHub release
-      # binaries, and cargo-vet's newest release with binaries is 0.10.0,
-      # which cannot parse the `trusted-publisher` entries that 0.10.2
-      # (crates.io) writes. `--locked` builds against cargo-vet's own
-      # Cargo.lock. No version pin on purpose: Dependabot cannot bump a
-      # `run:` line, and cargo-vet refuses a store written by a newer
-      # version, so a pinned CI copy older than a local one goes red.
-      - name: Install cargo-vet
-        run: cargo install --locked cargo-vet
-
-      - name: Run cargo vet
-        run: |
-          if [ -f supply-chain/audits.toml ]; then
-            # Not `--locked`: vet fetches the publisher records of trusted
-            # crates' new versions into imports.lock, and Dependabot changes
-            # only Cargo.lock, so a locked vet fails every trusted bump.
-            cargo vet
-          else
-            echo "supply-chain/ not initialized; skipping. Run 'cargo vet init' to enable."
-          fi
-
-  mutation-testing:
-    name: Mutation Testing (full)
-    runs-on: ubuntu-latest
-    timeout-minutes: 300
-    # The weekly backstop for code no push touched. Per-push verification
-    # is `mutation-testing-diff` below, scoped to the lines a push or PR
-    # changed, which cannot see a test that stopped killing a mutant in
-    # code it did not touch. The full run grows with the codebase; the
-    # job timeout above is the budget, and hitting it is a finding.
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # stable
-        with:
-          toolchain: stable
-
-      - name: Cache Cargo
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-mutants-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-mutants-
-
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
-        with:
-          tool: cargo-nextest
-          fallback: none
-
-      # Use prebuilt binary via taiki-e/install-action. `cargo install
-      # cargo-mutants` fails when the cargo cache restores a previously
-      # installed binary into `~/.cargo/bin/` (cargo install refuses to
-      # overwrite without --force); the action handles the
-      # already-installed case correctly and is ~10x faster anyway.
-      - name: Install cargo-mutants
-        uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
-        with:
-          tool: cargo-mutants
-          fallback: none
-
-      # `.cargo/mutants.toml` scopes the run: nextest, browser/PDF test
-      # binaries filtered out, known-equivalent mutants excluded.
-      # Exit 3 (timeouts, none missed) passes: a hung mutant is a
-      # detection — see the matching logic in scripts/mutants.sh.
-      - name: Run mutation testing
-        env:
-          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: 1
-        run: |
-          rc=0
-          cargo mutants || rc=$?
-          if [ "$rc" -eq 3 ] && [ ! -s mutants.out/missed.txt ]; then
-            echo "timeouts only — treating as pass"
-            rc=0
-          fi
-          exit $rc
-
-      - name: Upload mutation report
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: mutation-report
-          path: mutants.out/
-
-  mutation-testing-diff:
-    name: Mutation Testing (diff)
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    # Fast per-push variant: scopes to the lines touched in this push or
-    # pull request via `cargo mutants --in-diff`. Typical runtime is
-    # seconds-to-minutes rather than the full-codebase job's hours.
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          # Need history beyond HEAD so `git diff` can reach the base
-          # commit (push: `before` SHA; PR: merge base of base ref).
-          fetch-depth: 0
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # stable
-        with:
-          toolchain: stable
-
-      - name: Cache Cargo
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-mutants-diff-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-mutants-diff-
-            ${{ runner.os }}-cargo-mutants-
-
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
-        with:
-          tool: cargo-nextest
-          fallback: none
-
-      - name: Install cargo-mutants
-        uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
-        with:
-          tool: cargo-mutants
-          fallback: none
-
-      - name: Compute diff base
-        id: base
-        uses: ./.github/actions/diff-base
-
-      - name: Run mutation testing on diff
-        # No browser, book, or fork setup here: .cargo/mutants.toml
-        # filters out the e2e/PDF test binaries, so mutant runs never
-        # launch a browser, and PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD keeps
-        # playwright-rs's build script from fetching a driver this job
-        # would never use.
-        env:
-          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: 1
-        run: ./scripts/mutants.sh ${{ steps.base.outputs.ref }}
-
-      - name: Upload mutation report
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: mutation-report-diff
-          path: mutants.out/
+  # The weekly schedule runs the full sweep (about two hours unsharded).
+  # `.cargo/mutants.toml` filters out the browser and PDF test binaries, so
+  # no mutant launches a browser, and the variable below keeps
+  # playwright-rs's build script from fetching a driver nothing here uses.
+  mutation:
+    uses: padamson/rust-ci-workflows/.github/workflows/mutation.yml@07d9be408f21f565a66488d6931b1a39b3f872e0 # v0.2.0
+    with:
+      setup: echo "PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD=1" >> "$GITHUB_ENV"
