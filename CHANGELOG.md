@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **`remove <tag>` retires a listing.** It drops the record from
+  `listings.toml`, deletes the frozen file, and deletes any callout
+  sidecar that names the tag, so a listing whose source is gone no longer
+  needs a hand edit of the file the CLI owns. It refuses, changing
+  nothing, while a chapter still reads one of those files (through
+  `{{#include}}`, `{{#rustdoc_include}}`, or `{{#playground}}`, by any
+  path) or names the listing in a `{{#diff}}`, and lists each use by
+  chapter and line.
+
 ### Fixed
 - **`--version` names the right build in more cases.** A release
   tagged `v<version>` prints the bare version even when another tag

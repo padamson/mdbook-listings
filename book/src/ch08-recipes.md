@@ -61,6 +61,24 @@ A frozen snapshot is meant to be immutable, so guard that:
   `typos` hook with `exclude: '^book/src/listings/'` for exactly that
   reason.
 
+## Retire a listing the book no longer uses
+
+When a source file is deleted, or a chapter stops showing an old
+revision, take the listing out with the CLI rather than by hand:
+
+```bash
+mdbook-listings remove catalog-v1
+```
+
+It drops the `[[listing]]` record from `listings.toml`, deletes the frozen
+file, and deletes any callout sidecar that names the tag (its own
+`catalog-v1.callouts.toml`, and any diff sidecar with `catalog-v1` on
+either side). It refuses, and changes nothing, while a chapter still
+shows the listing: each `\{{#include listings/catalog-v1.yaml}}` (or a
+`rustdoc_include` or `playground`, by any path) that reads one of those
+files, and each `{{#diff …}}` naming the tag, is listed by chapter and
+line. Edit those out first, then run it again.
+
 ## Run `verify` in CI
 
 Install the binary, then run verify against the book. The build fails if a

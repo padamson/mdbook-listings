@@ -18,7 +18,11 @@ fn help_lists_all_subcommands() {
         .stdout(contains("supports"))
         .stdout(contains("install"))
         .stdout(contains("freeze"))
-        .stdout(contains("verify"));
+        .stdout(contains("verify"))
+        // Anchored to the commands column: `list` alone would match
+        // `mdbook-listings` in the usage line.
+        .stdout(predicates::str::is_match(r"(?m)^\s+remove\s").unwrap())
+        .stdout(predicates::str::is_match(r"(?m)^\s+list\s").unwrap());
 }
 
 #[test]

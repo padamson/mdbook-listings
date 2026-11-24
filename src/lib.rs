@@ -22,5 +22,6 @@ pub(crate) mod listing_ref;
 pub(crate) mod manifest;
 pub(crate) mod number;
 pub(crate) mod pipeline;
+pub(crate) mod remove;
 pub(crate) mod source_path;
 pub(crate) mod verify;

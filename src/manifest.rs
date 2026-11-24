@@ -146,6 +146,13 @@ impl Manifest {
         }
     }
 
+    /// Drop the listing tagged `tag`, returning it, or `None` when no
+    /// listing has that tag.
+    pub fn remove(&mut self, tag: &str) -> Option<Listing> {
+        let idx = self.listings.iter().position(|l| l.tag == tag)?;
+        Some(self.listings.remove(idx))
+    }
+
     fn path(book_root: &Path) -> PathBuf {
         book_root.join(MANIFEST_FILENAME)
     }

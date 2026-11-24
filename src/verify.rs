@@ -28,7 +28,7 @@ use crate::source_path::SourcePaths;
 /// Where frozen listings live, relative to the book root. Matches
 /// `freeze`'s `LISTINGS_SUBDIR` — frozen files always land here regardless
 /// of the book's configured `src`.
-const LISTINGS_REL: &str = "src/listings";
+pub(crate) const LISTINGS_REL: &str = "src/listings";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
@@ -123,13 +123,58 @@ fn check_snapshot_integrity(book_root: &Path, manifest: &Manifest, report: &mut 
     }
 }
 
-/// Every `{{#include listings/TAG…}}` path and every `{{#diff}}` tag
-/// operand in chapter prose must name a manifest record. A dangling
-/// reference is an error the build would also hit; verify reports it with
-/// chapter:line up front. `live:` operands are not resolution targets
-/// (they show current source); they are audited separately.
-fn check_references(book_root: &Path, manifest: &Manifest, report: &mut VerifyReport) {
-    let tags: HashSet<&str> = manifest.listings.iter().map(|l| l.tag.as_str()).collect();
+/// The tags a callout sidecar file name annotates: `[tag]` for
+/// `<tag>.callouts.toml`, `[old, new]` for a diff's
+/// `<old>..<new>.callouts.toml`, `None` for any other file.
+pub(crate) fn sidecar_tags(name: &str) -> Option<Vec<&str>> {
+    let stem = name.strip_suffix(".callouts.toml")?;
+    Some(match stem.split_once("..") {
+        Some((old, new)) => vec![old, new],
+        None => vec![stem],
+    })
+}
+
+/// Where a chapter uses a frozen listing: a `{{#include listings/…}}` of
+/// it or of one of its sidecars, or a `{{#diff}}` operand.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ListingReference {
+    /// Book-relative chapter path and 1-based line, `src/ch01.md:12`.
+    pub location: String,
+    pub tag: String,
+    pub kind: ReferenceKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ReferenceKind {
+    /// `{{#include listings/<file>}}` of the frozen listing itself.
+    Include {
+        file: String,
+    },
+    /// `{{#include listings/<file>}}` of a sidecar that names the tag.
+    SidecarInclude {
+        file: String,
+    },
+    DiffOperand,
+}
+
+impl std::fmt::Display for ListingReference {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            ReferenceKind::Include { file } | ReferenceKind::SidecarInclude { file } => {
+                write!(f, "{}: {{{{#include listings/{file}}}}}", self.location)
+            }
+            ReferenceKind::DiffOperand => {
+                write!(f, "{}: {{{{#diff}}}} operand `{}`", self.location, self.tag)
+            }
+        }
+    }
+}
+
+/// Every place a chapter uses a frozen listing, by tag, whether or not the
+/// manifest holds that tag. `live:` diff operands are left out: they name
+/// a source path, not a listing.
+pub(crate) fn listing_references(book_root: &Path) -> Vec<ListingReference> {
+    let mut refs = Vec::new();
     for (rel, content) in chapter_markdown(book_root) {
         for occ in scan_directives(&content, "{{#include ", FencePolicy::Annotate) {
             // Every argument the include parser lifts, so none is read as
@@ -149,38 +194,70 @@ fn check_references(book_root: &Path, manifest: &Manifest, report: &mut VerifyRe
                 continue;
             };
             // Drop any `:start:end` range suffix.
-            let file = rest.split(':').next().unwrap_or(rest);
-            // A `listings/<tag>.callouts.toml` include displays a sidecar
-            // file, not a frozen listing — its existence is the sidecar
-            // pass's job, not a tag reference here.
-            if file.ends_with(".callouts.toml") {
+            let file = rest.split(':').next().unwrap_or(rest).to_string();
+            let location = format!("{rel}:{}", line_number(&content, occ.span.start));
+            if let Some(tags) = sidecar_tags(&file) {
+                for tag in tags {
+                    refs.push(ListingReference {
+                        location: location.clone(),
+                        tag: tag.to_string(),
+                        kind: ReferenceKind::SidecarInclude { file: file.clone() },
+                    });
+                }
                 continue;
             }
-            let stem = Path::new(file)
+            let tag = Path::new(&file)
                 .file_stem()
                 .and_then(|s| s.to_str())
-                .unwrap_or("");
-            if !tags.contains(stem) {
-                report.error(format!(
-                    "{rel}:{}: {{{{#include listings/{file}}}}} names no frozen listing `{stem}`",
-                    line_number(&content, occ.span.start),
-                ));
-            }
+                .unwrap_or("")
+                .to_string();
+            refs.push(ListingReference {
+                location,
+                tag,
+                kind: ReferenceKind::Include { file },
+            });
         }
-        // The splicer's own parser, so verify checks exactly the diffs the
+        // The splicer's own parser, so this finds exactly the diffs the
         // build renders, whatever arguments follow the operands.
         for d in parse_directives(&content) {
             for operand in [&d.left, &d.right] {
                 if operand.starts_with("live:") {
                     continue;
                 }
-                if manifest.find(operand).is_none() {
-                    report.error(format!(
-                        "{rel}:{}: {{{{#diff}}}} operand `{operand}` names no frozen listing",
-                        line_number(&content, d.span.start),
-                    ));
-                }
+                refs.push(ListingReference {
+                    location: format!("{rel}:{}", line_number(&content, d.span.start)),
+                    tag: operand.clone(),
+                    kind: ReferenceKind::DiffOperand,
+                });
             }
+        }
+    }
+    refs
+}
+
+/// Every `{{#include listings/TAG…}}` path and every `{{#diff}}` tag
+/// operand in chapter prose must name a manifest record. A dangling
+/// reference is an error the build would also hit; verify reports it with
+/// chapter:line up front. `live:` operands are not resolution targets
+/// (they show current source); they are audited separately.
+fn check_references(book_root: &Path, manifest: &Manifest, report: &mut VerifyReport) {
+    let tags: HashSet<&str> = manifest.listings.iter().map(|l| l.tag.as_str()).collect();
+    for r in listing_references(book_root) {
+        if tags.contains(r.tag.as_str()) {
+            continue;
+        }
+        match &r.kind {
+            ReferenceKind::Include { file } => report.error(format!(
+                "{}: {{{{#include listings/{file}}}}} names no frozen listing `{}`",
+                r.location, r.tag
+            )),
+            ReferenceKind::DiffOperand => report.error(format!(
+                "{}: {{{{#diff}}}} operand `{}` names no frozen listing",
+                r.location, r.tag
+            )),
+            // A sidecar include displays a sidecar file, not a frozen
+            // listing: whether its tags exist is the sidecar pass's job.
+            ReferenceKind::SidecarInclude { .. } => {}
         }
     }
 }
@@ -250,12 +327,8 @@ fn check_sidecars(book_root: &Path, manifest: &Manifest, report: &mut VerifyRepo
         .filter_map(|l| Path::new(&l.frozen).file_stem().and_then(|s| s.to_str()))
         .collect();
     for name in listing_dir_entries(book_root) {
-        let Some(stem) = name.strip_suffix(".callouts.toml") else {
+        let Some(tags) = sidecar_tags(&name) else {
             continue;
-        };
-        let tags = match stem.split_once("..") {
-            Some((old, new)) => vec![old, new],
-            None => vec![stem],
         };
         for tag in tags.into_iter().filter(|t| !stems.contains(t)) {
             report.error(format!(
@@ -548,7 +621,7 @@ fn listing_dir_entries(book_root: &Path) -> Vec<String> {
 /// All `*.md` files under the book's configured `src` directory (default
 /// `src`), excluding the `listings/` subtree (frozen content, not
 /// chapters). Returns `(book-relative display path, content)` pairs.
-fn chapter_markdown(book_root: &Path) -> Vec<(String, String)> {
+pub(crate) fn chapter_markdown(book_root: &Path) -> Vec<(String, String)> {
     let src = chapter_src_dir(book_root);
     let listings = book_root.join(LISTINGS_REL);
     let mut out = Vec::new();
@@ -601,6 +674,46 @@ mod tests {
     use super::*;
     use crate::manifest::Listing;
     use tempfile::TempDir;
+
+    #[test]
+    fn sidecar_tags_reads_a_listing_sidecar() {
+        assert_eq!(sidecar_tags("menu-v1.callouts.toml"), Some(vec!["menu-v1"]));
+    }
+
+    #[test]
+    fn sidecar_tags_reads_both_sides_of_a_diff_sidecar() {
+        assert_eq!(
+            sidecar_tags("menu-v1..menu-v2.callouts.toml"),
+            Some(vec!["menu-v1", "menu-v2"])
+        );
+    }
+
+    #[test]
+    fn sidecar_tags_passes_over_a_frozen_listing() {
+        assert_eq!(sidecar_tags("menu-v1.yaml"), None);
+    }
+
+    #[test]
+    fn listing_references_names_both_tags_of_an_included_diff_sidecar() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(
+            root.join("src/ch.md"),
+            "```toml\n{{#include listings/a-v1..a-v2.callouts.toml}}\n```\n",
+        )
+        .unwrap();
+        let file = "a-v1..a-v2.callouts.toml".to_string();
+        let sidecar = |tag: &str| ListingReference {
+            location: "src/ch.md:2".to_string(),
+            tag: tag.to_string(),
+            kind: ReferenceKind::SidecarInclude { file: file.clone() },
+        };
+        assert_eq!(
+            listing_references(root),
+            vec![sidecar("a-v1"), sidecar("a-v2")]
+        );
+    }
 
     fn listing_for(tag: &str, frozen: &str, bytes: &[u8]) -> Listing {
         Listing {

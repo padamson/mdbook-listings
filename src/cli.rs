@@ -8,6 +8,7 @@ use crate::freeze::{
 use crate::install::{InstallOutcome, ensure_assets_fresh, install};
 use crate::manifest::Manifest;
 use crate::pipeline;
+use crate::remove::remove;
 use crate::verify::{Severity, verify};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -81,6 +82,22 @@ enum Command {
     /// Verify consistency between the manifest, frozen listings, and `{{#include}}`
     /// references in the book's markdown.
     Verify {
+        /// Root directory of the book. Defaults to the current directory.
+        #[arg(long)]
+        book_root: Option<PathBuf>,
+    },
+
+    /// Retire a frozen listing the book no longer uses.
+    ///
+    /// Drops its `listings.toml` record, its frozen file, and any callout
+    /// sidecar that names it. Refuses, changing nothing, while a chapter
+    /// still reads one of those files through an mdBook file directive
+    /// (`{{#include}}`, `{{#rustdoc_include}}`, `{{#playground}}`) or names
+    /// the listing in a `{{#diff}}`.
+    Remove {
+        /// Tag of the listing to remove, as `list` prints it.
+        tag: String,
+
         /// Root directory of the book. Defaults to the current directory.
         #[arg(long)]
         book_root: Option<PathBuf>,
@@ -178,6 +195,15 @@ pub fn run() -> Result<()> {
                     "warning: dropped the url recorded for `{tag}` ({url}); it pointed at the \
                      replaced content. Pass --source-url to record a new one."
                 );
+            }
+            Ok(())
+        }
+        Some(Command::Remove { tag, book_root }) => {
+            let book_root = book_root.unwrap_or_else(|| PathBuf::from("."));
+            let report = remove(&book_root, &tag)?;
+            println!("removed: {tag}");
+            for path in report.deleted {
+                println!("  deleted: {path}");
             }
             Ok(())
         }

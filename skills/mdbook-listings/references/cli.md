@@ -1,7 +1,7 @@
 # mdbook-listings CLI reference
 
 The binary is `mdbook-listings`. Author-facing subcommands are `install`,
-`freeze`, `verify`, and `list`. (`supports` exists too but is the internal
+`freeze`, `verify`, `remove`, and `list`. (`supports` exists too but is the internal
 mdBook preprocessor protocol — you won't call it directly.)
 
 Every author command accepts `--book-root <DIR>` and defaults it to the current
@@ -163,6 +163,29 @@ Warnings (reported on stderr, exit stays 0):
 
 **Run it in CI** to catch drift before readers see stale code.
 
+## `remove`
+
+```
+mdbook-listings remove <TAG> [--book-root <BOOK_ROOT>]
+```
+
+(Added after 0.3.0. On 0.3.0 itself the subcommand does not exist.)
+
+Retires a listing the book no longer uses, such as one whose source file
+was deleted. It drops the tag's `[[listing]]` record from `listings.toml`,
+deletes its frozen file, and deletes any sidecar under `src/listings/`
+that names the tag: its own `<tag>.callouts.toml`, and any diff sidecar
+`<old>..<new>.callouts.toml` with the tag on either side. It prints
+`removed: <tag>` and one `deleted: <path>` line per file.
+
+It refuses, changing nothing, while any chapter still uses the listing:
+a `{{#diff}}` with the tag as an operand, or any mdBook file directive
+(`{{#include}}`, `{{#rustdoc_include}}`, `{{#playground}}`) that reads the
+frozen file or one of those sidecars, by whatever path from the chapter's
+directory. The error names each use as `<chapter>:<line>`. Take those out of the prose, then run `remove` again.
+A frozen file already deleted by hand is not an error: `remove` drops the
+record and reports nothing deleted for it.
+
 ## `list`
 
 ```
@@ -180,7 +203,8 @@ existing tags before choosing a new one.
 
 ## The `listings.toml` manifest
 
-The CLI owns this file — **do not hand-edit it.** Shape:
+The CLI owns this file — **do not hand-edit it.** To take a record out,
+use `remove`. Shape:
 
 ```toml
 version = 1

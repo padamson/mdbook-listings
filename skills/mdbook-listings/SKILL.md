@@ -11,7 +11,7 @@ description: >-
   with its sources.
 license: MIT OR Apache-2.0
 metadata:
-  version: "0.1.33"
+  version: "0.1.34"
 ---
 
 # Authoring with mdbook-listings
@@ -37,7 +37,9 @@ Two identities govern every listing:
   **rejected** unless you pass `--force`.
 
 You never hand-edit frozen files or `listings.toml` — the CLI owns them
-(the one exception is adding `allow-long-lines = true` to a record). You
+(the one exception is adding `allow-long-lines = true` to a record). To
+retire a listing no chapter uses any more, run `mdbook-listings remove
+<tag>`; it refuses while a chapter still includes or diffs it. You
 *do* hand-write the `{{#include}}` / `{{#listing}}` / `{{#callout}}` /
 `{{#diff}}` directives in chapter prose, and any `<tag>.callouts.toml`
 sidecar.
