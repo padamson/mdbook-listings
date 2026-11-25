@@ -49,6 +49,9 @@ Copies `<SOURCE>` into the book's `listings/` directory and records it in
   on subsequent freezes of the same basename.
 - `--force` — overwrite an existing frozen copy that has the **same tag but
   different bytes**. Without it, a conflicting re-freeze is rejected.
+- `--update-refs` — with `--force`, rewrite the line ranges that chapters
+  include from this listing to where those lines are in the new bytes (see
+  [Identity model](#identity-model)).
 - `--source-url <URL>` — record where a reader can see this snapshot, as
   `url` in `listings.toml`. Use the file's URL **at the commit it was frozen
   from** (a GitHub `blob/<sha>/…` link), not a branch, which moves on while
@@ -79,6 +82,17 @@ Copies `<SOURCE>` into the book's `listings/` directory and records it in
   `--force` is passed. A forced re-freeze drops the recorded URL, since it
   pointed at the old bytes, and warns; pass `--source-url` again to record
   the new one.
+- Line ranges into the listing are pinned to the old bytes too. A forced
+  re-freeze diffs the old bytes against the new and finds every
+  `{{#include}}` or `{{#rustdoc_include}}` range (`:A:B`, `:A:`, `::B`,
+  `:N`) that reaches the frozen file. If any would move, it
+  lists each as `chapter:line  path:A:B → C:D` and writes nothing. With
+  `--update-refs` it rewrites them and freezes, printing `moved:` for each.
+  It warns (`check the range`) about a range whose first or last line
+  changed, which it snaps inward, or that gained a line just outside an
+  end, which it leaves outside. A range with no line left stays as written
+  (`fix it by hand`). `{{#diff}}` ranges and sidecar `line`s are not
+  carried yet.
 - `allow-long-lines` follows the same rule as the URL. An unchanged re-freeze
   keeps it, and one with `--allow-long-lines` records it (the summary says
   `long lines allowed`). A forced re-freeze of different bytes drops it and

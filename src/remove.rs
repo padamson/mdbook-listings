@@ -126,11 +126,19 @@ fn sidecars_naming(book_root: &Path, tag: &str) -> Result<Vec<String>> {
 }
 
 /// A file mdBook reads into a chapter, and where.
-struct FileLink {
+pub(crate) struct FileLink {
     /// Book-relative chapter path and 1-based line, `src/ch01.md:5`.
-    location: String,
-    directive: String,
-    target: PathBuf,
+    pub(crate) location: String,
+    pub(crate) directive: String,
+    pub(crate) target: PathBuf,
+    /// Byte offset of the directive in the chapter.
+    pub(crate) start: usize,
+    /// The file argument as written, and its byte offset in the chapter.
+    pub(crate) spec: String,
+    pub(crate) spec_start: usize,
+    /// Whether mdBook reads a line range or anchor after the argument's
+    /// first `:`. `playground` takes the whole argument as the path.
+    pub(crate) ranged: bool,
 }
 
 /// mdBook's own file directives, wherever it expands them: inline code and
@@ -146,34 +154,48 @@ static FILE_DIRECTIVE: LazyLock<Regex> = LazyLock::new(|| {
 /// `src/listings/` another way (`../listings/…`), and `rustdoc_include` and
 /// `playground`.
 fn file_links(book_root: &Path) -> Vec<FileLink> {
+    chapter_markdown(book_root)
+        .into_iter()
+        .flat_map(|(rel, content)| chapter_file_links(book_root, &rel, &content))
+        .collect()
+}
+
+/// [`file_links`] for one chapter, `rel` being its book-relative path.
+pub(crate) fn chapter_file_links(book_root: &Path, rel: &str, content: &str) -> Vec<FileLink> {
+    let chapter_dir = book_root
+        .join(rel)
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| book_root.to_path_buf());
     let mut links = Vec::new();
-    for (rel, content) in chapter_markdown(book_root) {
-        let chapter_dir = book_root
-            .join(&rel)
-            .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| book_root.to_path_buf());
-        for caps in FILE_DIRECTIVE.captures_iter(&content) {
-            if caps.get(1).is_some() {
-                continue;
-            }
-            let whole = caps.get(0).expect("whole match");
-            let path = caps[3].split_whitespace().next().unwrap_or("");
-            // mdBook reads a line range or anchor after the first `:`.
-            let path = path.split(':').next().unwrap_or(path);
-            links.push(FileLink {
-                location: format!("{rel}:{}", line_number(&content, whole.start())),
-                directive: whole.as_str().to_string(),
-                target: normalize(&chapter_dir.join(path)),
-            });
+    for caps in FILE_DIRECTIVE.captures_iter(content) {
+        if caps.get(1).is_some() {
+            continue;
         }
+        let whole = caps.get(0).expect("whole match");
+        let args = caps.get(3).expect("directive arguments");
+        let spec = args.as_str().split_whitespace().next().unwrap_or("");
+        let ranged = &caps[2] != "playground";
+        let path = match spec.split_once(':') {
+            Some((path, _)) if ranged => path,
+            _ => spec,
+        };
+        links.push(FileLink {
+            location: format!("{rel}:{}", line_number(content, whole.start())),
+            directive: whole.as_str().to_string(),
+            target: normalize(&chapter_dir.join(path)),
+            start: whole.start(),
+            spec: spec.to_string(),
+            spec_start: args.start(),
+            ranged,
+        });
     }
     links
 }
 
 /// `path` with `.` and `..` folded away, without touching the filesystem,
 /// so a link to a file and the file itself compare equal.
-fn normalize(path: &Path) -> PathBuf {
+pub(crate) fn normalize(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {
         match component {
@@ -190,6 +212,24 @@ fn normalize(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_playground_argument_is_all_path_and_an_include_argument_ends_at_its_colon() {
+        let root = Path::new("book");
+        let links = chapter_file_links(
+            root,
+            "src/ch.md",
+            "{{#playground listings/x.rs:2}}\n{{#include listings/x.rs:2}}\n",
+        );
+        let seen: Vec<(PathBuf, bool)> = links.into_iter().map(|l| (l.target, l.ranged)).collect();
+        assert_eq!(
+            seen,
+            [
+                (root.join("src/listings/x.rs:2"), false),
+                (root.join("src/listings/x.rs"), true),
+            ]
+        );
+    }
 
     #[test]
     fn a_frozen_path_under_the_listings_dir_is_inside() {

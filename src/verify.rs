@@ -736,7 +736,7 @@ fn summary_chapters(book_root: &Path) -> Option<HashSet<String>> {
 
 /// The book's chapter source directory: `[book] src` from `book.toml`,
 /// defaulting to `src` when absent or unparsable.
-fn chapter_src_dir(book_root: &Path) -> PathBuf {
+pub(crate) fn chapter_src_dir(book_root: &Path) -> PathBuf {
     let src = fs::read_to_string(book_root.join("book.toml"))
         .ok()
         .and_then(|text| text.parse::<toml::Table>().ok())

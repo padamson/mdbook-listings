@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow, bail};
 use sha2::{Digest, Sha256};
 
+use crate::line_refs::{self, CarriedRef};
 use crate::line_width::{describe, long_lines_in, max_line_width};
 use crate::manifest::{Listing, Manifest};
 
@@ -27,6 +28,10 @@ pub struct FreezeOptions<'a> {
     /// Freeze lines wider than the book's `max-line-width`, recording the
     /// exemption so `verify` accepts them.
     pub allow_long_lines: bool,
+    /// On a forced re-freeze of changed bytes, rewrite the chapters' line
+    /// ranges into the listing to where those lines now are. Without it,
+    /// such a re-freeze refuses while any range would move.
+    pub update_refs: bool,
 }
 
 /// Outcome of a freeze invocation. Callers use this to render a summary line
@@ -64,6 +69,12 @@ pub struct FreezeReport {
     /// A `url` the replaced listing carried that this freeze dropped: it
     /// pointed at the old content, and no `--source-url` replaced it.
     pub dropped_url: Option<String>,
+    /// Line references into the replaced listing that moved, or that need
+    /// the author's eye.
+    pub refs: Vec<CarriedRef>,
+    /// The replaced listing's frozen copy was missing, so there was nothing
+    /// to carry its line references from.
+    pub refs_unchecked: bool,
 }
 
 /// Freeze `opts.source` into `<book_root>/src/listings/<tag>.<ext>` and upsert
@@ -131,6 +142,36 @@ pub fn freeze(opts: FreezeOptions<'_>) -> Result<FreezeReport> {
             describe(long),
         );
     }
+    // Line numbers into the old bytes are pinned to them the same way the
+    // URL and the exemption are, so a change carries them here. Under a new
+    // extension the old file stays as it is, and so do the ranges into it.
+    let frozen_rel_str = path_to_string(&frozen_rel)?;
+    let replaced = existing.as_ref().filter(|old| {
+        outcome == FreezeOutcome::Replaced && !same_bytes && old.frozen == frozen_rel_str
+    });
+    let old_bytes = replaced.and_then(|old| fs::read(opts.book_root.join(&old.frozen)).ok());
+    let refs_unchecked = replaced.is_some() && old_bytes.is_none();
+    let plan = old_bytes.map_or_else(Vec::new, |old_bytes| {
+        line_refs::plan(
+            opts.book_root,
+            &frozen_rel_str,
+            &String::from_utf8_lossy(&old_bytes),
+            &String::from_utf8_lossy(&source_bytes),
+        )
+    });
+    let refs = line_refs::carried(&plan);
+    if !refs.is_empty() && !opts.update_refs {
+        bail!(
+            "`{}` changed, so line references into it move. Nothing was written; re-run \
+             with --update-refs to rewrite them:\n{}",
+            opts.tag,
+            refs.iter()
+                .map(|r| format!("  {r}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+    }
+
     let outcome = match outcome {
         FreezeOutcome::Unchanged if url != recorded_url => FreezeOutcome::UrlUpdated,
         FreezeOutcome::Unchanged if allow_long_lines != recorded_allow => {
@@ -152,12 +193,19 @@ pub fn freeze(opts: FreezeOptions<'_>) -> Result<FreezeReport> {
                     format!("creating frozen-listings directory {}", parent.display())
                 })?;
             }
-            fs::write(&frozen_abs, &source_bytes)
-                .with_context(|| format!("writing frozen file {}", frozen_abs.display()))?;
+            // The chapters and the listing change together: ranges carried
+            // for bytes that then fail to freeze would be carried again by
+            // the retry, so a failed listing write puts the chapters back.
+            line_refs::apply(opts.book_root, &plan)?;
+            if let Err(e) = fs::write(&frozen_abs, &source_bytes) {
+                line_refs::restore(opts.book_root, &plan);
+                return Err(e)
+                    .with_context(|| format!("writing frozen file {}", frozen_abs.display()));
+            }
             Some(Listing {
                 tag: opts.tag.to_string(),
                 source: source_rel_str,
-                frozen: path_to_string(&frozen_rel)?,
+                frozen: frozen_rel_str,
                 sha256: source_sha,
                 url: url.clone(),
                 allow_long_lines,
@@ -174,6 +222,8 @@ pub fn freeze(opts: FreezeOptions<'_>) -> Result<FreezeReport> {
         previous_tag,
         url,
         dropped_url,
+        refs,
+        refs_unchecked,
     })
 }
 
@@ -452,6 +502,44 @@ mod tests {
                 force,
                 source_url,
                 allow_long_lines,
+                update_refs: false,
+            })
+        }
+
+        /// Freeze `old`, write `chapter` as `src/<path>`, then change the
+        /// source to `new` for a forced re-freeze.
+        fn with_chapter(old: &str, path: &str, chapter: &str, new: &str) -> Self {
+            let book = Self::new();
+            fs::write(&book.source, old).unwrap();
+            book.freeze(false, None).unwrap();
+            book.write_chapter(path, chapter);
+            fs::write(&book.source, new).unwrap();
+            book
+        }
+
+        fn write_chapter(&self, path: &str, text: &str) {
+            let path = self.root.join("src").join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        }
+
+        fn chapter(&self, path: &str) -> String {
+            fs::read_to_string(self.root.join("src").join(path)).unwrap()
+        }
+
+        fn frozen(&self) -> String {
+            fs::read_to_string(self.root.join("src/listings/x-v1.yaml")).unwrap()
+        }
+
+        fn refreeze(&self, update_refs: bool) -> Result<FreezeReport> {
+            freeze(FreezeOptions {
+                book_root: &self.root,
+                tag: "x-v1",
+                source: &self.source,
+                force: true,
+                source_url: None,
+                allow_long_lines: false,
+                update_refs,
             })
         }
 
@@ -810,6 +898,257 @@ mod tests {
         fs::write(&book.source, "a: 1\nb: 12345678\n").unwrap();
         book.freeze_with(true, None, true).unwrap();
         assert!(book.recorded_allow_long_lines());
+    }
+
+    const ABC: &str = "a\nb\nc\n";
+    const XABC: &str = "x\na\nb\nc\n";
+
+    #[test]
+    fn a_forced_refreeze_that_moves_an_include_range_refuses_and_writes_nothing() {
+        let chapter = "{{#include listings/x-v1.yaml:2:3}}\n";
+        let book = Book::with_chapter(ABC, "ch.md", chapter, XABC);
+        let err = format!("{:#}", book.refreeze(false).unwrap_err());
+        assert!(err.contains("--update-refs"), "got: {err}");
+        assert!(
+            err.contains("src/ch.md:1  listings/x-v1.yaml:2:3 → 3:4"),
+            "got: {err}"
+        );
+        assert_eq!(book.frozen(), ABC);
+        assert_eq!(book.chapter("ch.md"), chapter);
+        let manifest = Manifest::load(&book.root).unwrap();
+        assert_eq!(
+            manifest.find("x-v1").unwrap().sha256,
+            hex_sha256(ABC.as_bytes())
+        );
+    }
+
+    #[test]
+    fn update_refs_rewrites_the_range_and_nothing_else_then_freezes() {
+        let book = Book::with_chapter(
+            ABC,
+            "ch.md",
+            "Text.\n\n```yaml\n{{#include listings/x-v1.yaml:2:3 caption=\"B and c\"}}\n```\n",
+            XABC,
+        );
+        let report = book.refreeze(true).unwrap();
+        assert_eq!(report.outcome, FreezeOutcome::Replaced);
+        assert_eq!(
+            book.chapter("ch.md"),
+            "Text.\n\n```yaml\n{{#include listings/x-v1.yaml:3:4 caption=\"B and c\"}}\n```\n"
+        );
+        assert_eq!(book.frozen(), XABC);
+        let shown: Vec<String> = report.refs.iter().map(ToString::to_string).collect();
+        assert_eq!(shown, ["src/ch.md:4  listings/x-v1.yaml:2:3 → 3:4"]);
+    }
+
+    #[test]
+    fn a_forced_refreeze_that_moves_no_range_needs_no_flag() {
+        let chapter = "{{#include listings/x-v1.yaml:1:2}}\n";
+        let book = Book::with_chapter(ABC, "ch.md", chapter, "a\nb\nc\nd\n");
+        let report = book.refreeze(false).unwrap();
+        assert!(report.refs.is_empty(), "{:?}", report.refs);
+        assert_eq!(book.chapter("ch.md"), chapter);
+        assert_eq!(book.frozen(), "a\nb\nc\nd\n");
+    }
+
+    #[test]
+    fn every_directive_that_reaches_the_frozen_file_is_carried() {
+        let chapter = concat!(
+            "{{#include ../listings/x-v1.yaml:2:3}}\n",
+            "{{#rustdoc_include ../listings/x-v1.yaml:3}}\n",
+            "{{#include ../listings/x-v1.yaml::2}}\n",
+        );
+        let book = Book::with_chapter(ABC, "part/ch.md", chapter, XABC);
+        book.refreeze(true).unwrap();
+        assert_eq!(
+            book.chapter("part/ch.md"),
+            concat!(
+                "{{#include ../listings/x-v1.yaml:3:4}}\n",
+                "{{#rustdoc_include ../listings/x-v1.yaml:4}}\n",
+                "{{#include ../listings/x-v1.yaml::3}}\n",
+            )
+        );
+    }
+
+    #[test]
+    fn a_reference_that_names_no_line_of_this_listing_is_left_alone() {
+        let chapter = concat!(
+            "\\{{#include listings/x-v1.yaml:2:3}}\n",
+            "{{#include listings/x-v1.yaml}}\n",
+            "{{#include listings/x-v1.yaml:name}}\n",
+            "{{#include listings/y-v1.yaml:2:3}}\n",
+        );
+        let book = Book::with_chapter(ABC, "ch.md", chapter, XABC);
+        let report = book.refreeze(false).unwrap();
+        assert!(report.refs.is_empty(), "{:?}", report.refs);
+        assert_eq!(book.chapter("ch.md"), chapter);
+    }
+
+    #[test]
+    fn a_range_at_a_boundary_is_carried_and_reported() {
+        let book = Book::with_chapter(
+            ABC,
+            "ch.md",
+            "{{#include listings/x-v1.yaml:1:2}}\n",
+            "a\nB\nc\n",
+        );
+        assert!(book.refreeze(false).is_err());
+        let report = book.refreeze(true).unwrap();
+        assert_eq!(
+            book.chapter("ch.md"),
+            "{{#include listings/x-v1.yaml:1:1}}\n"
+        );
+        let shown: Vec<String> = report.refs.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            shown,
+            ["src/ch.md:1  listings/x-v1.yaml:1:2 → 1:1 (line 2 changed; check the range)"]
+        );
+    }
+
+    #[test]
+    fn a_range_with_nothing_left_is_reported_and_left_for_the_author() {
+        let chapter = "{{#include listings/x-v1.yaml:2:3}}\n";
+        let book = Book::with_chapter(ABC, "ch.md", chapter, "a\nY\nZ\n");
+        assert!(book.refreeze(false).is_err());
+        let report = book.refreeze(true).unwrap();
+        assert_eq!(book.chapter("ch.md"), chapter);
+        assert_eq!(book.frozen(), "a\nY\nZ\n");
+        let shown: Vec<String> = report.refs.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            shown,
+            ["src/ch.md:1  listings/x-v1.yaml:2:3: no line of it is left; fix it by hand"]
+        );
+    }
+
+    #[test]
+    fn a_missing_old_copy_freezes_and_says_the_ranges_were_not_checked() {
+        let chapter = "{{#include listings/x-v1.yaml:2:3}}\n";
+        let book = Book::with_chapter(ABC, "ch.md", chapter, XABC);
+        fs::remove_file(book.root.join("src/listings/x-v1.yaml")).unwrap();
+        let report = book.refreeze(false).unwrap();
+        assert!(report.refs_unchecked);
+        assert_eq!(book.frozen(), XABC);
+    }
+
+    #[test]
+    fn a_refreeze_with_the_old_copy_in_place_checks_the_ranges() {
+        let book = Book::with_chapter(ABC, "ch.md", "", XABC);
+        assert!(!book.refreeze(false).unwrap().refs_unchecked);
+    }
+
+    #[test]
+    fn a_listings_include_in_a_nested_chapter_is_carried_from_the_books_src() {
+        let book = Book::with_chapter(
+            ABC,
+            "part/ch.md",
+            "```yaml\n{{#include listings/x-v1.yaml:2:3}}\n```\n",
+            XABC,
+        );
+        assert!(book.refreeze(false).is_err());
+        book.refreeze(true).unwrap();
+        assert_eq!(
+            book.chapter("part/ch.md"),
+            "```yaml\n{{#include listings/x-v1.yaml:3:4}}\n```\n"
+        );
+    }
+
+    #[test]
+    fn an_include_left_to_mdbook_is_resolved_from_its_own_chapter() {
+        // In inline code the include is mdBook's to expand, from the
+        // chapter's directory: the nested one reads no frozen file.
+        let quoted = "See `{{#include listings/x-v1.yaml:2:3}}`.\n";
+        let book = Book::with_chapter(ABC, "part/ch.md", quoted, XABC);
+        book.write_chapter("top.md", quoted);
+        book.refreeze(true).unwrap();
+        assert_eq!(book.chapter("part/ch.md"), quoted);
+        assert_eq!(
+            book.chapter("top.md"),
+            "See `{{#include listings/x-v1.yaml:3:4}}`.\n"
+        );
+    }
+
+    #[test]
+    fn an_attribute_before_the_path_does_not_hide_the_range() {
+        let book = Book::with_chapter(
+            ABC,
+            "ch.md",
+            "{{#include caption=\"See listings/x-v1.yaml:2:3\" listings/x-v1.yaml:2:3}}\n",
+            XABC,
+        );
+        let report = book.refreeze(true).unwrap();
+        assert_eq!(
+            book.chapter("ch.md"),
+            "{{#include caption=\"See listings/x-v1.yaml:2:3\" listings/x-v1.yaml:3:4}}\n"
+        );
+        let shown: Vec<String> = report.refs.iter().map(ToString::to_string).collect();
+        assert_eq!(shown, ["src/ch.md:1  listings/x-v1.yaml:2:3 → 3:4"]);
+    }
+
+    #[test]
+    fn a_suffix_mdbook_reads_loosely_is_carried_the_way_it_reads_it() {
+        let book = Book::with_chapter(
+            ABC,
+            "ch.md",
+            "{{#include listings/x-v1.yaml:2:3:9}}\n{{#include listings/x-v1.yaml:2:x}}\n",
+            XABC,
+        );
+        book.refreeze(true).unwrap();
+        assert_eq!(
+            book.chapter("ch.md"),
+            "{{#include listings/x-v1.yaml:3:4:9}}\n{{#include listings/x-v1.yaml:3:}}\n"
+        );
+    }
+
+    #[test]
+    fn a_playground_path_takes_no_range_and_is_left_alone() {
+        let chapter = "{{#playground listings/x-v1.yaml:2}}\n";
+        let book = Book::with_chapter(ABC, "ch.md", chapter, XABC);
+        let report = book.refreeze(false).unwrap();
+        assert!(report.refs.is_empty(), "{:?}", report.refs);
+        assert_eq!(book.chapter("ch.md"), chapter);
+    }
+
+    #[test]
+    fn a_failed_listing_write_puts_the_chapters_back() {
+        let chapter = "{{#include listings/x-v1.yaml:2:3}}\n";
+        let book = Book::with_chapter(ABC, "ch.md", chapter, XABC);
+        let frozen = book.root.join("src/listings/x-v1.yaml");
+        let read_only = |on: bool| {
+            let mut perms = fs::metadata(&frozen).unwrap().permissions();
+            perms.set_readonly(on);
+            fs::set_permissions(&frozen, perms).unwrap();
+        };
+        read_only(true);
+        let err = book.refreeze(true);
+        read_only(false);
+        assert!(err.is_err(), "the read-only frozen copy stops the freeze");
+        assert_eq!(book.chapter("ch.md"), chapter);
+        // The retry carries the range once, not twice.
+        book.refreeze(true).unwrap();
+        assert_eq!(
+            book.chapter("ch.md"),
+            "{{#include listings/x-v1.yaml:3:4}}\n"
+        );
+    }
+
+    #[test]
+    fn a_refreeze_under_a_new_extension_leaves_ranges_into_the_old_file() {
+        let chapter = "{{#include listings/x-v1.yaml:2:3}}\n";
+        let mut book = Book::with_chapter(ABC, "ch.md", chapter, XABC);
+        book.source = book.source.with_extension("yml");
+        fs::write(&book.source, XABC).unwrap();
+        let report = book.refreeze(false).unwrap();
+        assert!(report.refs.is_empty(), "{:?}", report.refs);
+        assert!(!report.refs_unchecked);
+        assert_eq!(book.chapter("ch.md"), chapter);
+        assert_eq!(book.frozen(), ABC, "the old file is not rewritten");
+    }
+
+    #[test]
+    fn restoring_a_deleted_copy_from_the_same_bytes_has_no_ranges_to_check() {
+        let book = Book::with_chapter(ABC, "ch.md", "", ABC);
+        fs::remove_file(book.root.join("src/listings/x-v1.yaml")).unwrap();
+        assert!(!book.refreeze(false).unwrap().refs_unchecked);
     }
 
     #[test]

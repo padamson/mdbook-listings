@@ -135,8 +135,9 @@ fragment and which file it came from. Out-of-range endpoints clamp silently.
 
 A slice whose **end** line is a `CALLOUT:` marker draws a `verify` warning:
 the marker annotates the line after it, which the slice excludes, so the
-badge would attach to nothing. Line numbers shift every refreeze, so a range
-that ended cleanly before a marker can end on top of one later.
+badge would attach to nothing. A forced re-freeze carries an include range
+to its lines' new numbers (`freeze --update-refs`), but a range that gains a
+marker at its end can still end on one.
 
 Includes of `snippets/...` (hand-curated excerpts, not frozen tags) are also
 processed, so any `// CALLOUT:` markers in them render — but their bytes are

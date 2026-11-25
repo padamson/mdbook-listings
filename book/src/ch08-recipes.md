@@ -50,6 +50,21 @@ When to freeze a new tag versus `--force`-overwriting an existing one:
 - **Fixing it after readers have seen it** → don't `--force`; make a new
   tag and update the chapter. `--force` silently rewrites history.
 
+A forced re-freeze changes line numbers, so it checks the chapters that
+include a line range of the listing (`\{{#include listings/foo-v1.rs:12:30}}`).
+If a range would move, `freeze` lists each one with its new numbers and
+writes nothing. Re-run with `--update-refs` to rewrite those ranges and
+freeze:
+
+```bash
+mdbook-listings freeze --tag foo-v1 --force --update-refs ../src/foo.rs
+```
+
+It prints each range it moved. It also warns, after carrying it, about a
+range whose first or last line changed or gained a new line just outside
+it, since a diff can't tell whether you meant that line to be in the range.
+A range with none of its lines left stays as it was, for you to fix.
+
 A frozen snapshot is meant to be immutable, so guard that:
 
 - Don't edit a frozen listing in place. If you must change what it shows,

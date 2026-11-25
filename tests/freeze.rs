@@ -434,3 +434,53 @@ fn freeze_enforces_max_line_width_and_allow_long_lines_exempts() {
     assert!(!manifest.contains("wide2"), "got:\n{manifest}");
     assert!(!book_root.join("src/listings/wide2.yaml").exists());
 }
+
+/// A forced re-freeze that moves a chapter's line range lists it and stops;
+/// `--update-refs` rewrites it, printing each move and warning on a range
+/// the author has to check.
+#[test]
+fn freeze_lists_moved_ranges_and_update_refs_rewrites_them() {
+    let tmp = TempDir::new().expect("tempdir");
+    let book_root = tmp.path().join("book");
+    fs::create_dir_all(book_root.join("src")).unwrap();
+    let source = tmp.path().join("compose.yaml");
+    fs::write(&source, "a: 1\nb: 2\nc: 3\n").unwrap();
+    let freeze = |extra: &[&str]| {
+        let mut cmd = mdbook_listings();
+        cmd.args(["freeze", "--tag", "demo", "--book-root"])
+            .arg(&book_root)
+            .args(extra)
+            .arg(&source);
+        cmd
+    };
+    freeze(&[]).assert().success();
+    fs::write(
+        book_root.join("src/ch.md"),
+        "{{#include listings/demo.yaml:2:3}}\n{{#include listings/demo.yaml:1:1}}\n",
+    )
+    .unwrap();
+    fs::write(&source, "x: 0\na: 9\nb: 2\nc: 3\n").unwrap();
+
+    freeze(&["--update-refs"])
+        .assert()
+        .failure()
+        .stderr(contains("--force"));
+    freeze(&["--force"])
+        .assert()
+        .failure()
+        .stderr(contains("src/ch.md:1  listings/demo.yaml:2:3 → 3:4"))
+        .stderr(contains("--update-refs"));
+    freeze(&["--force", "--update-refs"])
+        .assert()
+        .success()
+        .stdout(contains(
+            "  moved:   src/ch.md:1  listings/demo.yaml:2:3 → 3:4",
+        ))
+        .stderr(contains(
+            "warning: src/ch.md:2  listings/demo.yaml:1:1: no line of it is left",
+        ));
+    assert_eq!(
+        fs::read_to_string(book_root.join("src/ch.md")).unwrap(),
+        "{{#include listings/demo.yaml:3:4}}\n{{#include listings/demo.yaml:1:1}}\n",
+    );
+}

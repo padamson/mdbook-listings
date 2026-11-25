@@ -11,7 +11,7 @@ description: >-
   with its sources.
 license: MIT OR Apache-2.0
 metadata:
-  version: "0.1.35"
+  version: "0.1.36"
 ---
 
 # Authoring with mdbook-listings
@@ -34,7 +34,9 @@ Two identities govern every listing:
   filename stem and the manifest key, so it must be unique within the book.
 - **sha256** — the integrity check. Re-freezing identical bytes under the same
   tag is a no-op; re-freezing *different* bytes under an existing tag is
-  **rejected** unless you pass `--force`.
+  **rejected** unless you pass `--force`. A forced re-freeze that would move
+  a chapter's include range refuses until you add `--update-refs`, which
+  rewrites the range.
 
 You never hand-edit frozen files or `listings.toml` — the CLI owns them
 (the one exception is adding `allow-long-lines = true` to a record). To

@@ -6,6 +6,7 @@ use crate::freeze::{
     FreezeOptions, FreezeOutcome, derive_default_tag, freeze, frozen_relative_path, path_to_string,
 };
 use crate::install::{InstallOutcome, ensure_assets_fresh, install};
+use crate::line_refs::Carry;
 use crate::manifest::Manifest;
 use crate::pipeline;
 use crate::remove::remove;
@@ -75,6 +76,12 @@ enum Command {
         #[arg(long)]
         allow_long_lines: bool,
 
+        /// With --force on changed content, rewrite the line ranges that
+        /// chapters include from this listing to where those lines now
+        /// are. Without it, such a re-freeze refuses and lists them.
+        #[arg(long, requires = "force")]
+        update_refs: bool,
+
         /// Path to the source file to freeze.
         source: PathBuf,
     },
@@ -141,6 +148,7 @@ pub fn run() -> Result<()> {
             force,
             source_url,
             allow_long_lines,
+            update_refs,
             source,
         }) => {
             let book_root = book_root.unwrap_or_else(|| PathBuf::from("."));
@@ -159,6 +167,7 @@ pub fn run() -> Result<()> {
                 force,
                 source_url: source_url.as_deref(),
                 allow_long_lines,
+                update_refs,
             })?;
             let verb = match report.outcome {
                 FreezeOutcome::Created => "created",
@@ -189,6 +198,18 @@ pub fn run() -> Result<()> {
             }
             if let Some(url) = report.url {
                 println!("  url:     {url}");
+            }
+            for r in &report.refs {
+                match r.carry {
+                    Carry::Moved(_) => println!("  moved:   {r}"),
+                    _ => eprintln!("warning: {r}"),
+                }
+            }
+            if report.refs_unchecked {
+                eprintln!(
+                    "warning: the replaced copy of `{tag}` was missing, so line ranges into it \
+                     were not checked"
+                );
             }
             if let Some(url) = report.dropped_url {
                 eprintln!(
