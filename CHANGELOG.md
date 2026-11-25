@@ -33,6 +33,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   commit. One case still prints the commit on a release: `cargo install
   --git <repo> --tag v<version>`, because cargo's checkout carries no
   tags to tell the build it is one.
+- **A chapter that ends on a listing with callouts keeps its closing
+  fence.** When the chapter's last line was the closing fence, with no
+  newline after it, the HTML build dropped the fence's last backtick, so
+  the code block never closed and swallowed the badges after it.
 
 ## [0.3.0] - 2026-11-02
 

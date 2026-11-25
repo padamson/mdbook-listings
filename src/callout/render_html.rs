@@ -97,9 +97,10 @@ pub(super) fn splice_callout_lists_html(
 }
 
 fn closing_fence_text(content: &str, close_end: usize) -> &str {
-    // close_end is one past the trailing newline of the closing fence
-    // (or equal to bytes.len() if the file ends without a trailing newline).
-    let end = close_end.saturating_sub(1);
+    // close_end is one past the closing fence's newline, or the end of the
+    // chapter when the fence is its last line and has none.
+    let fence = &content[..close_end];
+    let end = fence.strip_suffix('\n').map_or(close_end, str::len);
     &content[crate::fence::line_start(content, end)..end]
 }
 
@@ -344,6 +345,17 @@ mod tests {
             splice_chapter(content, SupportedRenderer::Html, &SidecarCallouts::empty())
                 .expect("splice"),
             content
+        );
+    }
+
+    #[test]
+    fn a_chapter_ending_in_a_block_with_no_final_newline_keeps_its_closing_fence() {
+        let content = "```yaml\nservice: greeting\n# CALLOUT: name The service.\n```";
+        let out = splice_chapter(content, SupportedRenderer::Html, &SidecarCallouts::empty())
+            .expect("splice");
+        assert!(
+            out.starts_with("```yaml\nservice: greeting\n```\n<div"),
+            "got:\n{out}"
         );
     }
 
