@@ -213,6 +213,9 @@ between versions). Same `start:end` rules as `{{#include}}`:
 Hunk headers are rewritten to parent-listing line numbers, so a sliced diff
 shows the real line positions, not slice-relative ones.
 
+A forced re-freeze of either operand carries that side's range to its
+lines' new numbers (`freeze --update-refs`), the same as an include range.
+
 ### Caption and context radius
 
 `{{#diff}}` accepts the same `caption="..."` argument as `{{#include}}`, plus

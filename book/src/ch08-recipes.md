@@ -51,7 +51,8 @@ When to freeze a new tag versus `--force`-overwriting an existing one:
   tag and update the chapter. `--force` silently rewrites history.
 
 A forced re-freeze changes line numbers, so it checks the chapters that
-include a line range of the listing (`\{{#include listings/foo-v1.rs:12:30}}`).
+include a line range of the listing (`\{{#include listings/foo-v1.rs:12:30}}`)
+or diff one (`\{{#diff foo-v0 foo-v1 1:20 12:30}}`, the side that names it).
 If a range would move, `freeze` lists each one with its new numbers and
 writes nothing. Re-run with `--update-refs` to rewrite those ranges and
 freeze:

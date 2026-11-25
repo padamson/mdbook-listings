@@ -154,6 +154,7 @@ pub fn freeze(opts: FreezeOptions<'_>) -> Result<FreezeReport> {
     let plan = old_bytes.map_or_else(Vec::new, |old_bytes| {
         line_refs::plan(
             opts.book_root,
+            opts.tag,
             &frozen_rel_str,
             &String::from_utf8_lossy(&old_bytes),
             &String::from_utf8_lossy(&source_bytes),
@@ -1149,6 +1150,72 @@ mod tests {
         let book = Book::with_chapter(ABC, "ch.md", "", ABC);
         fs::remove_file(book.root.join("src/listings/x-v1.yaml")).unwrap();
         assert!(!book.refreeze(false).unwrap().refs_unchecked);
+    }
+
+    #[test]
+    fn a_diff_range_on_the_replaced_side_is_carried() {
+        let chapter = "{{#diff x-v0 x-v1 1:2 2:3}}\n";
+        let book = Book::with_chapter(ABC, "ch.md", chapter, XABC);
+        let err = format!("{:#}", book.refreeze(false).unwrap_err());
+        assert!(
+            err.contains("src/ch.md:1  diff x-v0 x-v1, right side 2:3 → 3:4"),
+            "got: {err}"
+        );
+        assert_eq!(book.chapter("ch.md"), chapter);
+        let report = book.refreeze(true).unwrap();
+        assert_eq!(book.chapter("ch.md"), "{{#diff x-v0 x-v1 1:2 3:4}}\n");
+        let shown: Vec<String> = report.refs.iter().map(ToString::to_string).collect();
+        assert_eq!(shown, ["src/ch.md:1  diff x-v0 x-v1, right side 2:3 → 3:4"]);
+    }
+
+    #[test]
+    fn a_diff_range_is_carried_on_the_left_side_and_on_both() {
+        let chapter = "{{#diff x-v1 x-v2 2:3 2:3}}\n\n{{#diff x-v1 x-v1 :2 3:}}\n";
+        let book = Book::with_chapter(ABC, "ch.md", chapter, XABC);
+        let report = book.refreeze(true).unwrap();
+        assert_eq!(
+            book.chapter("ch.md"),
+            "{{#diff x-v1 x-v2 3:4 2:3}}\n\n{{#diff x-v1 x-v1 :3 4:}}\n"
+        );
+        let shown: Vec<String> = report.refs.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            shown,
+            [
+                "src/ch.md:1  diff x-v1 x-v2, left side 2:3 → 3:4",
+                "src/ch.md:3  diff x-v1 x-v1, left side :2 → :3",
+                "src/ch.md:3  diff x-v1 x-v1, right side 3: → 4:",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_diff_range_is_found_among_its_attributes() {
+        let book = Book::with_chapter(
+            ABC,
+            "ch.md",
+            "{{#diff x-v0 caption=\"Lines 2:3 now\" x-v1 context=1 1:2 label=\"d\" 2:3}}\n",
+            XABC,
+        );
+        book.refreeze(true).unwrap();
+        assert_eq!(
+            book.chapter("ch.md"),
+            "{{#diff x-v0 caption=\"Lines 2:3 now\" x-v1 context=1 1:2 label=\"d\" 3:4}}\n"
+        );
+    }
+
+    #[test]
+    fn a_diff_without_ranges_or_not_rendered_is_left_alone() {
+        let chapter = concat!(
+            "{{#diff x-v0 x-v1}}\n",
+            "{{#diff x-v0 x-v1 : :}}\n",
+            "\\{{#diff x-v0 x-v1 1:2 2:3}}\n",
+            "```md\n{{#diff x-v0 x-v1 1:2 2:3}}\n```\n",
+            "{{#diff x-v0 x-v1 1:2}}\n",
+        );
+        let book = Book::with_chapter(ABC, "ch.md", chapter, "Y\nZ\n");
+        let report = book.refreeze(false).unwrap();
+        assert!(report.refs.is_empty(), "{:?}", report.refs);
+        assert_eq!(book.chapter("ch.md"), chapter);
     }
 
     #[test]

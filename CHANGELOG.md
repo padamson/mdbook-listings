@@ -14,10 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   `{{#include}}`, `{{#rustdoc_include}}`, or `{{#playground}}`, by any
   path) or names the listing in a `{{#diff}}`, and lists each use by
   chapter and line.
-- **A forced re-freeze carries include ranges.** When `freeze --force`
+- **A forced re-freeze carries line ranges.** When `freeze --force`
   replaces a listing's bytes, it checks every chapter that includes a line
-  range of it (`{{#include}}` or `{{#rustdoc_include}}`). If a range would
-  now name different lines, it lists
+  range of it (`{{#include}}` or `{{#rustdoc_include}}`) or diffs one
+  (`{{#diff}}`). If a range would now name different lines, it lists
   each one with its new numbers and writes nothing; `--update-refs`
   rewrites those ranges and freezes. A range whose first or last line
   changed, or that gained a line just outside it, is carried and flagged

@@ -85,14 +85,15 @@ Copies `<SOURCE>` into the book's `listings/` directory and records it in
 - Line ranges into the listing are pinned to the old bytes too. A forced
   re-freeze diffs the old bytes against the new and finds every
   `{{#include}}` or `{{#rustdoc_include}}` range (`:A:B`, `:A:`, `::B`,
-  `:N`) that reaches the frozen file. If any would move, it
-  lists each as `chapter:line  path:A:B → C:D` and writes nothing. With
+  `:N`) that reaches the frozen file, and the range on each side of a
+  `{{#diff}}` that names the tag. If any would move, it lists each as
+  `chapter:line  path:A:B → C:D` (`diff a b, right side A:B → C:D` for a
+  diff) and writes nothing. With
   `--update-refs` it rewrites them and freezes, printing `moved:` for each.
   It warns (`check the range`) about a range whose first or last line
   changed, which it snaps inward, or that gained a line just outside an
   end, which it leaves outside. A range with no line left stays as written
-  (`fix it by hand`). `{{#diff}}` ranges and sidecar `line`s are not
-  carried yet.
+  (`fix it by hand`). Sidecar `line`s are not carried yet.
 - `allow-long-lines` follows the same rule as the URL. An unchanged re-freeze
   keeps it, and one with `--allow-long-lines` records it (the summary says
   `long lines allowed`). A forced re-freeze of different bytes drops it and

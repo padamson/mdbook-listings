@@ -6,10 +6,13 @@ use std::fmt;
 use std::fs;
 use std::ops::Range;
 use std::path::Path;
+use std::sync::LazyLock;
 
 use anyhow::{Context, Result};
+use regex::Regex;
 use similar::{Algorithm, DiffTag, capture_diff_slices};
 
+use crate::diff::parse_directives;
 use crate::directive::line_number;
 use crate::include::{IncludeDirective, parse_listing_includes};
 use crate::remove::{chapter_file_links, normalize};
@@ -220,18 +223,47 @@ pub(crate) struct ChapterRefs {
     refs: Vec<(Range<usize>, CarriedRef)>,
 }
 
-/// Every line reference into the frozen file `frozen_rel` (book-relative)
-/// that does not stay put when its bytes change from `old` to `new`, by
-/// chapter.
-pub(crate) fn plan(book_root: &Path, frozen_rel: &str, old: &str, new: &str) -> Vec<ChapterRefs> {
+/// One line reference found in a chapter, before it is carried.
+struct Found {
+    /// The bytes of the chapter that name the lines.
+    span: Range<usize>,
+    spec: LineSpec,
+    written: String,
+    location: String,
+}
+
+impl Found {
+    /// An include's file argument `written`, whose line suffix starts at
+    /// byte `suffix_start`; `None` when the suffix names no line.
+    fn include(suffix_start: usize, written: String, location: String) -> Option<Self> {
+        let (_, suffix) = written.split_once(':')?;
+        let (spec, len) = LineSpec::parse(suffix)?;
+        Some(Self {
+            span: suffix_start..suffix_start + len,
+            spec,
+            written,
+            location,
+        })
+    }
+}
+
+/// Every line reference into the listing `tag`, frozen at `frozen_rel`
+/// (book-relative), that does not stay put when its bytes change from
+/// `old` to `new`, by chapter.
+pub(crate) fn plan(
+    book_root: &Path,
+    tag: &str,
+    frozen_rel: &str,
+    old: &str,
+    new: &str,
+) -> Vec<ChapterRefs> {
     let target = normalize(&book_root.join(frozen_rel));
     let src_dir = chapter_src_dir(book_root);
     let map = LineMap::between(old, new);
     let mut chapters = Vec::new();
     for (rel, content) in chapter_markdown(book_root) {
-        // (byte offset of the line suffix, the file argument as written,
-        // location), from both readers of `{{#include}}`.
-        let mut found: Vec<(usize, String, String)> = Vec::new();
+        let location = |at: usize| format!("{rel}:{}", line_number(&content, at));
+        let mut found = Vec::new();
         // The include pass takes a `listings/` include first and resolves
         // it from the book's `src/`, wherever the chapter sits.
         let mut taken = HashSet::new();
@@ -241,10 +273,11 @@ pub(crate) fn plan(book_root: &Path, frozen_rel: &str, old: &str, new: &str) -> 
                 continue;
             }
             if let Some(suffix) = suffix_span(&content, &d) {
-                found.push((
+                let written = format!("{}:{}", d.rel_path, &content[suffix.clone()]);
+                found.extend(Found::include(
                     suffix.start,
-                    format!("{}:{}", d.rel_path, &content[suffix.clone()]),
-                    format!("{rel}:{}", line_number(&content, d.span.start)),
+                    written,
+                    location(d.span.start),
                 ));
             }
         }
@@ -255,25 +288,23 @@ pub(crate) fn plan(book_root: &Path, frozen_rel: &str, old: &str, new: &str) -> 
                 continue;
             }
             if let Some((path, _)) = link.spec.split_once(':') {
-                found.push((link.spec_start + path.len() + 1, link.spec, link.location));
+                let suffix_start = link.spec_start + path.len() + 1;
+                found.extend(Found::include(suffix_start, link.spec, link.location));
             }
         }
-        found.sort();
+        found.extend(diff_ranges(&content, tag, &location));
+        found.sort_by_key(|f| f.span.start);
         let mut refs = Vec::new();
-        for (suffix_start, written, location) in found {
-            let suffix = written.split_once(':').map_or("", |(_, suffix)| suffix);
-            let Some((spec, len)) = LineSpec::parse(suffix) else {
-                continue;
-            };
-            let carry = map.carry(spec);
+        for f in found {
+            let carry = map.carry(f.spec);
             if carry == Carry::Same {
                 continue;
             }
             refs.push((
-                suffix_start..suffix_start + len,
+                f.span,
                 CarriedRef {
-                    location,
-                    written,
+                    location: f.location,
+                    written: f.written,
                     carry,
                 },
             ));
@@ -284,6 +315,60 @@ pub(crate) fn plan(book_root: &Path, frozen_rel: &str, old: &str, new: &str) -> 
     }
     chapters.sort_by(|a, b| a.rel.cmp(&b.rel));
     chapters
+}
+
+/// The ranges of each rendered `{{#diff}}` on the side or sides that name
+/// `tag`. A range that leaves both ends open is the whole file, and stays.
+fn diff_ranges(content: &str, tag: &str, location: &dyn Fn(usize) -> String) -> Vec<Found> {
+    let mut found = Vec::new();
+    for d in parse_directives(content) {
+        let (Some(left), Some(right)) = (d.left_range, d.right_range) else {
+            continue;
+        };
+        let operands = operand_spans(&content[d.span.clone()]);
+        let [_, _, left_span, right_span] = operands.as_slice() else {
+            continue;
+        };
+        let sides = [
+            (&d.left, left, left_span, "left"),
+            (&d.right, right, right_span, "right"),
+        ];
+        for (operand, range, span, side) in sides {
+            if operand != tag || (range.start.is_none() && range.end.is_none()) {
+                continue;
+            }
+            found.push(Found {
+                span: d.span.start + span.start..d.span.start + span.end,
+                spec: LineSpec::Range {
+                    start: range.start,
+                    end: range.end,
+                },
+                written: format!(
+                    "diff {} {}, {side} side {}",
+                    d.left,
+                    d.right,
+                    range.render()
+                ),
+                location: location(d.span.start),
+            });
+        }
+    }
+    found
+}
+
+/// Where each operand token of a `{{#diff …}}` sits in its text, skipping
+/// the `key="…"` attributes (whose values may hold spaces) and `context=N`,
+/// the way the diff parser lifts them.
+fn operand_spans(text: &str) -> Vec<Range<usize>> {
+    static TOKEN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"[\w-]+="[^"]*"?|\S+"#).expect("valid regex"));
+    let body = text.strip_suffix("}}").unwrap_or(text);
+    TOKEN
+        .find_iter(body)
+        .skip(1)
+        .filter(|m| !m.as_str().contains("=\"") && !m.as_str().starts_with("context="))
+        .map(|m| m.range())
+        .collect()
 }
 
 /// Where a `listings/` include wrote the line suffix after its path. The
