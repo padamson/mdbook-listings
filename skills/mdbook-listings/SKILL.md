@@ -11,7 +11,7 @@ description: >-
   with its sources.
 license: MIT OR Apache-2.0
 metadata:
-  version: "0.1.37"
+  version: "0.1.38"
 ---
 
 # Authoring with mdbook-listings
@@ -35,8 +35,8 @@ Two identities govern every listing:
 - **sha256** — the integrity check. Re-freezing identical bytes under the same
   tag is a no-op; re-freezing *different* bytes under an existing tag is
   **rejected** unless you pass `--force`. A forced re-freeze that would move
-  a chapter's include or `{{#diff}}` range refuses until you add
-  `--update-refs`, which rewrites the range.
+  a chapter's include or `{{#diff}}` range, or a sidecar's `line`, refuses
+  until you add `--update-refs`, which rewrites them.
 
 You never hand-edit frozen files or `listings.toml` — the CLI owns them
 (the one exception is adding `allow-long-lines = true` to a record). To

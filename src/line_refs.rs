@@ -11,12 +11,13 @@ use std::sync::LazyLock;
 use anyhow::{Context, Result};
 use regex::Regex;
 use similar::{Algorithm, DiffTag, capture_diff_slices};
+use toml_edit::{Document, Item, TableLike};
 
 use crate::diff::parse_directives;
 use crate::directive::line_number;
 use crate::include::{IncludeDirective, parse_listing_includes};
-use crate::remove::{chapter_file_links, normalize};
-use crate::verify::{chapter_markdown, chapter_src_dir};
+use crate::remove::{chapter_file_links, normalize, sidecars_naming};
+use crate::verify::{chapter_markdown, chapter_src_dir, sidecar_tags};
 
 /// The lines a reference names, as mdBook reads the suffix after a path's
 /// first `:`.
@@ -184,9 +185,9 @@ impl LineMap {
 /// One line reference into the replaced listing that does not stay put.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CarriedRef {
-    /// Book-relative chapter path and 1-based line, `src/ch01.md:5`.
+    /// Book-relative file path and 1-based line, `src/ch01.md:5`.
     pub location: String,
-    /// The path argument as the chapter wrote it, `listings/x.rs:2:4`.
+    /// The reference as the file wrote it, `listings/x.rs:2:4`.
     pub written: String,
     pub carry: Carry,
 }
@@ -215,15 +216,15 @@ impl fmt::Display for CarriedRef {
     }
 }
 
-/// The references in one chapter, with the byte range of each one's line
-/// suffix, ready to rewrite.
-pub(crate) struct ChapterRefs {
+/// The references in one chapter or sidecar, with the byte range of the
+/// text that names each one's lines, ready to rewrite.
+pub(crate) struct FileRefs {
     rel: String,
     content: String,
     refs: Vec<(Range<usize>, CarriedRef)>,
 }
 
-/// One line reference found in a chapter, before it is carried.
+/// One line reference found in a chapter or a sidecar, before it is carried.
 struct Found {
     /// The bytes of the chapter that name the lines.
     span: Range<usize>,
@@ -249,18 +250,18 @@ impl Found {
 
 /// Every line reference into the listing `tag`, frozen at `frozen_rel`
 /// (book-relative), that does not stay put when its bytes change from
-/// `old` to `new`, by chapter.
+/// `old` to `new`, by chapter and sidecar.
 pub(crate) fn plan(
     book_root: &Path,
     tag: &str,
     frozen_rel: &str,
     old: &str,
     new: &str,
-) -> Vec<ChapterRefs> {
+) -> Result<Vec<FileRefs>> {
     let target = normalize(&book_root.join(frozen_rel));
     let src_dir = chapter_src_dir(book_root);
     let map = LineMap::between(old, new);
-    let mut chapters = Vec::new();
+    let mut files = Vec::new();
     for (rel, content) in chapter_markdown(book_root) {
         let location = |at: usize| format!("{rel}:{}", line_number(&content, at));
         let mut found = Vec::new();
@@ -293,28 +294,95 @@ pub(crate) fn plan(
             }
         }
         found.extend(diff_ranges(&content, tag, &location));
-        found.sort_by_key(|f| f.span.start);
-        let mut refs = Vec::new();
-        for f in found {
+        push_moved(&mut files, &map, rel, content, found);
+    }
+    for rel in sidecars_naming(book_root, tag)? {
+        let path = book_root.join(&rel);
+        let content =
+            fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+        let found = sidecar_lines(&rel, &content, tag)
+            .with_context(|| format!("parsing {}", path.display()))?;
+        push_moved(&mut files, &map, rel, content, found);
+    }
+    files.sort_by(|a, b| a.rel.cmp(&b.rel));
+    Ok(files)
+}
+
+/// Carry `found`, and keep the file if any of its references move.
+fn push_moved(
+    files: &mut Vec<FileRefs>,
+    map: &LineMap,
+    rel: String,
+    content: String,
+    mut found: Vec<Found>,
+) {
+    found.sort_by_key(|f| f.span.start);
+    let refs: Vec<_> = found
+        .into_iter()
+        .filter_map(|f| {
             let carry = map.carry(f.spec);
-            if carry == Carry::Same {
-                continue;
-            }
-            refs.push((
-                f.span,
-                CarriedRef {
+            (carry != Carry::Same).then(|| {
+                let r = CarriedRef {
                     location: f.location,
                     written: f.written,
                     carry,
-                },
-            ));
-        }
-        if !refs.is_empty() {
-            chapters.push(ChapterRefs { rel, content, refs });
-        }
+                };
+                (f.span, r)
+            })
+        })
+        .collect();
+    if !refs.is_empty() {
+        files.push(FileRefs { rel, content, refs });
     }
-    chapters.sort_by(|a, b| a.rel.cmp(&b.rel));
-    chapters
+}
+
+/// The `line` of each sidecar entry that counts in `tag`'s file: every
+/// entry of `<tag>.callouts.toml`, and the entries of a diff sidecar on the
+/// side that `tag` is.
+fn sidecar_lines(rel: &str, content: &str, tag: &str) -> Result<Vec<Found>> {
+    let name = rel.rsplit('/').next().unwrap_or(rel);
+    let Some(tags) = sidecar_tags(name) else {
+        return Ok(Vec::new());
+    };
+    let doc = Document::parse(content)?;
+    let entries: Vec<&dyn TableLike> = match doc.as_table().get("callout") {
+        Some(Item::ArrayOfTables(tables)) => tables.iter().map(|t| t as &dyn TableLike).collect(),
+        Some(item) => item
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|v| v.as_inline_table())
+            .map(|t| t as &dyn TableLike)
+            .collect(),
+        None => Vec::new(),
+    };
+    let mut found = Vec::new();
+    for entry in entries {
+        let file = match (tags.as_slice(), entry.get("side").and_then(Item::as_str)) {
+            ([only], _) => only,
+            ([old, _], Some("old")) => old,
+            ([_, new], None | Some("new")) => new,
+            _ => continue,
+        };
+        let Some(value) = entry.get("line").and_then(Item::as_value) else {
+            continue;
+        };
+        let line = value.as_integer().and_then(|n| usize::try_from(n).ok());
+        let (Some(line @ 1..), Some(span), true) = (line, value.span(), *file == tag) else {
+            continue;
+        };
+        let label = entry
+            .get("label")
+            .and_then(Item::as_str)
+            .unwrap_or_default();
+        found.push(Found {
+            location: format!("{rel}:{}", line_number(content, span.start)),
+            span,
+            spec: LineSpec::Line(line),
+            written: format!("callout {label}, line {line}"),
+        });
+    }
+    Ok(found)
 }
 
 /// The ranges of each rendered `{{#diff}}` on the side or sides that name
@@ -394,24 +462,24 @@ fn suffix_span(content: &str, d: &IncludeDirective<'_>) -> Option<Range<usize>> 
 }
 
 /// The references a plan reports, in chapter order.
-pub(crate) fn carried(plan: &[ChapterRefs]) -> Vec<CarriedRef> {
+pub(crate) fn carried(plan: &[FileRefs]) -> Vec<CarriedRef> {
     plan.iter()
         .flat_map(|c| c.refs.iter().map(|(_, r)| r.clone()))
         .collect()
 }
 
-/// Rewrite each chapter's line suffixes to where they land. A reference
-/// with no line left is not touched. If a chapter cannot be written, the
-/// ones already rewritten are put back.
-pub(crate) fn apply(book_root: &Path, plan: &[ChapterRefs]) -> Result<()> {
-    for (done, chapter) in plan.iter().enumerate() {
-        let mut content = chapter.content.clone();
-        for (span, r) in chapter.refs.iter().rev() {
+/// Rewrite each file's line numbers to where they land. A reference with no
+/// line left is not touched. If a file cannot be written, the ones already
+/// rewritten are put back.
+pub(crate) fn apply(book_root: &Path, plan: &[FileRefs]) -> Result<()> {
+    for (done, file) in plan.iter().enumerate() {
+        let mut content = file.content.clone();
+        for (span, r) in file.refs.iter().rev() {
             if let Carry::Moved(spec) | Carry::Boundary(spec, _) = &r.carry {
                 content.replace_range(span.clone(), &spec.to_string());
             }
         }
-        let path = book_root.join(&chapter.rel);
+        let path = book_root.join(&file.rel);
         if let Err(e) = fs::write(&path, content) {
             restore(book_root, &plan[..done]);
             return Err(e).with_context(|| format!("writing {}", path.display()));
@@ -420,13 +488,13 @@ pub(crate) fn apply(book_root: &Path, plan: &[ChapterRefs]) -> Result<()> {
     Ok(())
 }
 
-/// Put the planned chapters back as they were read, after a later step of
-/// the freeze failed: ranges carried for bytes that were never frozen
-/// would be carried a second time by the retry. Best effort; the freeze
-/// is already failing with its own error.
-pub(crate) fn restore(book_root: &Path, plan: &[ChapterRefs]) {
-    for chapter in plan {
-        let _ = fs::write(book_root.join(&chapter.rel), &chapter.content);
+/// Put the planned files back as they were read, after a later step of the
+/// freeze failed: lines carried for bytes that were never frozen would be
+/// carried a second time by the retry. Best effort; the freeze is already
+/// failing with its own error.
+pub(crate) fn restore(book_root: &Path, plan: &[FileRefs]) {
+    for file in plan {
+        let _ = fs::write(book_root.join(&file.rel), &file.content);
     }
 }
 

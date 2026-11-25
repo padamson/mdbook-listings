@@ -17,9 +17,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **A forced re-freeze carries line ranges.** When `freeze --force`
   replaces a listing's bytes, it checks every chapter that includes a line
   range of it (`{{#include}}` or `{{#rustdoc_include}}`) or diffs one
-  (`{{#diff}}`). If a range would now name different lines, it lists
-  each one with its new numbers and writes nothing; `--update-refs`
-  rewrites those ranges and freezes. A range whose first or last line
+  (`{{#diff}}`), and every sidecar `line` that counts in it, in the
+  listing's own sidecar or on its side of a diff sidecar. If a range or
+  line would now name different lines, it lists each one with its new
+  numbers and writes nothing; `--update-refs` rewrites them and freezes. A range whose first or last line
   changed, or that gained a line just outside it, is carried and flagged
   for you to check, and one with no line left is flagged and left as it
   was. A script that re-freezes with `--force` stops where a range would

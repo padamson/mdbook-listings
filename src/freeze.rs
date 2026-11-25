@@ -151,15 +151,16 @@ pub fn freeze(opts: FreezeOptions<'_>) -> Result<FreezeReport> {
     });
     let old_bytes = replaced.and_then(|old| fs::read(opts.book_root.join(&old.frozen)).ok());
     let refs_unchecked = replaced.is_some() && old_bytes.is_none();
-    let plan = old_bytes.map_or_else(Vec::new, |old_bytes| {
-        line_refs::plan(
+    let plan = match old_bytes {
+        Some(old_bytes) => line_refs::plan(
             opts.book_root,
             opts.tag,
             &frozen_rel_str,
             &String::from_utf8_lossy(&old_bytes),
             &String::from_utf8_lossy(&source_bytes),
-        )
-    });
+        )?,
+        None => Vec::new(),
+    };
     let refs = line_refs::carried(&plan);
     if !refs.is_empty() && !opts.update_refs {
         bail!(
@@ -1216,6 +1217,119 @@ mod tests {
         let report = book.refreeze(false).unwrap();
         assert!(report.refs.is_empty(), "{:?}", report.refs);
         assert_eq!(book.chapter("ch.md"), chapter);
+    }
+
+    const SIDECAR: &str = "listings/x-v1.callouts.toml";
+
+    #[test]
+    fn a_sidecar_line_of_the_replaced_listing_is_carried() {
+        let sidecar = concat!(
+            "[[callout]]\nline = 2 # the b line\nlabel = \"b\"\n\n",
+            "[[callout]]\nlabel = \"c\"\nline = 3\nbody = \"line = 3\"\n",
+        );
+        let book = Book::with_chapter(ABC, SIDECAR, sidecar, XABC);
+        let err = format!("{:#}", book.refreeze(false).unwrap_err());
+        assert!(
+            err.contains("src/listings/x-v1.callouts.toml:2  callout b, line 2 → 3"),
+            "got: {err}"
+        );
+        assert_eq!(book.chapter(SIDECAR), sidecar);
+        let report = book.refreeze(true).unwrap();
+        assert_eq!(
+            book.chapter(SIDECAR),
+            concat!(
+                "[[callout]]\nline = 3 # the b line\nlabel = \"b\"\n\n",
+                "[[callout]]\nlabel = \"c\"\nline = 4\nbody = \"line = 3\"\n",
+            )
+        );
+        let shown: Vec<String> = report.refs.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            shown,
+            [
+                "src/listings/x-v1.callouts.toml:2  callout b, line 2 → 3",
+                "src/listings/x-v1.callouts.toml:7  callout c, line 3 → 4",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_diff_sidecar_line_is_carried_on_the_side_that_counts_in_the_listing() {
+        let entries = concat!(
+            "[[callout]]\nline = 2\nlabel = \"n\"\n",
+            "[[callout]]\nside = \"new\"\nline = 3\nlabel = \"m\"\n",
+            "[[callout]]\nside = \"old\"\nline = 2\nlabel = \"o\"\n",
+        );
+        let book = Book::with_chapter(ABC, "listings/x-v0..x-v1.callouts.toml", entries, XABC);
+        book.write_chapter("listings/x-v1..x-v2.callouts.toml", entries);
+        book.write_chapter(
+            "listings/x-v1..x-v1.callouts.toml",
+            "callout = [{ line = 1, label = \"a\" }, { side = \"old\", line = 2, label = \"b\" }]\n",
+        );
+        book.refreeze(true).unwrap();
+        assert_eq!(
+            book.chapter("listings/x-v0..x-v1.callouts.toml"),
+            concat!(
+                "[[callout]]\nline = 3\nlabel = \"n\"\n",
+                "[[callout]]\nside = \"new\"\nline = 4\nlabel = \"m\"\n",
+                "[[callout]]\nside = \"old\"\nline = 2\nlabel = \"o\"\n",
+            )
+        );
+        assert_eq!(
+            book.chapter("listings/x-v1..x-v2.callouts.toml"),
+            concat!(
+                "[[callout]]\nline = 2\nlabel = \"n\"\n",
+                "[[callout]]\nside = \"new\"\nline = 3\nlabel = \"m\"\n",
+                "[[callout]]\nside = \"old\"\nline = 3\nlabel = \"o\"\n",
+            )
+        );
+        assert_eq!(
+            book.chapter("listings/x-v1..x-v1.callouts.toml"),
+            "callout = [{ line = 2, label = \"a\" }, { side = \"old\", line = 3, label = \"b\" }]\n",
+        );
+    }
+
+    #[test]
+    fn a_sidecar_line_with_no_line_left_is_named_and_left_as_written() {
+        let sidecar = "[[callout]]\nline = 2\nlabel = \"b\"\n";
+        let book = Book::with_chapter(ABC, SIDECAR, sidecar, "a\nB\nc\n");
+        let gone = "src/listings/x-v1.callouts.toml:2  callout b, line 2: \
+                    no line of it is left; fix it by hand";
+        let err = format!("{:#}", book.refreeze(false).unwrap_err());
+        assert!(err.contains(gone), "got: {err}");
+        let report = book.refreeze(true).unwrap();
+        assert_eq!(book.chapter(SIDECAR), sidecar);
+        let shown: Vec<String> = report.refs.iter().map(ToString::to_string).collect();
+        assert_eq!(shown, [gone]);
+    }
+
+    #[test]
+    fn a_sidecar_entry_that_names_no_line_of_the_listing_is_left_alone() {
+        let sidecar = concat!(
+            "[[callout]]\nline = 0\nlabel = \"zero\"\n",
+            "[[callout]]\nline = -1\nlabel = \"negative\"\n",
+            "[[callout]]\nline = \"2\"\nlabel = \"text\"\n",
+            "[[callout]]\nlabel = \"none\"\n",
+        );
+        let book = Book::with_chapter(ABC, SIDECAR, sidecar, XABC);
+        let other = "[[callout]]\nline = 2\nlabel = \"b\"\n";
+        for name in ["x-v10", "y-v1", "x-v1.extra", "x-v0..x-v2"] {
+            book.write_chapter(&format!("listings/{name}.callouts.toml"), other);
+        }
+        book.write_chapter(
+            "listings/x-v0..x-v1.callouts.toml",
+            "[[callout]]\nside = \"left\"\nline = 2\nlabel = \"bad-side\"\n",
+        );
+        let report = book.refreeze(false).unwrap();
+        assert!(report.refs.is_empty(), "{:?}", report.refs);
+        assert_eq!(book.chapter(SIDECAR), sidecar);
+    }
+
+    #[test]
+    fn a_sidecar_that_does_not_parse_stops_the_refreeze() {
+        let book = Book::with_chapter(ABC, SIDECAR, "[[callout]\nline = 2\n", XABC);
+        let err = format!("{:#}", book.refreeze(true).unwrap_err());
+        assert!(err.contains("x-v1.callouts.toml"), "got: {err}");
+        assert_eq!(book.frozen(), ABC);
     }
 
     #[test]

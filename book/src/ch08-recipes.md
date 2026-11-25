@@ -52,19 +52,22 @@ When to freeze a new tag versus `--force`-overwriting an existing one:
 
 A forced re-freeze changes line numbers, so it checks the chapters that
 include a line range of the listing (`\{{#include listings/foo-v1.rs:12:30}}`)
-or diff one (`\{{#diff foo-v0 foo-v1 1:20 12:30}}`, the side that names it).
-If a range would move, `freeze` lists each one with its new numbers and
-writes nothing. Re-run with `--update-refs` to rewrite those ranges and
-freeze:
+or diff one (`\{{#diff foo-v0 foo-v1 1:20 12:30}}`, the side that names it),
+and the `line` of each sidecar callout that counts in it
+(`listings/foo-v1.callouts.toml`, and its side of a diff sidecar such as
+`listings/foo-v0..foo-v1.callouts.toml`). If a range or line would move,
+`freeze` lists each one with its new numbers and writes nothing. Re-run with
+`--update-refs` to rewrite them and freeze:
 
 ```bash
 mdbook-listings freeze --tag foo-v1 --force --update-refs ../src/foo.rs
 ```
 
-It prints each range it moved. It also warns, after carrying it, about a
+It prints each one it moved. It also warns, after carrying it, about a
 range whose first or last line changed or gained a new line just outside
 it, since a diff can't tell whether you meant that line to be in the range.
-A range with none of its lines left stays as it was, for you to fix.
+A range or sidecar line with none of its lines left stays as it was, for
+you to fix.
 
 A frozen snapshot is meant to be immutable, so guard that:
 

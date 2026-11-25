@@ -329,7 +329,8 @@ label = "label-check"    # no body: a bare cross-reference target
 - `line` is a 1-based line of the **frozen file**, as
   `listings/<tag>.<ext>` holds it, not a line of the rendered block. A slice
   that starts later, or a marker stripped above it, doesn't move it.
-  Refreezing the tag with `--force` can, so check the sidecar after one.
+  Refreezing the tag with `--force` can, and `--update-refs` carries it
+  (see [`freeze`](cli.md#freeze)).
 - `label` follows the marker rule (`[A-Za-z0-9_-]+`) and `body` is optional,
   as for a marker. Badges, hover text, the PDF note, numbering, and
   `{{#callout <label>}}` all work as they do for a marker, and one listing
@@ -383,7 +384,8 @@ body = "The unchecked index is removed."
 - `line` counts in the frozen file `side` names: `"new"` (the default) or
   `"old"`. A new-file line lands on an added or a context row, an old-file
   line on a removed or a context row, so an unchanged line can be named
-  from either side.
+  from either side. A forced re-freeze of either operand carries the lines
+  on its side (`freeze --update-refs`).
 - Labels, bodies, numbering, and `{{#callout <label>}}` work as for a
   listing's sidecar, and the entries number in row order alongside the
   diff's inline `+` markers.

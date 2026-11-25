@@ -104,7 +104,7 @@ fn inside_listings_dir(rel: &str) -> bool {
 /// Book-relative paths of the sidecars under `src/listings/` that name
 /// `tag`: its own `<tag>.callouts.toml`, and any diff sidecar
 /// `<old>..<new>.callouts.toml` with `tag` as either side.
-fn sidecars_naming(book_root: &Path, tag: &str) -> Result<Vec<String>> {
+pub(crate) fn sidecars_naming(book_root: &Path, tag: &str) -> Result<Vec<String>> {
     let dir = book_root.join(LISTINGS_REL);
     let entries = match fs::read_dir(&dir) {
         Ok(entries) => entries,
